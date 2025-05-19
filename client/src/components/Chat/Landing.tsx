@@ -4,9 +4,27 @@ import { EModelEndpoint } from 'librechat-data-provider';
 import { useChatContext, useAgentsMapContext, useAssistantsMapContext } from '~/Providers';
 import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
 import { BirthdayIcon, TooltipAnchor, SplitText } from '~/components';
-import ConvoIcon from '~/components/Endpoints/ConvoIcon';
+// Remove ConvoIcon import since we're not using it anymore
 import { useLocalize, useAuthContext } from '~/hooks';
 import { getIconEndpoint, getEntity } from '~/utils';
+
+// Define the custom icon component directly in this file
+const CustomAppIcon = ({
+  containerClassName = '',
+  className = '',
+  size = 41,
+}) => {
+  return (
+    <div className={`flex items-center justify-center ${containerClassName}`}>
+      <img 
+        src="/icon-192x192.png" 
+        alt="App Icon" 
+        className={className} 
+        style={{ width: size, height: size }}
+      />
+    </div>
+  );
+};
 
 const containerClassName =
   'shadow-stroke relative flex h-full items-center justify-center rounded-full bg-white dark:bg-presentation dark:text-white text-black dark:after:shadow-none ';
@@ -152,13 +170,9 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
           className={`flex ${textHasMultipleLines ? 'flex-col' : 'flex-col md:flex-row'} items-center justify-center gap-2`}
         >
           <div className={`relative size-10 justify-center ${textHasMultipleLines ? 'mb-2' : ''}`}>
-            <ConvoIcon
-              agentsMap={agentsMap}
-              assistantMap={assistantMap}
-              conversation={conversation}
-              endpointsConfig={endpointsConfig}
+            {/* Use the CustomAppIcon defined directly in this file */}
+            <CustomAppIcon
               containerClassName={containerClassName}
-              context="landing"
               className="h-2/3 w-2/3 text-black dark:text-white"
               size={41}
             />
