@@ -25,7 +25,6 @@
       const theme = localStorage.getItem('color-theme');
       const loadingContainerStyle = document.createElement('style');
       let backgroundColor;
-
       if (theme === 'dark') {
         backgroundColor = '#0d0d0d';
       } else if (theme === 'light') {
@@ -36,7 +35,6 @@
       } else {
         backgroundColor = '#ffffff';
       }
-
       loadingContainerStyle.innerHTML = `
         #loading-container {
           display: flex;
@@ -54,5 +52,49 @@
     <div id="root">
       <div id="loading-container"></div>
     </div>
+    
+    <!-- DeFacts Token Balance Communication Script -->
+    <script>
+      window.addEventListener('message', function(event) {
+        // Check if this is a request for token balance
+        if (event.data && event.data.type === 'request-token-balance') {
+          try {
+            // Get the user data from localStorage
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            
+            // Try to get token balance from different possible locations
+            let tokenBalance = 0;
+            
+            if (user.tokenBalance !== undefined) {
+              tokenBalance = user.tokenBalance;
+            } else if (user.balance !== undefined) {
+              tokenBalance = user.balance;
+            } else if (user.credits !== undefined) {
+              tokenBalance = user.credits;
+            }
+            
+            // Check balance collection too (newer versions of LibreChat)
+            const balances = JSON.parse(localStorage.getItem('balances') || '{}');
+            if (balances.tokenCredits !== undefined) {
+              tokenBalance = balances.tokenCredits;
+            }
+            
+            // Send the balance back to the parent window
+            if (event.source && event.source.postMessage) {
+              event.source.postMessage({
+                type: 'defacts-token-balance',
+                balance: tokenBalance
+              }, event.origin);
+              console.log('DeFacts: Sent token balance:', tokenBalance);
+            }
+          } catch (err) {
+            console.error('DeFacts: Error processing token balance request:', err);
+          }
+        }
+      });
+      
+      // Log for debugging
+      console.log('DeFacts token balance script loaded successfully');
+    </script>
   </body>
 </html>
