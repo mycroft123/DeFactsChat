@@ -88,6 +88,9 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const name = entity?.name ?? '';
   const description = (entity?.description || conversation?.greeting) ?? '';
 
+  // Slogan to be displayed
+  const slogan = "Ask Questions. Get Answers. Earn Rewards.";
+
   const getGreeting = useCallback(() => {
     if (typeof startupConfig?.interface?.customWelcome === 'string') {
       const customWelcome = startupConfig.interface.customWelcome;
@@ -134,7 +137,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
     if (contentRef.current) {
       setContentHeight(contentRef.current.offsetHeight);
     }
-  }, [lineCount, description]);
+  }, [lineCount, description, slogan]);
 
   const getDynamicMargin = useMemo(() => {
     let margin = 'mb-0';
@@ -222,6 +225,11 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
             {description}
           </div>
         )}
+        
+        {/* Added slogan section */}
+        <div className="animate-fadeIn mt-6 text-center text-base font-medium text-text-secondary">
+          {slogan}
+        </div>
       </div>
     </div>
   );
