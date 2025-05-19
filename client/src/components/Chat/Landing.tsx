@@ -4,9 +4,34 @@ import { EModelEndpoint } from 'librechat-data-provider';
 import { useChatContext, useAgentsMapContext, useAssistantsMapContext } from '~/Providers';
 import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
 import { BirthdayIcon, TooltipAnchor, SplitText } from '~/components';
-// Remove ConvoIcon import since we're not using it anymore
 import { useLocalize, useAuthContext } from '~/hooks';
 import { getIconEndpoint, getEntity } from '~/utils';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
+
+// Token balance hook with TypeScript support
+interface TokenBalanceResponse {
+  tokenCredits: number;
+}
+
+const useUserTokenBalance = (userId?: string) => {
+  return useQuery<TokenBalanceResponse>({
+    queryKey: ['userTokenBalance', userId],
+    queryFn: async () => {
+      if (!userId) return { tokenCredits: 0 };
+      
+      try {
+        const response = await axios.get<TokenBalanceResponse>('/api/user/token-balance');
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching token balance:', error);
+        return { tokenCredits: 0 };
+      }
+    },
+    enabled: !!userId,
+    refetchInterval: 60000, // Refresh every minute
+  });
+};
 
 // Define the custom icon component directly in this file
 const CustomAppIcon = ({
@@ -53,6 +78,9 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const { data: endpointsConfig } = useGetEndpointsQuery();
   const { user } = useAuthContext();
   const localize = useLocalize();
+  
+  // Get user's token balance
+  const { data: tokenBalance, isLoading: isBalanceLoading } = useUserTokenBalance(user?._id);
 
   const [textHasMultipleLines, setTextHasMultipleLines] = useState(false);
   const [lineCount, setLineCount] = useState(1);
@@ -90,6 +118,14 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
 
   // Slogan to be displayed
   const slogan = "Ask Questions. Get Answers. Earn Rewards.";
+
+  // Format token balance for display
+  const formattedTokenBalance = useMemo(() => {
+    if (isBalanceLoading || !tokenBalance) {
+      return '...';
+    }
+    return tokenBalance.tokenCredits.toLocaleString();
+  }, [tokenBalance, isBalanceLoading]);
 
   const getGreeting = useCallback(() => {
     if (typeof startupConfig?.interface?.customWelcome === 'string') {
@@ -226,10 +262,21 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
           </div>
         )}
         
-        {/* Added slogan section */}
+        {/* Slogan section */}
         <div className="animate-fadeIn mt-6 text-center text-base font-medium text-text-secondary">
           {slogan}
         </div>
+        
+        {/* Token balance display - added after slogan */}
+        {user && (
+          <div className="animate-fadeIn mt-3 flex items-center justify-center">
+            <div className="flex items-center rounded-full bg-green-100 px-4 py-2 dark:bg-green-900/30">
+              <span className="text-sm font-semibold text-green-800 dark:text-green-400">
+                {formattedTokenBalance} <span className="ml-1 font-normal">tokens available</span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
