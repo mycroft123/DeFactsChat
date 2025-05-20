@@ -25,6 +25,22 @@ const getUserController = async (req, res) => {
   /** @type {MongoUser} */
   const userData = req.user.toObject != null ? req.user.toObject() : { ...req.user };
   delete userData.totpSecret;
+
+  // Fetch user's token balance from the balances collection
+  try {
+    // Look up the user's balance
+    const balance = await Balance.findOne({ user: userData._id });
+    
+    // Add token balance to user object
+    userData.tokenCredits = balance?.tokenCredits || 0;
+    
+    logger.info(`[getUserController] Added token balance for user: ${userData.email}, balance: ${userData.tokenCredits}`);
+  } catch (error) {
+    logger.error(`[getUserController] Error getting token balance: ${error.message}`);
+    // Don't fail the whole request, just set balance to 0
+    userData.tokenCredits = 0;
+  }
+  
   if (req.app.locals.fileStrategy === FileSources.s3 && userData.avatar) {
     const avatarNeedsRefresh = needsRefresh(userData.avatar, 3600);
     if (!avatarNeedsRefresh) {
