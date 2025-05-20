@@ -1,10 +1,9 @@
-// api/server/routes/tokenBalance.js
-
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 const { logger } = require('~/config');
-const { requireJwtAuth } = require('../middleware/auth'); // Import your JWT auth middleware
+// Correct import pattern to match LibreChat's structure
+const { requireJwtAuth } = require('~/server/middleware');
 
 /**
  * @route GET /token-balance
@@ -15,14 +14,14 @@ router.get('/token-balance', requireJwtAuth, async (req, res) => {
   try {
     // User is guaranteed to be authenticated due to requireJwtAuth middleware
     logger.info(`[Token Balance] Request for user: ${req.user.email} (${req.user._id})`);
-
+    
     // Get MongoDB connection from app locals
     const db = req.app.locals.mongodb;
     if (!db) {
       logger.error('[Token Balance] MongoDB connection not available');
       return res.status(500).json({ tokenCredits: 0, error: 'Database connection not available' });
     }
-
+    
     // Create ObjectId from user ID (handle both string and ObjectId formats)
     let userId;
     try {
@@ -32,9 +31,9 @@ router.get('/token-balance', requireJwtAuth, async (req, res) => {
       logger.error(`[Token Balance] Error converting user ID to ObjectId: ${error.message}`);
       return res.status(500).json({ tokenCredits: 0, error: 'Invalid user ID format' });
     }
-
+    
     logger.info(`[Token Balance] Looking up balance for user ID: ${userId}`);
-
+    
     // Find the user's balance in the balances collection
     const balance = await db.collection('balances').findOne({ user: userId });
     
@@ -57,7 +56,7 @@ router.get('/token-balance', requireJwtAuth, async (req, res) => {
         logger.info('[Token Balance] No balance found with either ID format');
       }
     }
-
+    
     // Return the token balance (or 0 if not found)
     return res.json({
       tokenCredits: balance?.tokenCredits || 0
