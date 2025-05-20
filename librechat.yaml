@@ -276,19 +276,32 @@ endpoints:
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
       
-    # Perplexity configuration (added here)
+    # Perplexity configuration with extremely high costs
     - name: 'Perplexity'
       apiKey: '${PERPLEXITY_API_KEY}'
       baseURL: 'https://api.perplexity.ai/'
       models:
         default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
         fetch: false
+        # Extremely high costs per model
+        r1-1776:
+          tokenCost: 1000
+        sonar:
+          tokenCost: 1000
+        sonar-deep-research:
+          tokenCost: 1000
+        sonar-pro:
+          tokenCost: 1000
+        sonar-reasoning:
+          tokenCost: 1000
+        sonar-reasoning-pro:
+          tokenCost: 1000
       titleConvo: true
       titleModel: 'sonar'
       modelDisplayLabel: 'Perplexity'
-      # These costs apply to ALL models in this endpoint
-      inputTokenCost: 0.0001
-      outputTokenCost: 0.0002
+      # Extremely high costs at the endpoint level
+      inputTokenCost: 1000
+      outputTokenCost: 1000
 
 # fileConfig:
 #   endpoints:
