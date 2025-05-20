@@ -26,20 +26,50 @@ const getUserController = async (req, res) => {
   const userData = req.user.toObject != null ? req.user.toObject() : { ...req.user };
   delete userData.totpSecret;
 
+  logger.info('[DEBUG] Getting user data for:', userData.email);
+  logger.info('[DEBUG] User ID:', userData._id);
+  logger.info('[DEBUG] User ID type:', typeof userData._id);
+
   // Fetch user's token balance from the balances collection
   try {
-    // Look up the user's balance
-    const balance = await Balance.findOne({ user: userData._id });
+    logger.info('[DEBUG] Looking for balance record');
     
-    // Add token balance to user object
-    userData.tokenCredits = balance?.tokenCredits || 0;
+    // First, check if Balance is defined and works
+    logger.info('[DEBUG] Balance model exists:', !!Balance);
     
-    logger.info(`[getUserController] Added token balance for user: ${userData.email}, balance: ${userData.tokenCredits}`);
+    // Try both with ObjectId and with string
+    const balanceWithObjectId = await Balance.findOne({ user: userData._id });
+    logger.info('[DEBUG] Balance lookup with ObjectId result:', balanceWithObjectId ? 'Found' : 'Not found');
+    
+    // Try with string ID as fallback
+    const balanceWithString = await Balance.findOne({ user: userData._id.toString() });
+    logger.info('[DEBUG] Balance lookup with String ID result:', balanceWithString ? 'Found' : 'Not found');
+    
+    // Determine which one to use
+    const balance = balanceWithObjectId || balanceWithString;
+    
+    if (balance) {
+      logger.info('[DEBUG] Found balance:', balance);
+      logger.info('[DEBUG] Token credits value:', balance.tokenCredits);
+      logger.info('[DEBUG] Token credits type:', typeof balance.tokenCredits);
+      
+      // Add token balance to user object
+      userData.tokenCredits = balance.tokenCredits || 0;
+      logger.info(`[DEBUG] Added token balance to user data: ${userData.tokenCredits}`);
+    } else {
+      logger.warn('[DEBUG] No balance found for user');
+      userData.tokenCredits = 0;
+    }
   } catch (error) {
-    logger.error(`[getUserController] Error getting token balance: ${error.message}`);
+    logger.error(`[DEBUG] Error getting token balance: ${error.message}`);
+    logger.error('[DEBUG] Error stack:', error.stack);
     // Don't fail the whole request, just set balance to 0
     userData.tokenCredits = 0;
   }
+
+  // For debugging, log the final user data being sent
+  logger.info('[DEBUG] Final user data has tokenCredits:', userData.hasOwnProperty('tokenCredits'));
+  logger.info('[DEBUG] Final tokenCredits value:', userData.tokenCredits);
   
   if (req.app.locals.fileStrategy === FileSources.s3 && userData.avatar) {
     const avatarNeedsRefresh = needsRefresh(userData.avatar, 3600);
@@ -55,9 +85,9 @@ const getUserController = async (req, res) => {
       logger.error('Error getting new S3 URL for avatar:', error);
     }
   }
+  
   res.status(200).send(userData);
 };
-
 const getTermsStatusController = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
