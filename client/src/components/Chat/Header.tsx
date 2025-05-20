@@ -30,6 +30,9 @@ export default function Header() {
     return (user.tokenCredits / 10000).toFixed(4);
   }, [user]);
   
+  console.log("User:", user); // Debug: check if user exists
+  console.log("Token credits:", user?.tokenCredits); // Debug: check token credits value
+  
   const hasAccessToBookmarks = useHasAccess({
     permissionType: PermissionTypes.BOOKMARKS,
     permission: Permissions.USE,
@@ -52,6 +55,18 @@ export default function Header() {
           {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />}
           {hasAccessToBookmarks === true && <BookmarkMenu />}
           {hasAccessToMultiConvo === true && <AddMultiConvo />}
+          
+          {/* Add token balance for small screens */}
+          {isSmallScreen && user && (
+            <div className="ml-auto mr-2 flex items-center">
+              <div className="rounded-full bg-green-100 px-2 py-1 text-xs dark:bg-green-900/30">
+                <span className="font-medium text-green-800 dark:text-green-400">
+                  {formattedBalance}
+                </span>
+              </div>
+            </div>
+          )}
+          
           {isSmallScreen && (
             <>
               <ExportAndShareMenu
@@ -63,12 +78,12 @@ export default function Header() {
         </div>
         {!isSmallScreen && (
           <div className="flex items-center gap-2">
-            {/* Token balance display in header */}
+            {/* Token balance display in header - more visible */}
             {user && (
               <div className="mr-3 flex items-center">
-                <div className="rounded-full bg-green-100 px-3 py-1 text-sm dark:bg-green-900/30">
-                  <span className="font-medium text-green-800 dark:text-green-400">
-                    {formattedBalance} <span className="ml-1 font-normal">DeFacts</span>
+                <div className="rounded-full bg-green-100 px-3 py-1.5 text-sm font-bold shadow-sm dark:bg-green-900/30">
+                  <span className="font-semibold text-green-800 dark:text-green-400">
+                    {formattedBalance} <span className="font-medium">DeFacts</span>
                   </span>
                 </div>
               </div>
@@ -80,8 +95,6 @@ export default function Header() {
           </div>
         )}
       </div>
-      {/* Empty div for spacing */}
-      <div />
     </div>
   );
 }
