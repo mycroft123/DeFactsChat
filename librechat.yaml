@@ -276,31 +276,19 @@ endpoints:
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
       
-# Perplexity configuration with flat cost per query
+# Perplexity configuration with very low per-token costs
 - name: 'Perplexity'
   apiKey: '${PERPLEXITY_API_KEY}'
   baseURL: 'https://api.perplexity.ai/'
   models:
     default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
     fetch: false
-    # Flat cost per query for each model
-    r1-1776:
-      flatTokenCost: 1  # Each query costs exactly 1 token
-    sonar:
-      flatTokenCost: 1
-    sonar-deep-research:
-      flatTokenCost: 2  # Slightly higher for research model
-    sonar-pro:
-      flatTokenCost: 2  # Slightly higher for pro model
-    sonar-reasoning:
-      flatTokenCost: 2
-    sonar-reasoning-pro:
-      flatTokenCost: 3  # Highest for pro reasoning model
   titleConvo: true
   titleModel: 'sonar'
   modelDisplayLabel: 'Perplexity'
-  # Flat cost fallback (if model-specific costs aren't applied)
-  flatTokenCost: 1
+  # Very low per-token costs
+  inputTokenCost: 0.0000025  # For 4000 tokens = ~10 credits
+  outputTokenCost: 0.0000025
 
 # fileConfig:
 #   endpoints:
