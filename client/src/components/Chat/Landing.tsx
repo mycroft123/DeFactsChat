@@ -53,12 +53,13 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const { user } = useAuthContext();
   const localize = useLocalize();
 
-  // Format the token balance directly from user object
+  // Format the token balance directly from user object as DeFacts tokens with 4 decimal places
   const formattedBalance = useMemo(() => {
     if (!user || typeof user.tokenCredits !== 'number') {
-      return '0';
+      return '0.0000';
     }
-    return user.tokenCredits.toLocaleString();
+    // Convert to DeFacts tokens with 4 decimal places
+    return (user.tokenCredits / 10000).toFixed(4);
   }, [user]);
 
   const [textHasMultipleLines, setTextHasMultipleLines] = useState(false);
@@ -238,12 +239,12 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
           {slogan}
         </div>
         
-        {/* Token balance display - using directly from user object */}
+        {/* Token balance display - now showing as DeFacts tokens with 4 decimal places */}
         {user && (
           <div className="animate-fadeIn mt-3 flex items-center justify-center">
             <div className="flex items-center rounded-full bg-green-100 px-4 py-2 dark:bg-green-900/30">
               <span className="text-sm font-semibold text-green-800 dark:text-green-400">
-                {formattedBalance} <span className="ml-1 font-normal">tokens available</span>
+                {formattedBalance} <span className="ml-1 font-normal">DeFacts tokens available</span>
               </span>
             </div>
           </div>
