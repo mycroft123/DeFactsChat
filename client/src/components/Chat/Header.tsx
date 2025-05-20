@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { getConfigDefaults, PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { ContextType } from '~/common';
@@ -30,8 +30,25 @@ export default function Header() {
     return (user.tokenCredits / 10000).toFixed(4);
   }, [user]);
   
-  console.log("User:", user); // Debug: check if user exists
-  console.log("Token credits:", user?.tokenCredits); // Debug: check token credits value
+  // Send user email and token info to parent window when user data is available
+  useEffect(() => {
+    if (user && user.email) {
+      // Check if we're in an iframe
+      const isInIframe = window !== window.top;
+      
+      if (isInIframe) {
+        // Send message to parent with the email and token balance
+        window.parent.postMessage({
+          type: 'DEFACTS_USER_INFO',
+          email: user.email,
+          tokenBalance: formattedBalance,
+          rawTokenCredits: user.tokenCredits || 0
+        }, '*'); // Use '*' for any domain, or specify exact domain for security
+        
+        console.log('Sent user info to parent:', user.email, formattedBalance);
+      }
+    }
+  }, [user, formattedBalance]);
   
   const hasAccessToBookmarks = useHasAccess({
     permissionType: PermissionTypes.BOOKMARKS,
