@@ -84,7 +84,6 @@ registration:
   # allowedDomains:
   # - "gmail.com"
 
-
 # Example Balance settings
 balance:
    enabled: true
@@ -93,21 +92,6 @@ balance:
    refillIntervalValue: 30
    refillIntervalUnit: 'days'
    refillAmount: 10000
-
-
-- name: 'Perplexity'
-  apiKey: '${PERPLEXITY_API_KEY}'
-  baseURL: 'https://api.perplexity.ai/'
-  models:
-    default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
-    fetch: false
-  titleConvo: true
-  titleModel: 'sonar'
-  modelDisplayLabel: 'Perplexity'
-  # These costs apply to ALL models in this endpoint
-  inputTokenCost: 0.0001
-  outputTokenCost: 0.0002
-
 
 # speech:
 #   tts:
@@ -291,6 +275,21 @@ endpoints:
       forcePrompt: false
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
+      
+    # Perplexity configuration (added here)
+    - name: 'Perplexity'
+      apiKey: '${PERPLEXITY_API_KEY}'
+      baseURL: 'https://api.perplexity.ai/'
+      models:
+        default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
+        fetch: false
+      titleConvo: true
+      titleModel: 'sonar'
+      modelDisplayLabel: 'Perplexity'
+      # These costs apply to ALL models in this endpoint
+      inputTokenCost: 0.0001
+      outputTokenCost: 0.0002
+
 # fileConfig:
 #   endpoints:
 #     assistants:
