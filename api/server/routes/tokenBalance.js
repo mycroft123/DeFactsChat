@@ -4,21 +4,16 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 const { logger } = require('~/config');
+const { requireJwtAuth } = require('../middleware/auth'); // Import your JWT auth middleware
 
 /**
  * @route GET /token-balance
  * @desc Get the token balance for the authenticated user
  * @access Private
  */
-router.get('/token-balance', async (req, res) => {
+router.get('/token-balance', requireJwtAuth, async (req, res) => {
   try {
-    // Check if user is authenticated
-    if (!req.user) {
-      logger.warn('[Token Balance] User not authenticated');
-      return res.status(401).json({ tokenCredits: 0, error: 'Unauthorized' });
-    }
-
-    // Debug log the user information
+    // User is guaranteed to be authenticated due to requireJwtAuth middleware
     logger.info(`[Token Balance] Request for user: ${req.user.email} (${req.user._id})`);
 
     // Get MongoDB connection from app locals
