@@ -11,13 +11,13 @@ router.get('/api/user/token-balance', async (req, res) => {
   try {
     // Ensure user is authenticated
     if (!req.user) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ tokenCredits: 0, error: 'Unauthorized' });
     }
 
     // Get database instance from app locals or your preferred method
     const db = req.app.locals.mongodb;
     if (!db) {
-      return res.status(500).json({ error: 'Database connection not available' });
+      return res.status(500).json({ tokenCredits: 0, error: 'Database connection not available' });
     }
 
     // Get the authenticated user's ID
@@ -29,12 +29,17 @@ router.get('/api/user/token-balance', async (req, res) => {
     });
 
     // Return the token credits (or 0 if no balance found)
+    // Always include tokenCredits field even in error cases
     return res.json({
       tokenCredits: balance?.tokenCredits || 0
     });
   } catch (error) {
     console.error('Error fetching token balance:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    // Return 0 tokens on error but still include the field
+    return res.status(500).json({ 
+      tokenCredits: 0,
+      error: 'Internal server error' 
+    });
   }
 });
 
