@@ -115,8 +115,8 @@ const startServer = async () => {
   app.use('/api/agents', routes.agents);
   app.use('/api/banner', routes.banner);
   app.use('/api/bedrock', routes.bedrock);
-
   app.use('/api/tags', routes.tags);
+  app.use('/api/user', routes.tokenBalance);
 
   app.use((req, res) => {
     res.set({
