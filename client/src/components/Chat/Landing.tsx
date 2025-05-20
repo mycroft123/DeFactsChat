@@ -9,35 +9,37 @@ import { getIconEndpoint, getEntity } from '~/utils';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
-// Token balance hook with improved error handling
-interface TokenBalanceResponse {
-  tokenCredits?: number; // Make tokenCredits optional to handle unexpected responses
-}
-
+// Simple hook to fetch user token balance - ultra defensive implementation
 const useUserTokenBalance = (userId?: string) => {
-  return useQuery<TokenBalanceResponse>({
+  return useQuery({
     queryKey: ['userTokenBalance', userId],
     queryFn: async () => {
       if (!userId) return { tokenCredits: 0 };
       
       try {
-        const response = await axios.get<TokenBalanceResponse>('/api/user/token-balance');
+        // Use vanilla fetch instead of axios to reduce dependencies
+        const response = await fetch('/api/user/token-balance');
         
-        // Check if response has the expected structure
-        if (response.data && typeof response.data.tokenCredits !== 'undefined') {
-          return response.data;
+        if (!response.ok) {
+          console.warn('Token balance API returned an error:', response.status);
+          return { tokenCredits: 0 };
         }
         
-        // Handle unexpected response structure
-        console.warn('Unexpected token balance response format:', response.data);
-        return { tokenCredits: 0 };
+        try {
+          const data = await response.json();
+          return { tokenCredits: typeof data?.tokenCredits === 'number' ? data.tokenCredits : 0 };
+        } catch (parseError) {
+          console.error('Error parsing token balance response:', parseError);
+          return { tokenCredits: 0 };
+        }
       } catch (error) {
         console.error('Error fetching token balance:', error);
         return { tokenCredits: 0 };
       }
     },
     enabled: !!userId,
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
+    retry: false, // Don't retry on failure
   });
 };
 
@@ -87,13 +89,31 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const { user } = useAuthContext();
   const localize = useLocalize();
   
-  // Get user's token balance with safer error handling
-  const { data: tokenBalance, isLoading: isBalanceLoading, isError: isBalanceError } = useUserTokenBalance(user?._id);
+  // State for manually tracking token balance to avoid any useMemo errors
+  const [displayBalance, setDisplayBalance] = useState<string>('0');
+  
+  const { data: tokenBalance, isLoading } = useUserTokenBalance(user?._id);
 
   const [textHasMultipleLines, setTextHasMultipleLines] = useState(false);
   const [lineCount, setLineCount] = useState(1);
   const [contentHeight, setContentHeight] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Update display balance safely without using useMemo
+  useEffect(() => {
+    try {
+      if (isLoading) {
+        setDisplayBalance('...');
+      } else if (!tokenBalance || typeof tokenBalance.tokenCredits !== 'number') {
+        setDisplayBalance('0');
+      } else {
+        setDisplayBalance(tokenBalance.tokenCredits.toLocaleString());
+      }
+    } catch (error) {
+      console.error('Error formatting token balance:', error);
+      setDisplayBalance('0');
+    }
+  }, [tokenBalance, isLoading]);
 
   const endpointType = useMemo(() => {
     let ep = conversation?.endpoint ?? '';
@@ -126,19 +146,6 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
 
   // Slogan to be displayed
   const slogan = "Ask Questions. Get Answers. Earn Rewards.";
-
-  // Format token balance for display with improved safety
-  const formattedTokenBalance = useMemo(() => {
-    if (isBalanceLoading) {
-      return '...';
-    }
-    if (isBalanceError || !tokenBalance) {
-      return '0';
-    }
-    // Safely access tokenCredits with fallback
-    const credits = tokenBalance.tokenCredits ?? 0;
-    return credits.toLocaleString();
-  }, [tokenBalance, isBalanceLoading, isBalanceError]);
 
   const getGreeting = useCallback(() => {
     if (typeof startupConfig?.interface?.customWelcome === 'string') {
@@ -280,12 +287,12 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
           {slogan}
         </div>
         
-        {/* Token balance display with error handling - added after slogan */}
+        {/* Token balance display - ultra defensive implementation */}
         {user && (
           <div className="animate-fadeIn mt-3 flex items-center justify-center">
             <div className="flex items-center rounded-full bg-green-100 px-4 py-2 dark:bg-green-900/30">
               <span className="text-sm font-semibold text-green-800 dark:text-green-400">
-                {formattedTokenBalance} <span className="ml-1 font-normal">tokens available</span>
+                {displayBalance} <span className="ml-1 font-normal">tokens available</span>
               </span>
             </div>
           </div>
