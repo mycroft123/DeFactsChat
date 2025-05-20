@@ -6,42 +6,6 @@ import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
 import { BirthdayIcon, TooltipAnchor, SplitText } from '~/components';
 import { useLocalize, useAuthContext } from '~/hooks';
 import { getIconEndpoint, getEntity } from '~/utils';
-import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
-
-// Simple hook to fetch user token balance - ultra defensive implementation
-const useUserTokenBalance = (userId?: string) => {
-  return useQuery({
-    queryKey: ['userTokenBalance', userId],
-    queryFn: async () => {
-      if (!userId) return { tokenCredits: 0 };
-      
-      try {
-        // Use vanilla fetch instead of axios to reduce dependencies
-        const response = await fetch('/api/user/token-balance');
-        
-        if (!response.ok) {
-          console.warn('Token balance API returned an error:', response.status);
-          return { tokenCredits: 0 };
-        }
-        
-        try {
-          const data = await response.json();
-          return { tokenCredits: typeof data?.tokenCredits === 'number' ? data.tokenCredits : 0 };
-        } catch (parseError) {
-          console.error('Error parsing token balance response:', parseError);
-          return { tokenCredits: 0 };
-        }
-      } catch (error) {
-        console.error('Error fetching token balance:', error);
-        return { tokenCredits: 0 };
-      }
-    },
-    enabled: !!userId,
-    refetchInterval: 60000,
-    retry: false, // Don't retry on failure
-  });
-};
 
 // Define the custom icon component directly in this file
 const CustomAppIcon = ({
@@ -88,32 +52,19 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const { data: endpointsConfig } = useGetEndpointsQuery();
   const { user } = useAuthContext();
   const localize = useLocalize();
-  
-  // State for manually tracking token balance to avoid any useMemo errors
-  const [displayBalance, setDisplayBalance] = useState<string>('0');
-  
-  const { data: tokenBalance, isLoading } = useUserTokenBalance(user?._id);
+
+  // Format the token balance directly from user object
+  const formattedBalance = useMemo(() => {
+    if (!user || typeof user.tokenCredits !== 'number') {
+      return '0';
+    }
+    return user.tokenCredits.toLocaleString();
+  }, [user]);
 
   const [textHasMultipleLines, setTextHasMultipleLines] = useState(false);
   const [lineCount, setLineCount] = useState(1);
   const [contentHeight, setContentHeight] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
-
-  // Update display balance safely without using useMemo
-  useEffect(() => {
-    try {
-      if (isLoading) {
-        setDisplayBalance('...');
-      } else if (!tokenBalance || typeof tokenBalance.tokenCredits !== 'number') {
-        setDisplayBalance('0');
-      } else {
-        setDisplayBalance(tokenBalance.tokenCredits.toLocaleString());
-      }
-    } catch (error) {
-      console.error('Error formatting token balance:', error);
-      setDisplayBalance('0');
-    }
-  }, [tokenBalance, isLoading]);
 
   const endpointType = useMemo(() => {
     let ep = conversation?.endpoint ?? '';
@@ -287,12 +238,12 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
           {slogan}
         </div>
         
-        {/* Token balance display - ultra defensive implementation */}
+        {/* Token balance display - using directly from user object */}
         {user && (
           <div className="animate-fadeIn mt-3 flex items-center justify-center">
             <div className="flex items-center rounded-full bg-green-100 px-4 py-2 dark:bg-green-900/30">
               <span className="text-sm font-semibold text-green-800 dark:text-green-400">
-                {displayBalance} <span className="ml-1 font-normal">tokens available</span>
+                {formattedBalance} <span className="ml-1 font-normal">tokens available</span>
               </span>
             </div>
           </div>
