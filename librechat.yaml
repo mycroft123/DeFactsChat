@@ -94,6 +94,21 @@ balance:
    refillIntervalUnit: 'days'
    refillAmount: 10000
 
+
+- name: 'Perplexity'
+  apiKey: '${PERPLEXITY_API_KEY}'
+  baseURL: 'https://api.perplexity.ai/'
+  models:
+    default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
+    fetch: false
+  titleConvo: true
+  titleModel: 'sonar'
+  modelDisplayLabel: 'Perplexity'
+  # These costs apply to ALL models in this endpoint
+  inputTokenCost: 0.0001
+  outputTokenCost: 0.0002
+
+
 # speech:
 #   tts:
 #     openai:
