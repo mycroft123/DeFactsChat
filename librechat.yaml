@@ -285,23 +285,23 @@ endpoints:
         fetch: false
         # Extremely high costs per model
         r1-1776:
-          tokenCost: 1000
+          tokenCost: 1
         sonar:
-          tokenCost: 1000
+          tokenCost: 1
         sonar-deep-research:
-          tokenCost: 1000
+          tokenCost: 1
         sonar-pro:
-          tokenCost: 1000
+          tokenCost: 1
         sonar-reasoning:
-          tokenCost: 1000
+          tokenCost: 1
         sonar-reasoning-pro:
-          tokenCost: 1000
+          tokenCost: 1
       titleConvo: true
       titleModel: 'sonar'
       modelDisplayLabel: 'Perplexity'
       # Extremely high costs at the endpoint level
-      inputTokenCost: 1000
-      outputTokenCost: 1000
+      inputTokenCost: 1
+      outputTokenCost: 1
 
 # fileConfig:
 #   endpoints:
