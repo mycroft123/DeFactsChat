@@ -276,32 +276,32 @@ endpoints:
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
       
-    # Perplexity configuration with extremely high costs
-    - name: 'Perplexity'
-      apiKey: '${PERPLEXITY_API_KEY}'
-      baseURL: 'https://api.perplexity.ai/'
-      models:
-        default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
-        fetch: false
-        # Extremely high costs per model
-        r1-1776:
-          tokenCost: 1
-        sonar:
-          tokenCost: 1
-        sonar-deep-research:
-          tokenCost: 1
-        sonar-pro:
-          tokenCost: 1
-        sonar-reasoning:
-          tokenCost: 1
-        sonar-reasoning-pro:
-          tokenCost: 1
-      titleConvo: true
-      titleModel: 'sonar'
-      modelDisplayLabel: 'Perplexity'
-      # Extremely high costs at the endpoint level
-      inputTokenCost: 1
-      outputTokenCost: 1
+# Perplexity configuration with realistic prices
+- name: 'Perplexity'
+  apiKey: '${PERPLEXITY_API_KEY}'
+  baseURL: 'https://api.perplexity.ai/'
+  models:
+    default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
+    fetch: false
+    # Realistic costs per model
+    r1-1776:
+      tokenCost: 0.0001  # 1/10,000 per token
+    sonar:
+      tokenCost: 0.0001
+    sonar-deep-research:
+      tokenCost: 0.0002  # Slightly higher for research model
+    sonar-pro:
+      tokenCost: 0.0002  # Slightly higher for pro model
+    sonar-reasoning:
+      tokenCost: 0.0002
+    sonar-reasoning-pro:
+      tokenCost: 0.0003  # Highest for pro reasoning model
+  titleConvo: true
+  titleModel: 'sonar'
+  modelDisplayLabel: 'Perplexity'
+  # General costs at the endpoint level (these are applied if model-specific costs aren't used)
+  inputTokenCost: 0.0001
+  outputTokenCost: 0.0002
 
 # fileConfig:
 #   endpoints:
