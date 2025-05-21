@@ -239,16 +239,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
           {slogan}
         </div>
         
-        {/* Token balance display - now showing as DeFacts tokens with 4 decimal places */}
-        {user && (
-          <div className="animate-fadeIn mt-3 flex items-center justify-center">
-            <div className="flex items-center rounded-full bg-green-100 px-4 py-2 dark:bg-green-900/30">
-              <span className="text-sm font-semibold text-green-800 dark:text-green-400">
-                {formattedBalance} <span className="ml-1 font-normal">DeFacts tokens available</span>
-              </span>
-            </div>
-          </div>
-        )}
+        
       </div>
     </div>
   );
