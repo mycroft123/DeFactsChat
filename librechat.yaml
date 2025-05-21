@@ -157,6 +157,10 @@ actions:
 
 # Definition of custom endpoints
 endpoints:
+  # Global title settings
+  titleModel: gpt-3.5-turbo
+  titleMethod: completion
+  
   # assistants:
   #   disableBuilder: false # Disable Assistants Builder Interface by setting to `true`
   #   pollIntervalMs: 3000  # Polling interval for checking assistant updates
@@ -269,25 +273,26 @@ endpoints:
           default: ['gpt-4o-mini', 'gpt-4o', 'chatgpt-4o-latest']
           fetch: true
       titleConvo: true
-      titleModel: 'current_model'
+      titleModel: 'gpt-4o-mini'
       summarize: false
       summaryModel: 'current_model'
       forcePrompt: false
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
       
-    # Perplexity configuration - PROPERLY INDENTED UNDER custom:
+    # CORRECTED Perplexity configuration
     - name: 'Perplexity'
       apiKey: '${PERPLEXITY_API_KEY}'
-      baseURL: 'https://api.perplexity.ai/'
+      baseURL: 'https://api.perplexity.ai/v1'
       models:
-        default: ['r1-1776', 'sonar', 'sonar-deep-research', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro']
+        default: ['sonar-small-chat', 'sonar-medium-chat', 'codellama-70b-instruct', 'mistral-7b-instruct', 'mixtral-8x7b-instruct']
         fetch: false
       titleConvo: true
-      titleModel: 'sonar'
+      titleModel: 'sonar-small-chat'
+      titleMethod: 'completion'
       modelDisplayLabel: 'Perplexity'
       # Very low per-token costs
-      inputTokenCost: 0.0000025  # For 4000 tokens = ~10 credits
+      inputTokenCost: 0.0000025
       outputTokenCost: 0.0000025
 
 # fileConfig:
