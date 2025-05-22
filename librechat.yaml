@@ -127,33 +127,33 @@ actions:
     - "librechat.ai"
     - "google.com"
 
-# Example MCP Servers Object Structure
-# mcpServers:
-#   everything:
-#     # type: sse # type can optionally be omitted
-#     url: http://localhost:3001/sse
-#     timeout: 60000  # 1 minute timeout for this server, this is the default timeout for MCP servers.
-#   puppeteer:
-#     type: stdio
-#     command: npx
-#     args:
-#       - -y
-#       - "@modelcontextprotocol/server-puppeteer"
-#     timeout: 300000  # 5 minutes timeout for this server
-#   filesystem:
-#     # type: stdio
-#     command: npx
-#     args:
-#       - -y
-#       - "@modelcontextprotocol/server-filesystem"
-#       - /home/user/LibreChat/
-#     iconPath: /home/user/LibreChat/client/public/assets/logo.svg
-#   mcp-obsidian:
-#     command: npx
-#     args:
-#       - -y
-#       - "mcp-obsidian"
-#       - /path/to/obsidian/vault
+# MCP Servers Object Structure
+mcpServers:
+  everything:
+    # type: sse # type can optionally be omitted
+    url: http://localhost:3001/sse
+    timeout: 60000  # 1 minute timeout for this server, this is the default timeout for MCP servers.
+  puppeteer:
+    type: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-puppeteer"
+    timeout: 300000  # 5 minutes timeout for this server
+  filesystem:
+    # type: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - /home/user/LibreChat/
+    iconPath: /home/user/LibreChat/client/public/assets/logo.svg
+  mcp-obsidian:
+    command: npx
+    args:
+      - -y
+      - "mcp-obsidian"
+      - /path/to/obsidian/vault
 
 # Definition of custom endpoints
 endpoints:
@@ -161,28 +161,30 @@ endpoints:
   titleModel: gpt-3.5-turbo
   titleMethod: completion
   
-  # assistants:
-  #   disableBuilder: false # Disable Assistants Builder Interface by setting to `true`
-  #   pollIntervalMs: 3000  # Polling interval for checking assistant updates
-  #   timeoutMs: 180000  # Timeout for assistant operations
-  #   # Should only be one or the other, either `supportedIds` or `excludedIds`
-  #   supportedIds: ["asst_supportedAssistantId1", "asst_supportedAssistantId2"]
-  #   # excludedIds: ["asst_excludedAssistantId"]
-  #   # Only show assistants that the user created or that were created externally (e.g. in Assistants playground).
-  #   # privateAssistants: false # Does not work with `supportedIds` or `excludedIds`
-  #   # (optional) Models that support retrieval, will default to latest known OpenAI models that support the feature
-  #   retrievalModels: ["gpt-4-turbo-preview"]
-  #   # (optional) Assistant Capabilities available to all users. Omit the ones you wish to exclude. Defaults to list below.
-  #   capabilities: ["code_interpreter", "retrieval", "actions", "tools", "image_vision"]
-  # agents:
-  #   # (optional) Default recursion depth for agents, defaults to 25
-  #   recursionLimit: 50
-  #   # (optional) Max recursion depth for agents, defaults to 25
-  #   maxRecursionLimit: 100
-  #   # (optional) Disable the builder interface for agents
-  #   disableBuilder: false
-  #   # (optional) Agent Capabilities available to all users. Omit the ones you wish to exclude. Defaults to list below.
-  #   capabilities: ["execute_code", "file_search", "actions", "tools"]
+  assistants:
+    disableBuilder: false # Disable Assistants Builder Interface by setting to `true`
+    pollIntervalMs: 3000  # Polling interval for checking assistant updates
+    timeoutMs: 180000  # Timeout for assistant operations
+    # Should only be one or the other, either `supportedIds` or `excludedIds`
+    # supportedIds: ["asst_supportedAssistantId1", "asst_supportedAssistantId2"]
+    # excludedIds: ["asst_excludedAssistantId"]
+    # Only show assistants that the user created or that were created externally (e.g. in Assistants playground).
+    # privateAssistants: false # Does not work with `supportedIds` or `excludedIds`
+    # (optional) Models that support retrieval, will default to latest known OpenAI models that support the feature
+    retrievalModels: ["gpt-4-turbo-preview"]
+    # (optional) Assistant Capabilities available to all users. Omit the ones you wish to exclude. Defaults to list below.
+    capabilities: ["code_interpreter", "retrieval", "actions", "tools", "image_vision"]
+  
+  agents:
+    # (optional) Default recursion depth for agents, defaults to 25
+    recursionLimit: 50
+    # (optional) Max recursion depth for agents, defaults to 25
+    maxRecursionLimit: 100
+    # (optional) Disable the builder interface for agents
+    disableBuilder: false
+    # (optional) Agent Capabilities available to all users. Omit the ones you wish to exclude. Defaults to list below.
+    capabilities: ["execute_code", "file_search", "actions", "tools"]
+  
   custom:
     # Groq Example
     - name: 'groq'
@@ -313,5 +315,3 @@ endpoints:
 #       fileSizeLimit: 5
 #   serverFileSizeLimit: 100  # Global server file size limit in MB
 #   avatarSizeLimit: 2  # Limit for user avatar image size in MB
-# # See the Custom Configuration Guide for more information on Assistants Config:
-# # https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/assistants_endpoint
