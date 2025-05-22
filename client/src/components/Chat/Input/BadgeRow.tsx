@@ -352,41 +352,12 @@ function BadgeRow({
           />
         </div>
       )}
-// Modified section of BadgeRow.jsx
-{showEphemeralBadges === true && (
-  <>
-    {/* Comment out or remove the CodeInterpreter if you don't want it */}
-    {/* <CodeInterpreter conversationId={conversationId} /> */}
-    
-    {/* Add your custom buttons */}
-    <CheckboxButton
-      className="max-w-fit"
-      defaultChecked={false}
-      setValue={(isChecked) => {
-        // Your toggle handling logic
-        console.log('Custom button 1 toggled:', isChecked);
-      }}
-      label="Feature 1"
-      isCheckedClassName="border-green-600/40 bg-green-500/10 hover:bg-green-700/10"
-      icon={<YourIcon1 className="icon-md" />}
-    />
-    
-    <CheckboxButton
-      className="max-w-fit"
-      defaultChecked={false}
-      setValue={(isChecked) => {
-        // Your toggle handling logic
-        console.log('Custom button 2 toggled:', isChecked);
-      }}
-      label="Feature 2"
-      isCheckedClassName="border-purple-600/40 bg-purple-500/10 hover:bg-purple-700/10"
-      icon={<YourIcon2 className="icon-md" />}
-    />
-    
-    {/* Keep MCPSelect if needed */}
-    <MCPSelect conversationId={conversationId} />
-  </>
-)}
+      {showEphemeralBadges === true && (
+        <>
+          <CodeInterpreter conversationId={conversationId} />
+          <MCPSelect conversationId={conversationId} />
+        </>
+      )}
       {ghostBadge && (
         <div
           className="ghost-badge h-full"
