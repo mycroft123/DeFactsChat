@@ -91,7 +91,7 @@ export default function Header() {
               {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
               {hasAccessToMultiConvo === true && (
                 <button className="flex items-center gap-2 rounded-md bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50">
-                  Compare Models
+                  Compare
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
@@ -113,14 +113,17 @@ export default function Header() {
             </div>
           )} */}
           
-          {/* Mobile - ExportAndShareMenu appears when there's content */}
+          {/* Mobile - BookmarkMenu and ExportAndShareMenu appear when there's content */}
           {isSmallScreen && (
-            <ExportAndShareMenu
-              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-            />
+            <div className="flex items-center gap-2">
+              {hasAccessToBookmarks === true && <BookmarkMenu />}
+              <ExportAndShareMenu
+                isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+              />
+            </div>
           )}
         </div>
-        {/* Right side - ExportAndShareMenu appears when there's content */}
+        {/* Right side - ExportAndShareMenu and BookmarkMenu appear when there's content */}
         {!isSmallScreen && (
           <div className="flex items-center gap-2">
             {/* Token balance display - commented out */}
@@ -133,6 +136,7 @@ export default function Header() {
                 </div>
               </div>
             )} */}
+            {hasAccessToBookmarks === true && <BookmarkMenu />}
             <ExportAndShareMenu
               isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
             />
