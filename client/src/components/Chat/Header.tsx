@@ -90,9 +90,9 @@ export default function Header() {
               {<ModelSelector startupConfig={startupConfig} />}
               {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
               {hasAccessToMultiConvo === true && (
-                <button className="flex items-center gap-2 rounded-md bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50">
-                  Compare
-                </button>
+                <div className="[&>button]:h-10 [&>button]:bg-green-100 [&>button]:text-green-700 [&>button]:hover:bg-green-200 [&>button]:focus:ring-green-500 [&>button]:dark:bg-green-900/30 [&>button]:dark:text-green-300 [&>button]:dark:hover:bg-green-800/50">
+                  <AddMultiConvo />
+                </div>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
               {/* TemporaryChat at end of advanced bar */}
