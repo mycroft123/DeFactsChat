@@ -69,7 +69,7 @@ export default function Header() {
           {!navVisible && <OpenSidebar setNavVisible={setNavVisible} />}
           {!navVisible && <HeaderNewChat />}
           {<ModelSelector startupConfig={startupConfig} />}
-          {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />}
+          {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
           {hasAccessToBookmarks === true && <BookmarkMenu />}
           {hasAccessToMultiConvo === true && <AddMultiConvo />}
           
