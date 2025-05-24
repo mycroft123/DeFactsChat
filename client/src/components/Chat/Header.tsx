@@ -70,11 +70,15 @@ export default function Header() {
           {!navVisible && <HeaderNewChat />}
           {<ModelSelector startupConfig={startupConfig} />}
           {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
+          {hasAccessToMultiConvo === true && (
+            <button className="flex items-center gap-2 rounded-md bg-green-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-600 dark:hover:bg-green-700">
+              Compare
+            </button>
+          )}
           {hasAccessToBookmarks === true && <BookmarkMenu />}
-          {hasAccessToMultiConvo === true && <AddMultiConvo />}
           
           {/* Add token balance for small screens */}
-          {isSmallScreen && user && (
+          {/* {isSmallScreen && user && (
             <div className="ml-auto mr-2 flex items-center">
               <div className="rounded-full bg-green-100 px-2 py-1 text-xs dark:bg-green-900/30">
                 <span className="font-medium text-green-800 dark:text-green-400">
@@ -82,7 +86,7 @@ export default function Header() {
                 </span>
               </div>
             </div>
-          )}
+          )} */}
           
           {isSmallScreen && (
             <>
@@ -96,7 +100,7 @@ export default function Header() {
         {!isSmallScreen && (
           <div className="flex items-center gap-2">
             {/* Token balance display in header - more visible */}
-            {user && (
+            {/* {user && (
               <div className="mr-3 flex items-center">
                 <div className="rounded-full bg-green-100 px-3 py-1.5 text-sm font-bold shadow-sm dark:bg-green-900/30">
                   <span className="font-semibold text-green-800 dark:text-green-400">
@@ -104,7 +108,7 @@ export default function Header() {
                   </span>
                 </div>
               </div>
-            )}
+            )} */}
             <ExportAndShareMenu
               isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
             />
