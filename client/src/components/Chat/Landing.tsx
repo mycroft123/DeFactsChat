@@ -96,7 +96,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const name = entity?.name ?? '';
   const description = (entity?.description || conversation?.greeting) ?? '';
 
-  // Slogan to be displayed
+  // Slogan to be displayed as main animated text
   const slogan = "Get DeFacts. Earn Rewards.";
 
   const getGreeting = useCallback(() => {
@@ -196,6 +196,8 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
               </TooltipAnchor>
             )}
           </div>
+          
+          {/* Main animated slogan (now the big text) */}
           {((isAgent || isAssistant) && name) || name ? (
             <div className="flex flex-col items-center gap-0 p-2">
               <SplitText
@@ -214,9 +216,9 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
             </div>
           ) : (
             <SplitText
-              key={`split-text-${greetingText}${user?.name ? '-user' : ''}`}
-              text={greetingText}
-              className={`${getTextSizeClass(greetingText)} font-medium text-text-primary`}
+              key={`split-text-${slogan}`}
+              text={slogan}
+              className={`${getTextSizeClass(slogan)} font-medium text-text-primary`}
               delay={50}
               textAlign="center"
               animationFrom={{ opacity: 0, transform: 'translate3d(0,50px,0)' }}
@@ -228,17 +230,17 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
             />
           )}
         </div>
+        
         {description && (
           <div className="animate-fadeIn mt-4 max-w-md text-center text-sm font-normal text-text-primary">
             {description}
           </div>
         )}
         
-        {/* Slogan section */}
+        {/* Greeting section (now the smaller text where slogan was) */}
         <div className="animate-fadeIn mt-6 text-center text-base font-medium text-text-secondary">
-          {slogan}
+          {greetingText}
         </div>
-        
         
       </div>
     </div>
