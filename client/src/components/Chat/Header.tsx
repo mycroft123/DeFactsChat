@@ -95,7 +95,7 @@ export default function Header() {
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
-              {/* TemporaryChat and ExportAndShareMenu grouped together */}
+              {/* TemporaryChat and ExportAndShareMenu at end of advanced bar */}
               <div className="ml-2 flex items-center gap-2">
                 <TemporaryChat />
                 <ExportAndShareMenu
@@ -116,9 +116,14 @@ export default function Header() {
             </div>
           )} */}
           
-          {/* Remove duplicate - TemporaryChat only shows in advanced features now */}
+          {/* Mobile - ExportAndShareMenu appears when there's content */}
+          {isSmallScreen && (
+            <ExportAndShareMenu
+              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+            />
+          )}
         </div>
-        {/* Right side is now empty since ExportAndShareMenu moved to left */}
+        {/* Right side - ExportAndShareMenu appears when there's content */}
         {!isSmallScreen && (
           <div className="flex items-center gap-2">
             {/* Token balance display - commented out */}
@@ -131,6 +136,9 @@ export default function Header() {
                 </div>
               </div>
             )} */}
+            <ExportAndShareMenu
+              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+            />
           </div>
         )}
       </div>
