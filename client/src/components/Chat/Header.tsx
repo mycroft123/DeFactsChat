@@ -84,6 +84,11 @@ export default function Header() {
             )}
           </button>
           
+          {/* Always visible ExportAndShareMenu */}
+          <ExportAndShareMenu
+            isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+          />
+          
           {/* Advanced Features - Only show when toggled */}
           {showAdvanced && (
             <>
@@ -102,11 +107,6 @@ export default function Header() {
             </>
           )}
           
-          {/* Always visible ExportAndShareMenu */}
-          <ExportAndShareMenu
-            isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-          />
-          
           {/* Add token balance for small screens */}
           {/* {isSmallScreen && user && (
             <div className="ml-auto mr-2 flex items-center">
@@ -120,7 +120,7 @@ export default function Header() {
           
           {/* Remove duplicate - TemporaryChat only shows in advanced features now */}
         </div>
-        {/* Always visible right side - ExportAndShareMenu */}
+        {/* Right side is now empty since ExportAndShareMenu moved to left */}
         {!isSmallScreen && (
           <div className="flex items-center gap-2">
             {/* Token balance display - commented out */}
@@ -133,9 +133,6 @@ export default function Header() {
                 </div>
               </div>
             )} */}
-            <ExportAndShareMenu
-              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-            />
           </div>
         )}
       </div>
