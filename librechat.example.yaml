@@ -65,7 +65,7 @@ interface:
   modelSelect: true
   parameters: true
   sidePanel: true
-  presets: true
+  presets: false
   prompts: true
   bookmarks: true
   multiConvo: true
