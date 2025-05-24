@@ -11,6 +11,8 @@ import BookmarkMenu from './Menus/BookmarkMenu';
 import { TemporaryChat } from './TemporaryChat';
 import AddMultiConvo from './AddMultiConvo';
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
+import { useChatContext, useAddedChatContext } from '~/Providers';
+import { mainTextareaId } from '~/common';
 const defaultInterface = getConfigDefaults().interface;
 
 export default function Header() {
@@ -18,6 +20,10 @@ export default function Header() {
   const { navVisible, setNavVisible } = useOutletContext<ContextType>();
   const { user } = useAuthContext();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Add the chat context hooks for compare functionality
+  const { conversation } = useChatContext();
+  const { setConversation: setAddedConvo } = useAddedChatContext();
   
   const interfaceConfig = useMemo(
     () => startupConfig?.interface ?? defaultInterface,
@@ -64,6 +70,21 @@ export default function Header() {
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
+  // Compare Models click handler (same as AddMultiConvo)
+  const handleCompareModels = () => {
+    if (!conversation) return;
+    
+    const { title: _t, ...convo } = conversation;
+    setAddedConvo({
+      ...convo,
+      title: '',
+    });
+
+    const textarea = document.getElementById(mainTextareaId);
+    if (textarea) {
+      textarea.focus();
+    }
+  };  
   return (
     <div className="sticky top-0 z-10 flex h-14 w-full items-center justify-between bg-white p-2 font-semibold text-text-primary dark:bg-gray-800">
       <div className="hide-scrollbar flex w-full items-center justify-between gap-2 overflow-x-auto">
@@ -89,36 +110,13 @@ export default function Header() {
             <>
               {<ModelSelector startupConfig={startupConfig} />}
               {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
-              {hasAccessToMultiConvo === true && (
-                <div className="relative">
-                  <AddMultiConvo />
-                  <style jsx>{`
-                    /* Hide original content and replace with custom text */
-                    div + style + div button {
-                      height: 2.5rem !important;
-                      background-color: rgb(220 252 231) !important;
-                      color: rgb(21 128 61) !important;
-                      border-radius: 0.375rem !important;
-                      padding: 0 0.75rem !important;
-                      font-size: 0.875rem !important;
-                      font-weight: 500 !important;
-                      display: flex !important;
-                      align-items: center !important;
-                      gap: 0.5rem !important;
-                      transition: background-color 0.2s !important;
-                    }
-                    div + style + div button:hover {
-                      background-color: rgb(187 247 208) !important;
-                    }
-                    div + style + div button * {
-                      display: none !important;
-                    }
-                    div + style + div button::before {
-                      content: "Compare Models" !important;
-                      display: block !important;
-                    }
-                  `}</style>
-                </div>
+              {hasAccessToMultiConvo === true && conversation && (
+                <button 
+                  onClick={handleCompareModels}
+                  className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
+                >
+                  Compare Models
+                </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
               {/* TemporaryChat at end of advanced bar */}
