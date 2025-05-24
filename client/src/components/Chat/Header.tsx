@@ -90,12 +90,15 @@ export default function Header() {
               {<ModelSelector startupConfig={startupConfig} />}
               {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
               {hasAccessToMultiConvo === true && (
-                <button className="flex items-center gap-2 rounded-md bg-green-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-600 dark:hover:bg-green-700">
+                <button className="flex items-center gap-2 rounded-md bg-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">
                   Compare
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
-              <TemporaryChat />
+              {/* Add some space before TemporaryChat */}
+              <div className="ml-2">
+                <TemporaryChat />
+              </div>
             </>
           )}
           
@@ -117,7 +120,9 @@ export default function Header() {
           )}
           
           {isSmallScreen && showAdvanced && (
-            <TemporaryChat />
+            <div className="ml-2">
+              <TemporaryChat />
+            </div>
           )}
         </div>
         {!isSmallScreen && (
@@ -135,7 +140,11 @@ export default function Header() {
             <ExportAndShareMenu
               isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
             />
-            {showAdvanced && <TemporaryChat />}
+            {showAdvanced && (
+              <div className="ml-2">
+                <TemporaryChat />
+              </div>
+            )}
           </div>
         )}
       </div>
