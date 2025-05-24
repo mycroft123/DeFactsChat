@@ -90,23 +90,34 @@ export default function Header() {
               {<ModelSelector startupConfig={startupConfig} />}
               {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
               {hasAccessToMultiConvo === true && (
-                <div className="[&>button]:h-10 [&>button]:bg-green-100 [&>button]:text-green-700 [&>button]:hover:bg-green-200 [&>button]:focus:ring-green-500 [&>button]:dark:bg-green-900/30 [&>button]:dark:text-green-300 [&>button]:dark:hover:bg-green-800/50 [&>button]:px-3 [&>button]:rounded-md [&>button]:text-sm [&>button]:font-medium [&>button]:flex [&>button]:items-center [&>button]:gap-2 [&>button]:transition-colors [&>button]:focus:outline-none [&>button]:focus:ring-2 [&>button]:focus:ring-offset-2">
-                  <div className="relative">
-                    <AddMultiConvo />
-                    {/* Overlay to replace text content */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <span className="text-sm font-medium">Compare Models</span>
-                    </div>
-                    {/* Hide original content */}
-                    <style jsx>{`
-                      div:has(> div > span) > * {
-                        color: transparent !important;
-                      }
-                      div:has(> div > span) svg {
-                        opacity: 0 !important;
-                      }
-                    `}</style>
-                  </div>
+                <div className="relative">
+                  <AddMultiConvo />
+                  <style jsx>{`
+                    /* Hide original content and replace with custom text */
+                    div + style + div button {
+                      height: 2.5rem !important;
+                      background-color: rgb(220 252 231) !important;
+                      color: rgb(21 128 61) !important;
+                      border-radius: 0.375rem !important;
+                      padding: 0 0.75rem !important;
+                      font-size: 0.875rem !important;
+                      font-weight: 500 !important;
+                      display: flex !important;
+                      align-items: center !important;
+                      gap: 0.5rem !important;
+                      transition: background-color 0.2s !important;
+                    }
+                    div + style + div button:hover {
+                      background-color: rgb(187 247 208) !important;
+                    }
+                    div + style + div button * {
+                      display: none !important;
+                    }
+                    div + style + div button::before {
+                      content: "Compare Models" !important;
+                      display: block !important;
+                    }
+                  `}</style>
                 </div>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
