@@ -95,6 +95,7 @@ export default function Header() {
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
+              <TemporaryChat />
             </>
           )}
           
@@ -110,17 +111,18 @@ export default function Header() {
           )} */}
           
           {isSmallScreen && (
-            <>
-              <ExportAndShareMenu
-                isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-              />
-              <TemporaryChat />
-            </>
+            <ExportAndShareMenu
+              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+            />
+          )}
+          
+          {isSmallScreen && showAdvanced && (
+            <TemporaryChat />
           )}
         </div>
         {!isSmallScreen && (
           <div className="flex items-center gap-2">
-            {/* Token balance display in header - more visible */}
+            {/* Token balance display - commented out */}
             {/* {user && (
               <div className="mr-3 flex items-center">
                 <div className="rounded-full bg-green-100 px-3 py-1.5 text-sm font-bold shadow-sm dark:bg-green-900/30">
@@ -133,7 +135,7 @@ export default function Header() {
             <ExportAndShareMenu
               isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
             />
-            <TemporaryChat />
+            {showAdvanced && <TemporaryChat />}
           </div>
         )}
       </div>
