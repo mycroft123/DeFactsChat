@@ -84,11 +84,6 @@ export default function Header() {
             )}
           </button>
           
-          {/* Always visible ExportAndShareMenu */}
-          <ExportAndShareMenu
-            isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-          />
-          
           {/* Advanced Features - Only show when toggled */}
           {showAdvanced && (
             <>
@@ -100,9 +95,12 @@ export default function Header() {
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
-              {/* Add some space before TemporaryChat */}
-              <div className="ml-2">
+              {/* TemporaryChat and ExportAndShareMenu grouped together */}
+              <div className="ml-2 flex items-center gap-2">
                 <TemporaryChat />
+                <ExportAndShareMenu
+                  isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+                />
               </div>
             </>
           )}
