@@ -95,9 +95,12 @@ export default function Header() {
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
-              {/* Add some space before TemporaryChat */}
-              <div className="ml-2">
+              {/* Add some space before TemporaryChat and ExportAndShareMenu */}
+              <div className="ml-2 flex items-center gap-2">
                 <TemporaryChat />
+                <ExportAndShareMenu
+                  isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+                />
               </div>
             </>
           )}
@@ -113,19 +116,16 @@ export default function Header() {
             </div>
           )} */}
           
-          {isSmallScreen && (
-            <ExportAndShareMenu
-              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-            />
-          )}
-          
           {isSmallScreen && showAdvanced && (
-            <div className="ml-2">
+            <div className="ml-2 flex items-center gap-2">
               <TemporaryChat />
+              <ExportAndShareMenu
+                isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+              />
             </div>
           )}
         </div>
-        {!isSmallScreen && (
+        {!isSmallScreen && showAdvanced && (
           <div className="flex items-center gap-2">
             {/* Token balance display - commented out */}
             {/* {user && (
@@ -137,14 +137,12 @@ export default function Header() {
                 </div>
               </div>
             )} */}
-            <ExportAndShareMenu
-              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-            />
-            {showAdvanced && (
-              <div className="ml-2">
-                <TemporaryChat />
-              </div>
-            )}
+            <div className="ml-2 flex items-center gap-2">
+              <TemporaryChat />
+              <ExportAndShareMenu
+                isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+              />
+            </div>
           </div>
         )}
       </div>
