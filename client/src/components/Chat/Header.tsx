@@ -90,7 +90,7 @@ export default function Header() {
               {<ModelSelector startupConfig={startupConfig} />}
               {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
               {hasAccessToMultiConvo === true && (
-                <button className="flex items-center gap-2 rounded-md bg-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">
+                <button className="flex items-center gap-2 rounded-md bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50">
                   Compare
                 </button>
               )}
