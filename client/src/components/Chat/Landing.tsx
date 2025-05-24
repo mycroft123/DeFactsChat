@@ -238,7 +238,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
         )}
         
         {/* Greeting section (now the smaller text where slogan was) */}
-        <div className="animate-fadeIn mt-6 text-center text-lg font-medium text-text-secondary">
+        <div className="animate-fadeIn mt-6 text-center text-xl sm:text-2xl font-medium text-text-secondary">
           {greetingText}
         </div>
         
