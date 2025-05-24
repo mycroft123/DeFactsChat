@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { getConfigDefaults, PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { ContextType } from '~/common';
@@ -10,12 +10,14 @@ import { useMediaQuery, useHasAccess, useAuthContext } from '~/hooks';
 import BookmarkMenu from './Menus/BookmarkMenu';
 import { TemporaryChat } from './TemporaryChat';
 import AddMultiConvo from './AddMultiConvo';
+import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 const defaultInterface = getConfigDefaults().interface;
 
 export default function Header() {
   const { data: startupConfig } = useGetStartupConfig();
   const { navVisible, setNavVisible } = useOutletContext<ContextType>();
   const { user } = useAuthContext();
+  const [showAdvanced, setShowAdvanced] = useState(false);
   
   const interfaceConfig = useMemo(
     () => startupConfig?.interface ?? defaultInterface,
@@ -68,14 +70,33 @@ export default function Header() {
         <div className="mx-1 flex items-center gap-2">
           {!navVisible && <OpenSidebar setNavVisible={setNavVisible} />}
           {!navVisible && <HeaderNewChat />}
-          {<ModelSelector startupConfig={startupConfig} />}
-          {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
-          {hasAccessToMultiConvo === true && (
-            <button className="flex items-center gap-2 rounded-md bg-green-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-600 dark:hover:bg-green-700">
-              Compare
-            </button>
+          
+          {/* Advanced Features Toggle Button */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-1 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+          >
+            Advanced Features
+            {showAdvanced ? (
+              <ChevronUpIcon className="h-4 w-4" />
+            ) : (
+              <ChevronDownIcon className="h-4 w-4" />
+            )}
+          </button>
+          
+          {/* Advanced Features - Only show when toggled */}
+          {showAdvanced && (
+            <>
+              {<ModelSelector startupConfig={startupConfig} />}
+              {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
+              {hasAccessToMultiConvo === true && (
+                <button className="flex items-center gap-2 rounded-md bg-green-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-600 dark:hover:bg-green-700">
+                  Compare
+                </button>
+              )}
+              {hasAccessToBookmarks === true && <BookmarkMenu />}
+            </>
           )}
-          {hasAccessToBookmarks === true && <BookmarkMenu />}
           
           {/* Add token balance for small screens */}
           {/* {isSmallScreen && user && (
