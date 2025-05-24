@@ -97,7 +97,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const description = (entity?.description || conversation?.greeting) ?? '';
 
   // Slogan to be displayed
-  const slogan = "Ask Questions. Get Answers. Earn Rewards.";
+  const slogan = "Ask Questions. Get DeFacts. Earn Rewards.";
 
   const getGreeting = useCallback(() => {
     if (typeof startupConfig?.interface?.customWelcome === 'string') {
