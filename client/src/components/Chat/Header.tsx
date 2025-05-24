@@ -95,12 +95,9 @@ export default function Header() {
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
-              {/* TemporaryChat and ExportAndShareMenu at end of advanced bar */}
-              <div className="ml-2 flex items-center gap-2">
+              {/* TemporaryChat at end of advanced bar */}
+              <div className="ml-2">
                 <TemporaryChat />
-                <ExportAndShareMenu
-                  isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-                />
               </div>
             </>
           )}
