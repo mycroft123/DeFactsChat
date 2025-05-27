@@ -166,8 +166,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
 
   useQueryParams({ textAreaRef });
 
-  // DEBUG: Check the form registration
-  const registration = methods.register('text', {
+  const { ref, ...registerProps } = methods.register('text', {
     required: true,
     onChange: useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -175,28 +174,25 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
       [methods],
     ),
   });
-  console.log('Form registration:', registration);
-
-  const { ref, ...registerProps } = registration;
-  
-  // DEBUG: Log registerProps
-  console.log('registerProps:', registerProps);
-  console.log('registerProps placeholder:', registerProps.placeholder);
 
   const textValue = useWatch({ control: methods.control, name: 'text' });
 
-  // DEBUG: Watch for placeholder changes
+  // Force our custom placeholder to persist
   useEffect(() => {
     if (textAreaRef.current) {
-      console.log('Initial placeholder:', textAreaRef.current.placeholder);
-      console.log('Initial getAttribute placeholder:', textAreaRef.current.getAttribute('placeholder'));
+      const customPlaceholder = getPlaceholderText();
       
-      // Watch for changes
+      // Set initial placeholder
+      textAreaRef.current.placeholder = customPlaceholder;
+      
+      // Watch for changes and override them
       const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
           if (mutation.type === 'attributes' && mutation.attributeName === 'placeholder') {
-            console.log('Placeholder changed to:', textAreaRef.current?.placeholder);
-            console.log('Stack trace:', new Error().stack);
+            if (textAreaRef.current && textAreaRef.current.placeholder !== customPlaceholder) {
+              console.log('Overriding placeholder from:', textAreaRef.current.placeholder, 'to:', customPlaceholder);
+              textAreaRef.current.placeholder = customPlaceholder;
+            }
           }
         });
       });
@@ -206,9 +202,19 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
         attributeFilter: ['placeholder']
       });
       
-      return () => observer.disconnect();
+      // Also override on a slight delay to catch any async updates
+      const timeoutId = setTimeout(() => {
+        if (textAreaRef.current) {
+          textAreaRef.current.placeholder = customPlaceholder;
+        }
+      }, 100);
+      
+      return () => {
+        observer.disconnect();
+        clearTimeout(timeoutId);
+      };
     }
-  }, []);
+  }, [getPlaceholderText, currentAIMode]);
 
   // DEBUG: Log when AI mode changes
   useEffect(() => {
