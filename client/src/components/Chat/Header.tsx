@@ -84,11 +84,12 @@ export default function Header() {
     if (textarea) {
       textarea.focus();
     }
-  };  
+  };
+  
   return (
-    <div className="sticky top-0 z-10 flex h-14 w-full items-center justify-between bg-white p-2 font-semibold text-text-primary dark:bg-gray-800">
-      <div className="hide-scrollbar flex w-full items-center justify-between gap-2 overflow-x-auto">
-        <div className="mx-1 flex items-center gap-2">
+    <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
+      <div className="flex w-full items-center justify-between gap-2">
+        <div className="flex flex-1 items-center gap-2">
           {!navVisible && <OpenSidebar setNavVisible={setNavVisible} />}
           {!navVisible && <HeaderNewChat />}
           
@@ -104,12 +105,26 @@ export default function Header() {
               <ChevronDownIcon className="h-4 w-4" />
             )}
           </button>
-          
-          {/* Advanced Features - Only show when toggled */}
-          {showAdvanced && (
+        </div>
+        
+        {/* Right side icons - Always visible on desktop, conditional on mobile */}
+        {(!isSmallScreen || !showAdvanced) && (
+          <div className="flex items-center gap-2">
+            {hasAccessToBookmarks === true && <BookmarkMenu />}
+            <ExportAndShareMenu
+              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+            />
+          </div>
+        )}
+      </div>
+      
+      {/* Advanced Features - Stack vertically on mobile */}
+      {showAdvanced && (
+        <div className={`${isSmallScreen ? 'mt-2 flex flex-col gap-2' : 'flex items-center gap-2'}`}>
+          {/* Desktop - inline layout */}
+          {!isSmallScreen && (
             <>
-              {<ModelSelector startupConfig={startupConfig} />}
-              {/* {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />} */}
+              <ModelSelector startupConfig={startupConfig} />
               {hasAccessToMultiConvo === true && conversation && (
                 <button 
                   onClick={handleCompareModels}
@@ -119,54 +134,37 @@ export default function Header() {
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
-              {/* TemporaryChat at end of advanced bar */}
               <div className="ml-2">
                 <TemporaryChat />
               </div>
             </>
           )}
           
-          {/* Add token balance for small screens */}
-          {/* {isSmallScreen && user && (
-            <div className="ml-auto mr-2 flex items-center">
-              <div className="rounded-full bg-green-100 px-2 py-1 text-xs dark:bg-green-900/30">
-                <span className="font-medium text-green-800 dark:text-green-400">
-                  {formattedBalance}
-                </span>
-              </div>
-            </div>
-          )} */}
-          
-          {/* Mobile - BookmarkMenu and ExportAndShareMenu appear when there's content */}
+          {/* Mobile - stacked layout */}
           {isSmallScreen && (
-            <div className="flex items-center gap-2">
-              {hasAccessToBookmarks === true && <BookmarkMenu />}
-              <ExportAndShareMenu
-                isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-              />
-            </div>
+            <>
+              <div className="flex flex-wrap gap-2">
+                <ModelSelector startupConfig={startupConfig} />
+                {hasAccessToMultiConvo === true && conversation && (
+                  <button 
+                    onClick={handleCompareModels}
+                    className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
+                  >
+                    Compare Models
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <TemporaryChat />
+                {hasAccessToBookmarks === true && <BookmarkMenu />}
+                <ExportAndShareMenu
+                  isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+                />
+              </div>
+            </>
           )}
         </div>
-        {/* Right side - ExportAndShareMenu and BookmarkMenu appear when there's content */}
-        {!isSmallScreen && (
-          <div className="flex items-center gap-2">
-            {/* Token balance display - commented out */}
-            {/* {user && (
-              <div className="mr-3 flex items-center">
-                <div className="rounded-full bg-green-100 px-3 py-1.5 text-sm font-bold shadow-sm dark:bg-green-900/30">
-                  <span className="font-semibold text-green-800 dark:text-green-400">
-                    {formattedBalance} <span className="font-medium">DeFacts</span>
-                  </span>
-                </div>
-              </div>
-            )} */}
-            {hasAccessToBookmarks === true && <BookmarkMenu />}
-            <ExportAndShareMenu
-              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-            />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
