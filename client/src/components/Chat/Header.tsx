@@ -98,7 +98,7 @@ export default function Header() {
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center gap-1 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
           >
-            Expert
+            Advanced Features
             {showAdvanced ? (
               <ChevronUpIcon className="h-4 w-4" />
             ) : (
@@ -130,7 +130,7 @@ export default function Header() {
                   onClick={handleCompareModels}
                   className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
                 >
-                  Compare
+                  Compare Models
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
@@ -143,14 +143,14 @@ export default function Header() {
           {/* Mobile - stacked layout */}
           {isSmallScreen && (
             <>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto">
                 <ModelSelector startupConfig={startupConfig} />
                 {hasAccessToMultiConvo === true && conversation && (
                   <button 
                     onClick={handleCompareModels}
-                    className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
+                    className="flex h-10 flex-shrink-0 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
                   >
-                    Compare Models
+                    Compare
                   </button>
                 )}
               </div>
