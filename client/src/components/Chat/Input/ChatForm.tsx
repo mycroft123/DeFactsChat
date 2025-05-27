@@ -166,7 +166,8 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
 
   useQueryParams({ textAreaRef });
 
-  const { ref, ...registerProps } = methods.register('text', {
+  // DEBUG: Check the form registration
+  const registration = methods.register('text', {
     required: true,
     onChange: useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -174,8 +175,46 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
       [methods],
     ),
   });
+  console.log('Form registration:', registration);
+
+  const { ref, ...registerProps } = registration;
+  
+  // DEBUG: Log registerProps
+  console.log('registerProps:', registerProps);
+  console.log('registerProps placeholder:', registerProps.placeholder);
 
   const textValue = useWatch({ control: methods.control, name: 'text' });
+
+  // DEBUG: Watch for placeholder changes
+  useEffect(() => {
+    if (textAreaRef.current) {
+      console.log('Initial placeholder:', textAreaRef.current.placeholder);
+      console.log('Initial getAttribute placeholder:', textAreaRef.current.getAttribute('placeholder'));
+      
+      // Watch for changes
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'placeholder') {
+            console.log('Placeholder changed to:', textAreaRef.current?.placeholder);
+            console.log('Stack trace:', new Error().stack);
+          }
+        });
+      });
+      
+      observer.observe(textAreaRef.current, {
+        attributes: true,
+        attributeFilter: ['placeholder']
+      });
+      
+      return () => observer.disconnect();
+    }
+  }, []);
+
+  // DEBUG: Log when AI mode changes
+  useEffect(() => {
+    console.log('AI Mode changed to:', currentAIMode);
+    console.log('Expected placeholder:', getPlaceholderText());
+  }, [currentAIMode, getPlaceholderText]);
 
   useEffect(() => {
     if (textAreaRef.current) {
