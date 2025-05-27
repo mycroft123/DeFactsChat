@@ -400,7 +400,7 @@ function BadgeRow({
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
                 ${aiMode === 'deresearch' 
-                  ? 'bg-purple-50 text-purple-700 border-purple-300 font-semibold' 
+                  ? 'bg-red-50 text-red-700 border-red-300 font-semibold' 
                   : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
