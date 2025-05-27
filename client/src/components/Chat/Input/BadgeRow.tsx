@@ -21,6 +21,7 @@ interface BadgeRowProps {
   showEphemeralBadges?: boolean;
   onChange: (badges: Pick<BadgeItem, 'id'>[]) => void;
   onToggle?: (badgeId: string, currentActive: boolean) => void;
+  onAIModeChange?: (mode: string) => void;
   conversationId?: string | null;
   isInChat: boolean;
 }
@@ -137,9 +138,11 @@ function BadgeRow({
   conversationId,
   onChange,
   onToggle,
+  onAIModeChange,
   isInChat,
 }: BadgeRowProps) {
   const [orderedBadges, setOrderedBadges] = useState<BadgeItem[]>([]);
+  const [aiMode, setAIMode] = useState('defacts');
   const [dragState, dispatch] = useReducer(dragReducer, {
     draggedBadge: null,
     mouseX: 0,
@@ -295,6 +298,16 @@ function BadgeRow({
     [toggleBadge, onToggle],
   );
 
+  const handleAIModeChange = useCallback(
+    (mode: string) => {
+      setAIMode(mode);
+      if (onAIModeChange) {
+        onAIModeChange(mode);
+      }
+    },
+    [onAIModeChange],
+  );
+
   useEffect(() => {
     if (!dragState.draggedBadge) {
       return;
@@ -354,6 +367,44 @@ function BadgeRow({
       )}
       {showEphemeralBadges === true && (
         <>
+          <div className="flex items-center gap-3 ml-4">
+            <button
+              onClick={() => handleAIModeChange('defacts')}
+              className={`
+                font-medium text-sm transition-all duration-200
+                ${aiMode === 'defacts' 
+                  ? 'text-blue-600 font-semibold' 
+                  : 'text-gray-400 hover:text-gray-600'
+                }
+              `}
+            >
+              DeFacts
+            </button>
+            <button
+              onClick={() => handleAIModeChange('denews')}
+              className={`
+                font-medium text-sm transition-all duration-200
+                ${aiMode === 'denews' 
+                  ? 'text-green-600 font-semibold' 
+                  : 'text-gray-400 hover:text-gray-600'
+                }
+              `}
+            >
+              DeNews
+            </button>
+            <button
+              onClick={() => handleAIModeChange('deresearch')}
+              className={`
+                font-medium text-sm transition-all duration-200
+                ${aiMode === 'deresearch' 
+                  ? 'text-purple-600 font-semibold' 
+                  : 'text-gray-400 hover:text-gray-600'
+                }
+              `}
+            >
+              DeResearch
+            </button>
+          </div>
           <CodeInterpreter conversationId={conversationId} />
           <MCPSelect conversationId={conversationId} />
         </>
