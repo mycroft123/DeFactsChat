@@ -367,14 +367,15 @@ function BadgeRow({
       )}
       {showEphemeralBadges === true && (
         <>
-          <div className="flex items-center gap-3 ml-4">
+          <div className="flex items-center gap-2 ml-3">
             <button
               onClick={() => handleAIModeChange('defacts')}
               className={`
-                font-medium text-sm transition-all duration-200
+                px-3 py-1.5 rounded-md text-sm font-medium 
+                transition-all duration-200 border
                 ${aiMode === 'defacts' 
-                  ? 'text-blue-600 font-semibold' 
-                  : 'text-gray-400 hover:text-gray-600'
+                  ? 'bg-green-50 text-green-700 border-green-300 font-semibold' 
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
@@ -383,10 +384,11 @@ function BadgeRow({
             <button
               onClick={() => handleAIModeChange('denews')}
               className={`
-                font-medium text-sm transition-all duration-200
+                px-3 py-1.5 rounded-md text-sm font-medium 
+                transition-all duration-200 border
                 ${aiMode === 'denews' 
-                  ? 'text-green-600 font-semibold' 
-                  : 'text-gray-400 hover:text-gray-600'
+                  ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold' 
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
@@ -395,17 +397,18 @@ function BadgeRow({
             <button
               onClick={() => handleAIModeChange('deresearch')}
               className={`
-                font-medium text-sm transition-all duration-200
+                px-3 py-1.5 rounded-md text-sm font-medium 
+                transition-all duration-200 border
                 ${aiMode === 'deresearch' 
-                  ? 'text-purple-600 font-semibold' 
-                  : 'text-gray-400 hover:text-gray-600'
+                  ? 'bg-purple-50 text-purple-700 border-purple-300 font-semibold' 
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
               DeResearch
             </button>
           </div>
-          <CodeInterpreter conversationId={conversationId} />
+          {/* <CodeInterpreter conversationId={conversationId} /> */}
           <MCPSelect conversationId={conversationId} />
         </>
       )}
