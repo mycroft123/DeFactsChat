@@ -44,6 +44,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const [visualRowCount, setVisualRowCount] = useState(1);
   const [isTextAreaFocused, setIsTextAreaFocused] = useState(false);
   const [backupBadges, setBackupBadges] = useState<Pick<BadgeItem, 'id'>[]>([]);
+  const [currentAIMode, setCurrentAIMode] = useState('defacts');
 
   const SpeechToText = useRecoilValue(store.speechToText);
   const TextToSpeech = useRecoilValue(store.textToSpeech);
@@ -120,6 +121,19 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
       setIsCollapsed(false);
     }
   }, [isCollapsed]);
+
+  const getPlaceholderText = useCallback(() => {
+    switch (currentAIMode) {
+      case 'defacts':
+        return 'Message DeFacts';
+      case 'denews':
+        return 'Message DeNews';
+      case 'deresearch':
+        return 'Message DeResearch';
+      default:
+        return 'Message DeFacts';
+    }
+  }, [currentAIMode]);
 
   useAutoSave({
     files,
@@ -271,6 +285,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                   id={mainTextareaId}
                   tabIndex={0}
                   data-testid="text-input"
+                  placeholder={getPlaceholderText()}
                   rows={1}
                   onFocus={() => {
                     handleFocusOrClick();
@@ -307,6 +322,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                 showEphemeralBadges={!isAgentsEndpoint(endpoint) && !isAssistantsEndpoint(endpoint)}
                 conversationId={conversationId}
                 onChange={setBadges}
+                onAIModeChange={setCurrentAIMode}
                 isInChat={
                   Array.isArray(conversation?.messages) && conversation.messages.length >= 1
                 }
