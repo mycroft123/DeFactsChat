@@ -125,11 +125,11 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const getPlaceholderText = useCallback(() => {
     switch (currentAIMode) {
       case 'defacts':
-        return 'Ask DeFacts your General KNowledge Questions';
+        return 'Ask DeFacts General Knowledge';
       case 'denews':
-        return 'Ask DeNews about recent events';
+        return 'Ask DeNews Recent Events';
       case 'deresearch':
-        return 'Ask DeResearch for deep insights';
+        return 'Ask DeResearch Deep Insights';
       default:
         return 'Message DeFacts';
     }
