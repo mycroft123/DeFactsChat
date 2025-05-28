@@ -46,6 +46,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const [backupBadges, setBackupBadges] = useState<Pick<BadgeItem, 'id'>[]>([]);
   const [currentAIMode, setCurrentAIMode] = useState('defacts');
   const [forceUpdate, setForceUpdate] = useState(0);
+  const placeholderRef = useRef('Ask DeFacts General Knowledge');
 
   const SpeechToText = useRecoilValue(store.speechToText);
   const TextToSpeech = useRecoilValue(store.textToSpeech);
@@ -127,23 +128,73 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const handleAIModeChange = useCallback((mode: string) => {
     console.log('AI Mode changing to:', mode);
     setCurrentAIMode(mode);
-    // Force a re-render to update the placeholder
+    
+    // Update placeholder based on mode
+    switch (mode) {
+      case 'defacts':
+        placeholderRef.current = 'Ask DeFacts General Knowledge';
+        break;
+      case 'denews':
+        placeholderRef.current = 'Ask DeNews Recent Events';
+        break;
+      case 'deresearch':
+        placeholderRef.current = 'Ask DeResearch Deep Insights';
+        break;
+      default:
+        placeholderRef.current = 'Message DeFacts';
+    }
+    
+    // Force update and apply placeholder
     setForceUpdate(prev => prev + 1);
+    
+    // Immediately update the textarea placeholder
+    if (textAreaRef.current) {
+      textAreaRef.current.placeholder = placeholderRef.current;
+    }
   }, []);
+
+  // Ensure placeholder stays updated
+  useEffect(() => {
+    if (!textAreaRef.current) return;
+    
+    // Set initial placeholder
+    textAreaRef.current.placeholder = placeholderRef.current;
+    
+    // Create observer to watch for placeholder changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'placeholder') {
+          if (textAreaRef.current && textAreaRef.current.placeholder !== placeholderRef.current) {
+            // Force it back to our desired placeholder
+            textAreaRef.current.placeholder = placeholderRef.current;
+          }
+        }
+      });
+    });
+    
+    // Start observing
+    observer.observe(textAreaRef.current, {
+      attributes: true,
+      attributeFilter: ['placeholder']
+    });
+    
+    // Also check periodically in case something bypasses the observer
+    const interval = setInterval(() => {
+      if (textAreaRef.current && textAreaRef.current.placeholder !== placeholderRef.current) {
+        textAreaRef.current.placeholder = placeholderRef.current;
+      }
+    }, 100);
+    
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
+  }, [forceUpdate]); // Re-run when forceUpdate changes
 
   // Get placeholder text based on current mode
   const getPlaceholderText = useCallback(() => {
-    switch (currentAIMode) {
-      case 'defacts':
-        return 'Ask DeFacts General Knowledge';
-      case 'denews':
-        return 'Ask DeNews Recent Events';
-      case 'deresearch':
-        return 'Ask DeResearch Deep Insights';
-      default:
-        return 'Message DeFacts';
-    }
-  }, [currentAIMode]);
+    return placeholderRef.current;
+  }, [forceUpdate]); // Include forceUpdate to ensure re-render
 
   useAutoSave({
     files,
@@ -285,6 +336,10 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                   ref={(e) => {
                     ref(e);
                     (textAreaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = e;
+                    // Set placeholder immediately when ref is attached
+                    if (e) {
+                      e.placeholder = placeholderRef.current;
+                    }
                   }}
                   key={`textarea-${currentAIMode}-${forceUpdate}`}
                   disabled={disableInputs || isNotAppendable}
