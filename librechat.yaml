@@ -1,4 +1,16 @@
-# For more information, see the Configuration Guide:
+custom:
+    # DeFacts AI - Your custom AI with three modes
+    - name: 'DeFacts AI'
+      apiKey: '${OPENAI_API_KEY}'  # Uses your OpenAI key
+      baseURL: 'https://api.openai.com/v1'  # Uses OpenAI's API
+      models:
+        default: ['DeFacts', 'DeNews', 'DeResearch']  # Your three modes
+        fetch: false
+      titleConvo: true
+      titleModel: 'DeFacts'
+      modelDisplayLabel: 'DeFacts AI'
+      iconURL: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="green" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>'  # Checkmark icon
+      ## For more information, see the Configuration Guide:
 # https://www.librechat.ai/docs/configuration/librechat_yaml
 
 # Configuration version (required)
@@ -300,7 +312,7 @@ endpoints:
       ]
       fetch: true
     titleModel: "gpt-3.5-turbo"
-    modelDisplayLabel: "OpenAI"
+    modelDisplayLabel: "DeFacts AI"  # This will show by default
   
   assistants:
     disableBuilder: false # Disable Assistants Builder Interface by setting to `true`
@@ -327,7 +339,22 @@ endpoints:
     capabilities: ["execute_code", "file_search", "actions", "tools"]
   
   custom:
-    # Groq Example
+    # DeFacts AI - Your custom endpoint with three models
+    - name: 'DeFacts AI'
+      apiKey: 'user_provided'  # This will be handled internally
+      baseURL: '${APP_URL}/api/defacts'  # Points to your custom router
+      models:
+        default: ['DeFacts', 'DeNews', 'DeResearch']  # Three models in dropdown
+        fetch: false  # Don't try to fetch from API
+      titleConvo: true
+      titleModel: 'DeFacts'  # Default for conversation titles
+      modelDisplayLabel: 'DeFacts AI'
+      # Custom icon for the endpoint
+      iconURL: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'
+      # Pass the model name directly to your backend
+      directEndpoint: true
+    
+    # Your existing endpoints remain unchanged
     - name: 'groq'
       apiKey: '${GROQ_API_KEY}'
       baseURL: 'https://api.groq.com/openai/v1/'

@@ -1,4 +1,4 @@
-// api/server/routes/defacts/index.js
+// api/server/routes/defacts.js
 // Custom router that handles DeFacts, DeNews, and DeResearch models
 
 const express = require('express');

@@ -117,6 +117,9 @@ const startServer = async () => {
   app.use('/api/bedrock', routes.bedrock);
   app.use('/api/tags', routes.tags);
   app.use('/api/user', routes.tokenBalance);
+  
+  // ADD DEFACTS ROUTE HERE
+  app.use('/api/defacts', routes.defacts);
 
   app.use((req, res) => {
     res.set({

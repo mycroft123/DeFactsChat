@@ -27,6 +27,7 @@ const keys = require('./keys');
 const user = require('./user');
 const ask = require('./ask');
 const tokenBalance = require('./tokenBalance');
+const defacts = require('./defacts');
 
 module.exports = {
   ask,
@@ -58,4 +59,5 @@ module.exports = {
   categories,
   staticRoute,
   tokenBalance,
+  defacts,
 };

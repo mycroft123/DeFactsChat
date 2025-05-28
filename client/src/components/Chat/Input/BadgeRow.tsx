@@ -301,7 +301,7 @@ function BadgeRow({
     [toggleBadge, onToggle],
   );
 
-// Replace your handleAIModeChange function with this enhanced version:
+// In your BadgeRow component, update the handleAIModeChange function:
 
 const handleAIModeChange = useCallback(
   (mode: string) => {
@@ -314,31 +314,24 @@ const handleAIModeChange = useCallback(
       'deresearch': 'deresearch-mode'
     };
     
-    // Custom display information for each mode
-    const modeDisplayInfo: Record<string, { label: string; icon: string }> = {
-      'defacts': { label: 'DeFacts AI', icon: '✓' },
-      'denews': { label: 'DeNews AI', icon: '📰' },
-      'deresearch': { label: 'DeResearch AI', icon: '🔬' }
-    };
-    
     const specName = modeToSpecName[mode];
-    const displayInfo = modeDisplayInfo[mode];
     
     // Update the conversation to use the selected model spec
     setConversation((prev: any) => ({
       ...prev,
       // This tells LibreChat to use the selected model spec
       spec: specName,
-      // Add custom display information
-      chatGptLabel: displayInfo.label,
-      modelLabel: displayInfo.label,
-      // Store the mode for reference
-      defactsMode: mode,
-      // These ensure the spec is used
-      endpoint: null,
-      model: null,
+      // Force it to use the spec settings
+      endpoint: undefined,
+      model: undefined,
+      // Store the current mode for the ChatForm to read
+      customData: {
+        ...prev.customData,
+        defactsMode: mode
+      }
     }));
     
+    // Call the parent callback to update ChatForm's state
     if (onAIModeChange) {
       onAIModeChange(mode);
     }
