@@ -1,12 +1,11 @@
 // api/server/routes/defacts.js
-// Complete DeFacts router compatible with LibreChat's plugin system
+// Complete DeFacts router with enhanced debugging to see all available variables
 
 const express = require('express');
 const router = express.Router();
 const OpenAI = require('openai');
 
 // Global request logger - catches ALL requests to this router
-// MUST BE AFTER router is defined
 router.use((req, res, next) => {
   console.log('===========================================');
   console.log('[DEFACTS ROUTER HIT]', new Date().toISOString());
@@ -15,9 +14,27 @@ router.use((req, res, next) => {
   console.log('Full URL:', req.originalUrl);
   console.log('Base URL:', req.baseUrl);
   console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  
+  // Log ALL available data in the request
+  console.log('--- REQUEST BODY ---');
   if (req.body) {
-    console.log('Body:', JSON.stringify(req.body, null, 2));
+    console.log('Full Body:', JSON.stringify(req.body, null, 2));
+    console.log('Model in body:', req.body.model);
+    console.log('Endpoint in body:', req.body.endpoint);
+    console.log('ConversationId:', req.body.conversationId);
+    console.log('ParentMessageId:', req.body.parentMessageId);
   }
+  
+  console.log('--- REQUEST QUERY ---');
+  console.log('Query params:', req.query);
+  
+  console.log('--- REQUEST PARAMS ---');
+  console.log('Route params:', req.params);
+  
+  console.log('--- REQUEST USER/SESSION ---');
+  console.log('User:', req.user);
+  console.log('Session:', req.session);
+  
   console.log('===========================================');
   next();
 });
@@ -132,12 +149,44 @@ router.use((req, res, next) => {
 
 // Main handler function
 async function handleChatCompletion(req, res) {
+  console.log('============ DETAILED MODEL DEBUG ============');
   console.log('[DeFacts Plugin] Chat completion request:', {
     model: req.body.model,
     messages: req.body.messages?.length,
     stream: req.body.stream,
     endpoint: req.originalUrl,
   });
+  
+  // Detailed model debugging
+  console.log('[MODEL DEBUG] Received model:', req.body.model);
+  console.log('[MODEL DEBUG] Model type:', typeof req.body.model);
+  console.log('[MODEL DEBUG] Available configs:', Object.keys(MODEL_CONFIGS));
+  console.log('[MODEL DEBUG] Config exists for received model?', !!MODEL_CONFIGS[req.body.model]);
+  console.log('[MODEL DEBUG] All body keys:', Object.keys(req.body));
+  
+  // Check if there's any other field that might contain model selection
+  if (req.body.modelSpec) {
+    console.log('[MODEL DEBUG] Found modelSpec:', req.body.modelSpec);
+  }
+  if (req.body.spec) {
+    console.log('[MODEL DEBUG] Found spec:', req.body.spec);
+  }
+  if (req.body.presetName) {
+    console.log('[MODEL DEBUG] Found presetName:', req.body.presetName);
+  }
+  
+  // Log the full request body for custom models
+  if (req.body.model === 'DeFacts' || req.body.model === 'DeNews' || req.body.model === 'DeResearch') {
+    console.log('[MODEL DEBUG] Full request for custom model:', JSON.stringify({
+      model: req.body.model,
+      endpoint: req.body.endpoint,
+      messagePreview: req.body.messages?.[req.body.messages.length - 1]?.content?.substring(0, 50) + '...',
+      stream: req.body.stream,
+      temperature: req.body.temperature,
+      max_tokens: req.body.max_tokens,
+    }, null, 2));
+  }
+  console.log('==============================================');
 
   try {
     const { messages, model, stream = false, ...otherParams } = req.body;
@@ -148,6 +197,7 @@ async function handleChatCompletion(req, res) {
     // If not our model, pass through to OpenAI directly
     if (!config) {
       console.log('[DeFacts Plugin] Not a DeFacts model, passing through to OpenAI:', model);
+      console.log('[DeFacts Plugin] Will use OpenAI client to call model:', model);
       try {
         if (stream) {
           // Streaming passthrough
@@ -189,10 +239,15 @@ async function handleChatCompletion(req, res) {
     }
     
     // It's one of our custom models
-    console.log(`[DeFacts Plugin] Using custom model ${model} -> ${config.model} (${config.client})`);
+    console.log(`[DeFacts Plugin] CUSTOM MODEL DETECTED: ${model}`);
+    console.log(`[DeFacts Plugin] Using config:`, config);
+    console.log(`[DeFacts Plugin] Will call ${config.client} API with model: ${config.model}`);
     
     const systemPrompt = SYSTEM_PROMPTS[model];
     const client = config.client === 'perplexity' ? perplexity : openai;
+    
+    console.log(`[DeFacts Plugin] Selected client: ${config.client}`);
+    console.log(`[DeFacts Plugin] System prompt preview: ${systemPrompt.substring(0, 100)}...`);
     
     // Check if API key exists
     if (!client.apiKey) {
@@ -219,6 +274,7 @@ async function handleChatCompletion(req, res) {
       temperature: config.temperature,
       max_tokens: config.max_tokens,
       messageCount: enhancedMessages.length,
+      systemPromptLength: systemPrompt.length,
     });
     
     // Make the API call
@@ -266,6 +322,7 @@ async function handleChatCompletion(req, res) {
     } else {
       // Non-streaming response
       try {
+        console.log(`[DeFacts Plugin] Making non-streaming ${config.client} API call...`);
         const completion = await client.chat.completions.create({
           messages: enhancedMessages,
           model: config.model,
@@ -274,6 +331,8 @@ async function handleChatCompletion(req, res) {
           stream: false,
           ...otherParams,
         });
+        
+        console.log(`[DeFacts Plugin] ${config.client} API call successful`);
         
         // IMPORTANT: Return with our model name, not the underlying model
         const response = {
@@ -290,6 +349,7 @@ async function handleChatCompletion(req, res) {
           model: response.model,
           usage: response.usage,
           actualModel: config.model,
+          client: config.client,
         });
         
         res.json(response);
@@ -409,6 +469,7 @@ router.get('/health', (req, res) => {
     environment: {
       pluginModels: process.env.PLUGIN_MODELS,
       pluginsBaseUrl: process.env.PLUGINS_BASE_URL,
+      openaiReverseProxy: process.env.OPENAI_REVERSE_PROXY,
     }
   };
   console.log('[DeFacts Plugin] Health check:', health);
