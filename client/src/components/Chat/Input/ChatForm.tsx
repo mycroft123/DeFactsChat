@@ -44,7 +44,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const [visualRowCount, setVisualRowCount] = useState(1);
   const [isTextAreaFocused, setIsTextAreaFocused] = useState(false);
   const [backupBadges, setBackupBadges] = useState<Pick<BadgeItem, 'id'>[]>([]);
-
+  const [currentAIMode, setCurrentAIMode] = useState('defacts');
 
   const SpeechToText = useRecoilValue(store.speechToText);
   const TextToSpeech = useRecoilValue(store.textToSpeech);
@@ -122,38 +122,20 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     }
   }, [isCollapsed]);
 
-
-  // In ChatForm, update the currentAIMode initialization to read from conversation:
-
-// With this:
-const [currentAIMode, setCurrentAIMode] = useState(() => {
-  // Check if we're using the DeFacts endpoint (gptPlugins)
-  if (conversation?.endpoint === 'gptPlugins') {
-    // Map model names back to modes
-    const modelToMode: Record<string, string> = {
-      'DeFacts': 'defacts',
-      'DeNews': 'denews',
-      'DeResearch': 'deresearch'
-    };
-    return modelToMode[conversation?.model as string] || 'defacts';
-  }
-  return 'defacts';
-});
-
-// Also add a useEffect to sync when conversation changes:
-useEffect(() => {
-  if (conversation?.endpoint === 'gptPlugins' && conversation?.model) {
-    const modelToMode: Record<string, string> = {
-      'DeFacts': 'defacts',
-      'DeNews': 'denews',
-      'DeResearch': 'deresearch'
-    };
-    const mode = modelToMode[conversation.model as string];
-    if (mode && mode !== currentAIMode) {
-      setCurrentAIMode(mode);
+  // Sync currentAIMode with conversation model
+  useEffect(() => {
+    if (conversation?.endpoint === 'gptPlugins' && conversation?.model) {
+      const modelToMode: Record<string, string> = {
+        'DeFacts': 'defacts',
+        'DeNews': 'denews',
+        'DeResearch': 'deresearch'
+      };
+      const mode = modelToMode[conversation.model as string];
+      if (mode) {
+        setCurrentAIMode(mode);
+      }
     }
-  }
-}, [conversation?.endpoint, conversation?.model]);
+  }, [conversation?.endpoint, conversation?.model]);
 
   const getPlaceholderText = useCallback(() => {
     switch (currentAIMode) {
