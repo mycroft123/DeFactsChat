@@ -45,6 +45,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const [isTextAreaFocused, setIsTextAreaFocused] = useState(false);
   const [backupBadges, setBackupBadges] = useState<Pick<BadgeItem, 'id'>[]>([]);
   const [currentAIMode, setCurrentAIMode] = useState('defacts');
+  const [placeholderText, setPlaceholderText] = useState('Ask DeFacts General Knowledge');
 
   const SpeechToText = useRecoilValue(store.speechToText);
   const TextToSpeech = useRecoilValue(store.textToSpeech);
@@ -122,18 +123,23 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     }
   }, [isCollapsed]);
 
-  const getPlaceholderText = useCallback(() => {
-    switch (currentAIMode) {
+  // Update placeholder text when AI mode changes
+  const handleAIModeChange = useCallback((mode: string) => {
+    setCurrentAIMode(mode);
+    switch (mode) {
       case 'defacts':
-        return 'Ask DeFacts General Knowledge';
+        setPlaceholderText('Ask DeFacts General Knowledge');
+        break;
       case 'denews':
-        return 'Ask DeNews Recent Events';
+        setPlaceholderText('Ask DeNews Recent Events');
+        break;
       case 'deresearch':
-        return 'Ask DeResearch Deep Insights';
+        setPlaceholderText('Ask DeResearch Deep Insights');
+        break;
       default:
-        return 'Message DeFacts';
+        setPlaceholderText('Message DeFacts');
     }
-  }, [currentAIMode]);
+  }, []);
 
   useAutoSave({
     files,
@@ -176,51 +182,6 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   });
 
   const textValue = useWatch({ control: methods.control, name: 'text' });
-
-  // Force our custom placeholder to persist
-  useEffect(() => {
-    if (textAreaRef.current) {
-      const customPlaceholder = getPlaceholderText();
-      
-      // Set initial placeholder
-      textAreaRef.current.placeholder = customPlaceholder;
-      
-      // Watch for changes and override them
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          if (mutation.type === 'attributes' && mutation.attributeName === 'placeholder') {
-            if (textAreaRef.current && textAreaRef.current.placeholder !== customPlaceholder) {
-              console.log('Overriding placeholder from:', textAreaRef.current.placeholder, 'to:', customPlaceholder);
-              textAreaRef.current.placeholder = customPlaceholder;
-            }
-          }
-        });
-      });
-      
-      observer.observe(textAreaRef.current, {
-        attributes: true,
-        attributeFilter: ['placeholder']
-      });
-      
-      // Also override on a slight delay to catch any async updates
-      const timeoutId = setTimeout(() => {
-        if (textAreaRef.current) {
-          textAreaRef.current.placeholder = customPlaceholder;
-        }
-      }, 100);
-      
-      return () => {
-        observer.disconnect();
-        clearTimeout(timeoutId);
-      };
-    }
-  }, [getPlaceholderText, currentAIMode]);
-
-  // DEBUG: Log when AI mode changes
-  useEffect(() => {
-    console.log('AI Mode changed to:', currentAIMode);
-    console.log('Expected placeholder:', getPlaceholderText());
-  }, [currentAIMode, getPlaceholderText]);
 
   useEffect(() => {
     if (textAreaRef.current) {
@@ -330,7 +291,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                   id={mainTextareaId}
                   tabIndex={0}
                   data-testid="text-input"
-                  placeholder={getPlaceholderText()}
+                  placeholder={placeholderText}
                   rows={1}
                   onFocus={() => {
                     handleFocusOrClick();
@@ -367,7 +328,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                 showEphemeralBadges={!isAgentsEndpoint(endpoint) && !isAssistantsEndpoint(endpoint)}
                 conversationId={conversationId}
                 onChange={setBadges}
-                onAIModeChange={setCurrentAIMode}
+                onAIModeChange={handleAIModeChange}
                 isInChat={
                   Array.isArray(conversation?.messages) && conversation.messages.length >= 1
                 }
