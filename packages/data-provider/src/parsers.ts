@@ -236,11 +236,36 @@ export const getResponseSender = (endpointOption: t.TEndpointOption): string => 
   const modelDisplayLabel = _mdl ?? '';
   const chatGptLabel = _cgl ?? '';
   const modelLabel = _ml ?? '';
+
+  // Special handling for gptPlugins endpoint
+  if (endpoint === EModelEndpoint.gptPlugins) {
+    // Honor custom labels if provided
+    if (chatGptLabel) {
+      return chatGptLabel;
+    }
+    if (modelLabel) {
+      return modelLabel;
+    }
+    
+    // Model-specific names for gptPlugins
+    if (model === 'DeNews' || model.includes('DeNews')) {
+      return 'DeNews AI';
+    }
+    if (model === 'DeResearch' || model.includes('DeResearch')) {
+      return 'DeResearch AI';
+    }
+    if (model === 'DeFacts' || model.includes('DeFacts')) {
+      return 'DeFacts AI';
+    }
+    
+    // Default fallback for gptPlugins
+    return (alternateName[endpoint] as string | undefined) ?? 'DeFacts AI';
+  }
+
   if (
     [
       EModelEndpoint.openAI,
       EModelEndpoint.bedrock,
-      EModelEndpoint.gptPlugins,
       EModelEndpoint.azureOpenAI,
       EModelEndpoint.chatGPTBrowser,
     ].includes(endpoint)
