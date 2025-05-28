@@ -141,8 +141,27 @@ function BadgeRow({
   onAIModeChange,
   isInChat,
 }: BadgeRowProps) {
+  // Get the current conversation to read the initial mode
+  const conversation = useRecoilValue(store.conversation);
+  
+  // Initialize aiMode based on the current conversation model
+  const getInitialMode = () => {
+    const modelToMode: Record<string, string> = {
+      'DeFacts': 'defacts',
+      'DeNews': 'denews',
+      'DeResearch': 'deresearch'
+    };
+    
+    // If we have a conversation model, use it to set the initial mode
+    if (conversation?.model && modelToMode[conversation.model]) {
+      return modelToMode[conversation.model];
+    }
+    
+    return 'defacts'; // Default fallback
+  };
+  
   const [orderedBadges, setOrderedBadges] = useState<BadgeItem[]>([]);
-  const [aiMode, setAIMode] = useState('defacts');
+  const [aiMode, setAIMode] = useState(getInitialMode());
   const [dragState, dispatch] = useReducer(dragReducer, {
     draggedBadge: null,
     mouseX: 0,
@@ -175,6 +194,19 @@ function BadgeRow({
       },
     [],
   );
+
+  // Add useEffect to update aiMode when conversation changes
+  useEffect(() => {
+    const modelToMode: Record<string, string> = {
+      'DeFacts': 'defacts',
+      'DeNews': 'denews',
+      'DeResearch': 'deresearch'
+    };
+    
+    if (conversation?.model && modelToMode[conversation.model]) {
+      setAIMode(modelToMode[conversation.model]);
+    }
+  }, [conversation?.model]);
 
   useEffect(() => {
     setOrderedBadges((prev) => {
@@ -301,34 +333,32 @@ function BadgeRow({
     [toggleBadge, onToggle],
   );
 
-// In your BadgeRow component, update the handleAIModeChange function:
-
-const handleAIModeChange = useCallback(
-  (mode: string) => {
-    setAIMode(mode);
-    
-    // Map mode to model names
-    const modeToModel: Record<string, string> = {
-      'defacts': 'DeFacts',
-      'denews': 'DeNews',
-      'deresearch': 'DeResearch'
-    };
-    
-    const modelName = modeToModel[mode];
-    
-    // Use gptPlugins endpoint for DeFacts
-    setConversation((prev: any) => ({
-      ...prev,
-      endpoint: 'gptPlugins',
-      model: modelName,
-    }));
-    
-    if (onAIModeChange) {
-      onAIModeChange(mode);
-    }
-  },
-  [onAIModeChange, setConversation],
-);
+  const handleAIModeChange = useCallback(
+    (mode: string) => {
+      setAIMode(mode);
+      
+      // Map mode to model names
+      const modeToModel: Record<string, string> = {
+        'defacts': 'DeFacts',
+        'denews': 'DeNews',
+        'deresearch': 'DeResearch'
+      };
+      
+      const modelName = modeToModel[mode];
+      
+      // Use gptPlugins endpoint for DeFacts
+      setConversation((prev: any) => ({
+        ...prev,
+        endpoint: 'gptPlugins',
+        model: modelName,
+      }));
+      
+      if (onAIModeChange) {
+        onAIModeChange(mode);
+      }
+    },
+    [onAIModeChange, setConversation],
+  );
 
   useEffect(() => {
     if (!dragState.draggedBadge) {
