@@ -153,6 +153,31 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     }
   }, []);
 
+  // Handle model change when AI mode buttons are clicked
+  const handleModelChange = useCallback((model: string) => {
+    console.log('ChatForm: Updating model to:', model);
+    
+    // Update the form's model value
+    methods.setValue('model', model);
+    
+    // If there's a conversation context update function, use it
+    if (newConversation) {
+      // Create a new conversation with the selected model
+      newConversation({
+        template: {
+          ...conversation,
+          model: model,
+          endpoint: 'gptPlugins',
+        },
+      });
+    } else if (conversation) {
+      // If we need to update existing conversation
+      // This depends on how your LibreChat handles conversation updates
+      console.log('Need to update existing conversation model to:', model);
+      // You might need to call an API or update function here
+    }
+  }, [methods, newConversation, conversation]);
+
   // Ensure placeholder stays updated
   useEffect(() => {
     if (!textAreaRef.current) return;
@@ -389,6 +414,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                 conversationId={conversationId}
                 onChange={setBadges}
                 onAIModeChange={handleAIModeChange}
+                onModelChange={handleModelChange}
                 isInChat={
                   Array.isArray(conversation?.messages) && conversation.messages.length >= 1
                 }
