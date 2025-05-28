@@ -340,19 +340,17 @@ endpoints:
   
   custom:
     # DeFacts AI - Your custom endpoint with three models
-    - name: 'DeFacts AI'
-      apiKey: 'user_provided'  # This will be handled internally
-      baseURL: '${APP_URL}/api/defacts'  # Points to your custom router
+    - name: "DeFacts AI"
+      apiKey: "user_provided"
+      baseURL: "https://librechat-production-97e2.up.railway.app/api/defacts"
       models:
-        default: ['DeFacts', 'DeNews', 'DeResearch']  # Three models in dropdown
-        fetch: false  # Don't try to fetch from API
+        default: ["DeFacts", "DeNews", "DeResearch"]
+        fetch: false
       titleConvo: true
-      titleModel: 'DeFacts'  # Default for conversation titles
-      modelDisplayLabel: 'DeFacts AI'
-      # Custom icon for the endpoint
-      iconURL: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'
-      # Pass the model name directly to your backend
-      directEndpoint: true
+      titleModel: "DeFacts"
+      modelDisplayLabel: "DeFacts AI"
+      # Remove iconURL for now to avoid issues
+      dropParams: ["stream"]  # Add this to avoid streaming issues initially
     
     # Your existing endpoints remain unchanged
     - name: 'groq'
