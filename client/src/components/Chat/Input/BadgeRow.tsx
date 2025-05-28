@@ -141,27 +141,8 @@ function BadgeRow({
   onAIModeChange,
   isInChat,
 }: BadgeRowProps) {
-  // Get the current conversation to read the initial mode
-  const conversation = useRecoilValue(store.conversation);
-  
-  // Initialize aiMode based on the current conversation model
-  const getInitialMode = () => {
-    const modelToMode: Record<string, string> = {
-      'DeFacts': 'defacts',
-      'DeNews': 'denews',
-      'DeResearch': 'deresearch'
-    };
-    
-    // If we have a conversation model, use it to set the initial mode
-    if (conversation?.model && modelToMode[conversation.model]) {
-      return modelToMode[conversation.model];
-    }
-    
-    return 'defacts'; // Default fallback
-  };
-  
   const [orderedBadges, setOrderedBadges] = useState<BadgeItem[]>([]);
-  const [aiMode, setAIMode] = useState(getInitialMode());
+  const [aiMode, setAIMode] = useState('defacts'); // Start with default
   const [dragState, dispatch] = useReducer(dragReducer, {
     draggedBadge: null,
     mouseX: 0,
@@ -177,6 +158,9 @@ function BadgeRow({
 
   const allBadges = useChatBadges();
   const isEditing = useRecoilValue(store.isEditingBadges);
+  
+  // Get conversation state - this might be null initially
+  const conversation = useRecoilValue(store.conversation);
   
   // Add the setConversation hook for DeFacts integration
   const setConversation = useSetRecoilState(store.conversation);
@@ -195,7 +179,7 @@ function BadgeRow({
     [],
   );
 
-  // Add useEffect to update aiMode when conversation changes
+  // Initialize aiMode when conversation is available
   useEffect(() => {
     const modelToMode: Record<string, string> = {
       'DeFacts': 'defacts',
@@ -203,10 +187,14 @@ function BadgeRow({
       'DeResearch': 'deresearch'
     };
     
+    // Only update if we have a valid conversation and model
     if (conversation?.model && modelToMode[conversation.model]) {
       setAIMode(modelToMode[conversation.model]);
+    } else if (conversation?.endpoint === 'gptPlugins' && !conversation?.model) {
+      // If using gptPlugins but no model set, default to DeFacts
+      setAIMode('defacts');
     }
-  }, [conversation?.model]);
+  }, [conversation?.model, conversation?.endpoint]);
 
   useEffect(() => {
     setOrderedBadges((prev) => {
