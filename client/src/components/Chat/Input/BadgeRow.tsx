@@ -307,31 +307,22 @@ const handleAIModeChange = useCallback(
   (mode: string) => {
     setAIMode(mode);
     
-    // Map button clicks to modelSpec names from your YAML
-    const modeToSpecName: Record<string, string> = {
-      'defacts': 'defacts-mode',
-      'denews': 'denews-mode',
-      'deresearch': 'deresearch-mode'
+    // Map mode to model names
+    const modeToModel: Record<string, string> = {
+      'defacts': 'DeFacts',
+      'denews': 'DeNews',
+      'deresearch': 'DeResearch'
     };
     
-    const specName = modeToSpecName[mode];
+    const modelName = modeToModel[mode];
     
-    // Update the conversation to use the selected model spec
+    // Use gptPlugins endpoint for DeFacts
     setConversation((prev: any) => ({
       ...prev,
-      // This tells LibreChat to use the selected model spec
-      spec: specName,
-      // Force it to use the spec settings
-      endpoint: undefined,
-      model: undefined,
-      // Store the current mode for the ChatForm to read
-      customData: {
-        ...prev.customData,
-        defactsMode: mode
-      }
+      endpoint: 'gptPlugins',
+      model: modelName,
     }));
     
-    // Call the parent callback to update ChatForm's state
     if (onAIModeChange) {
       onAIModeChange(mode);
     }

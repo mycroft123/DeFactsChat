@@ -105,7 +105,13 @@ const MODEL_CONFIGS = {
 };
 
 // Main chat completions endpoint
-router.post('/v1/chat/completions', async (req, res) => {
+router.post('/v1/chat/completions', handleChatCompletion);
+
+// Compatibility endpoint for GPT Plugins format
+router.post('/chat/completions', handleChatCompletion);
+
+// Shared handler function
+async function handleChatCompletion(req, res) {
   try {
     const { messages, model, stream = false, ...otherParams } = req.body;
     
@@ -185,7 +191,7 @@ router.post('/v1/chat/completions', async (req, res) => {
       details: error.message 
     });
   }
-});
+}
 
 // Models endpoint (for LibreChat)
 router.get('/v1/models', (req, res) => {
