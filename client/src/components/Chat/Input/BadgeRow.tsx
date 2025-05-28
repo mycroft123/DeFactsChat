@@ -159,8 +159,8 @@ function BadgeRow({
   const allBadges = useChatBadges();
   const isEditing = useRecoilValue(store.isEditingBadges);
   
-  // Add the setConversation hook for DeFacts integration
-  const setConversation = useSetRecoilState(store.conversation);
+  // Commented out for now - causing errors
+  // const setConversation = useSetRecoilState(store.conversation);
 
   const badges = useMemo(
     () => allBadges.filter((badge) => badge.isAvailable !== false),
@@ -306,6 +306,12 @@ function BadgeRow({
       console.log('BadgeRow: Changing AI mode to:', mode);
       setAIMode(mode);
       
+      // IMPORTANT: Call the parent's callback to update placeholder FIRST
+      if (onAIModeChange) {
+        console.log('BadgeRow: Calling parent onAIModeChange');
+        onAIModeChange(mode);
+      }
+      
       // Map mode to model names
       const modeToModel: Record<string, string> = {
         'defacts': 'DeFacts',
@@ -315,20 +321,29 @@ function BadgeRow({
       
       const modelName = modeToModel[mode];
       
-      // Use gptPlugins endpoint for DeFacts
-      setConversation((prev: any) => ({
-        ...prev,
-        endpoint: 'gptPlugins',
-        model: modelName,
-      }));
-      
-      // IMPORTANT: Call the parent's callback to update placeholder
-      if (onAIModeChange) {
-        console.log('BadgeRow: Calling parent onAIModeChange');
-        onAIModeChange(mode);
+      // TODO: Fix conversation state update
+      // Commenting out for now to prevent errors
+      /*
+      try {
+        setConversation((prev: any) => {
+          if (!prev) {
+            return {
+              endpoint: 'gptPlugins',
+              model: modelName,
+            };
+          }
+          return {
+            ...prev,
+            endpoint: 'gptPlugins',
+            model: modelName,
+          };
+        });
+      } catch (error) {
+        console.error('Error updating conversation:', error);
       }
+      */
     },
-    [onAIModeChange, setConversation],
+    [onAIModeChange],
   );
 
   useEffect(() => {
