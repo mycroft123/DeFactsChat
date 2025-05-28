@@ -10,22 +10,45 @@ cache: true
 # File strategy s3/firebase
 # fileStrategy: "s3"
 
+# Model Specs for Default AI Selection
+modelSpecs:
+  enforce: false  # Allow users to switch models if needed
+  prioritize: true  # Prioritize these specs
+  list:
+    - name: "defacts-default"
+      label: "DeFacts Assistant"
+      default: true  # This makes it the default on load
+      description: "Your intelligent DeFacts AI assistant"
+      iconURL: "https://your-domain.com/defacts-icon.png"  # Replace with your icon URL
+      showIconInHeader: true
+      showIconInMenu: true
+      preset:
+        endpoint: "custom"
+        endpointName: "DeFacts AI"  # Must match the name in custom endpoints
+        model: "defacts-model-v1"  # Replace with your model name
+        temperature: 0.7
+        maxContextTokens: 8192
+        max_tokens: 2048
+        # Add any default prompts or settings
+        promptPrefix: |
+          You are DeFacts AI, an intelligent assistant focused on providing accurate, factual information.
+
 # Custom interface configuration
 interface:
-  customWelcome: "Welcome to DeFacts! Let's Get Smarter Together."
+  customWelcome: "Welcome to DeFacts! I'm your AI assistant powered by DeFacts AI. Let's Get Smarter Together!"
   # Privacy policy settings
   privacyPolicy:
-    externalUrl: 'https://librechat.ai/privacy-policy'
+    externalUrl: 'https://defacts.ai/privacy-policy'  # Update to your URL
     openNewTab: true
 
   # Terms of service
   termsOfService:
-    externalUrl: 'https://librechat.ai/tos'
+    externalUrl: 'https://defacts.ai/tos'  # Update to your URL
     openNewTab: true
     modalAcceptance: true
-    modalTitle: "Terms of Service for LibreChat"
+    modalTitle: "Terms of Service for DeFacts"
     modalContent: |
-      # Terms and Conditions for LibreChat
+      # Terms and Conditions for DeFacts
 
       *Effective Date: February 18, 2024*
 
@@ -57,12 +80,12 @@ interface:
 
       ## 7. Contact Information
 
-      If you have any questions about these Terms, please contact us at contact@librechat.ai.
+      If you have any questions about these Terms, please contact us at contact@defacts.ai.
 
       By using the Website, you acknowledge that you have read these Terms of Service and agree to be bound by them.
 
   endpointsMenu: true
-  modelSelect: true
+  modelSelect: true  # Set to false if you want to lock users to your AI only
   parameters: true
   sidePanel: true
   presets: true
@@ -126,6 +149,7 @@ actions:
     - "swapi.dev"
     - "librechat.ai"
     - "google.com"
+    - "defacts.ai"  # Add your domain
 
 # MCP Servers Object Structure
 mcpServers:
@@ -158,7 +182,7 @@ mcpServers:
 # Definition of custom endpoints
 endpoints:
   # Global title settings
-  titleModel: gpt-3.5-turbo
+  titleModel: defacts-model-v1  # Use your AI for titles
   titleMethod: completion
   
   assistants:
@@ -186,6 +210,24 @@ endpoints:
     capabilities: ["execute_code", "file_search", "actions", "tools"]
   
   custom:
+    # YOUR CUSTOM AI ENGINE - PLACED FIRST FOR PRIORITY
+    - name: 'DeFacts AI'
+      apiKey: '${DEFACTS_AI_KEY}'  # Set this in your .env file
+      baseURL: '${DEFACTS_AI_BASE_URL}'  # Set this in your .env file (e.g., https://your-ai-api.com/v1)
+      models:
+        default: ['defacts-model-v1', 'defacts-model-v2']  # Replace with your actual model names
+        fetch: false  # Set to true if your API supports model listing
+      titleConvo: true
+      titleModel: 'defacts-model-v1'
+      titleMethod: 'completion'
+      modelDisplayLabel: 'DeFacts AI'
+      iconURL: 'https://your-domain.com/defacts-icon.png'  # Replace with your actual icon URL
+      # Add any custom parameters your API needs
+      # addParams:
+      #   custom_param: 'value'
+      # Remove parameters your API doesn't support
+      # dropParams: ['stop', 'frequency_penalty', 'presence_penalty']
+    
     # Groq Example
     - name: 'groq'
       apiKey: '${GROQ_API_KEY}'
