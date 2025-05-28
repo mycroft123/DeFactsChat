@@ -45,7 +45,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const [isTextAreaFocused, setIsTextAreaFocused] = useState(false);
   const [backupBadges, setBackupBadges] = useState<Pick<BadgeItem, 'id'>[]>([]);
   const [currentAIMode, setCurrentAIMode] = useState('defacts');
-  const [placeholderText, setPlaceholderText] = useState('Ask DeFacts General Knowledge');
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   const SpeechToText = useRecoilValue(store.speechToText);
   const TextToSpeech = useRecoilValue(store.textToSpeech);
@@ -125,21 +125,25 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
 
   // Update placeholder text when AI mode changes
   const handleAIModeChange = useCallback((mode: string) => {
+    console.log('AI Mode changing to:', mode);
     setCurrentAIMode(mode);
-    switch (mode) {
-      case 'defacts':
-        setPlaceholderText('Ask DeFacts General Knowledge');
-        break;
-      case 'denews':
-        setPlaceholderText('Ask DeNews Recent Events');
-        break;
-      case 'deresearch':
-        setPlaceholderText('Ask DeResearch Deep Insights');
-        break;
-      default:
-        setPlaceholderText('Message DeFacts');
-    }
+    // Force a re-render to update the placeholder
+    setForceUpdate(prev => prev + 1);
   }, []);
+
+  // Get placeholder text based on current mode
+  const getPlaceholderText = useCallback(() => {
+    switch (currentAIMode) {
+      case 'defacts':
+        return 'Ask DeFacts General Knowledge';
+      case 'denews':
+        return 'Ask DeNews Recent Events';
+      case 'deresearch':
+        return 'Ask DeResearch Deep Insights';
+      default:
+        return 'Message DeFacts';
+    }
+  }, [currentAIMode]);
 
   useAutoSave({
     files,
@@ -282,6 +286,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                     ref(e);
                     (textAreaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = e;
                   }}
+                  key={`textarea-${currentAIMode}-${forceUpdate}`}
                   disabled={disableInputs || isNotAppendable}
                   onPaste={handlePaste}
                   onKeyDown={handleKeyDown}
@@ -291,7 +296,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
                   id={mainTextareaId}
                   tabIndex={0}
                   data-testid="text-input"
-                  placeholder={placeholderText}
+                  placeholder={getPlaceholderText()}
                   rows={1}
                   onFocus={() => {
                     handleFocusOrClick();

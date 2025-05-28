@@ -301,34 +301,35 @@ function BadgeRow({
     [toggleBadge, onToggle],
   );
 
-// In your BadgeRow component, update the handleAIModeChange function:
-
-const handleAIModeChange = useCallback(
-  (mode: string) => {
-    setAIMode(mode);
-    
-    // Map mode to model names
-    const modeToModel: Record<string, string> = {
-      'defacts': 'DeFacts',
-      'denews': 'DeNews',
-      'deresearch': 'DeResearch'
-    };
-    
-    const modelName = modeToModel[mode];
-    
-    // Use gptPlugins endpoint for DeFacts
-    setConversation((prev: any) => ({
-      ...prev,
-      endpoint: 'gptPlugins',
-      model: modelName,
-    }));
-    
-    if (onAIModeChange) {
-      onAIModeChange(mode);
-    }
-  },
-  [onAIModeChange, setConversation],
-);
+  const handleAIModeChange = useCallback(
+    (mode: string) => {
+      console.log('BadgeRow: Changing AI mode to:', mode);
+      setAIMode(mode);
+      
+      // Map mode to model names
+      const modeToModel: Record<string, string> = {
+        'defacts': 'DeFacts',
+        'denews': 'DeNews',
+        'deresearch': 'DeResearch'
+      };
+      
+      const modelName = modeToModel[mode];
+      
+      // Use gptPlugins endpoint for DeFacts
+      setConversation((prev: any) => ({
+        ...prev,
+        endpoint: 'gptPlugins',
+        model: modelName,
+      }));
+      
+      // IMPORTANT: Call the parent's callback to update placeholder
+      if (onAIModeChange) {
+        console.log('BadgeRow: Calling parent onAIModeChange');
+        onAIModeChange(mode);
+      }
+    },
+    [onAIModeChange, setConversation],
+  );
 
   useEffect(() => {
     if (!dragState.draggedBadge) {
@@ -391,7 +392,12 @@ const handleAIModeChange = useCallback(
         <>
           <div className="flex items-center gap-2 ml-3">
             <button
-              onClick={() => handleAIModeChange('defacts')}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleAIModeChange('defacts');
+              }}
               className={`
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
@@ -404,7 +410,12 @@ const handleAIModeChange = useCallback(
               DeFacts
             </button>
             <button
-              onClick={() => handleAIModeChange('denews')}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleAIModeChange('denews');
+              }}
               className={`
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
@@ -417,7 +428,12 @@ const handleAIModeChange = useCallback(
               DeNews
             </button>
             <button
-              onClick={() => handleAIModeChange('deresearch')}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleAIModeChange('deresearch');
+              }}
               className={`
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
