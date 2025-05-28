@@ -22,6 +22,7 @@ interface BadgeRowProps {
   onChange: (badges: Pick<BadgeItem, 'id'>[]) => void;
   onToggle?: (badgeId: string, currentActive: boolean) => void;
   onAIModeChange?: (mode: string) => void;
+  onModelChange?: (model: string) => void; // Add this for model updates
   conversationId?: string | null;
   isInChat: boolean;
 }
@@ -139,6 +140,7 @@ function BadgeRow({
   onChange,
   onToggle,
   onAIModeChange,
+  onModelChange,
   isInChat,
 }: BadgeRowProps) {
   const [orderedBadges, setOrderedBadges] = useState<BadgeItem[]>([]);
@@ -159,8 +161,14 @@ function BadgeRow({
   const allBadges = useChatBadges();
   const isEditing = useRecoilValue(store.isEditingBadges);
   
-  // Commented out for now - causing errors
-  // const setConversation = useSetRecoilState(store.conversation);
+  // Try to use setConversation if it exists, otherwise we'll use the callback
+  let setConversation: any = null;
+  try {
+    // Only uncomment this if store.conversation exists
+    // setConversation = useSetRecoilState(store.conversation);
+  } catch (error) {
+    console.log('store.conversation not available, using callback method');
+  }
 
   const badges = useMemo(
     () => allBadges.filter((badge) => badge.isAvailable !== false),
@@ -321,29 +329,35 @@ function BadgeRow({
       
       const modelName = modeToModel[mode];
       
-      // TODO: Fix conversation state update
-      // Commenting out for now to prevent errors
-      /*
-      try {
-        setConversation((prev: any) => {
-          if (!prev) {
+      // Try to update conversation state directly if available
+      if (setConversation) {
+        try {
+          setConversation((prev: any) => {
+            console.log('Updating conversation model from:', prev?.model, 'to:', modelName);
+            if (!prev) {
+              return {
+                endpoint: 'gptPlugins',
+                model: modelName,
+              };
+            }
             return {
+              ...prev,
               endpoint: 'gptPlugins',
               model: modelName,
             };
-          }
-          return {
-            ...prev,
-            endpoint: 'gptPlugins',
-            model: modelName,
-          };
-        });
-      } catch (error) {
-        console.error('Error updating conversation:', error);
+          });
+        } catch (error) {
+          console.error('Error updating conversation:', error);
+        }
       }
-      */
+      
+      // Always use the callback method as backup or primary method
+      if (onModelChange) {
+        console.log('BadgeRow: Using callback to update model to:', modelName);
+        onModelChange(modelName);
+      }
     },
-    [onAIModeChange],
+    [onAIModeChange, onModelChange, setConversation],
   );
 
   useEffect(() => {
