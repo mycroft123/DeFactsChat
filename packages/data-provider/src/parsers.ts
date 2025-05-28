@@ -239,27 +239,40 @@ export const getResponseSender = (endpointOption: t.TEndpointOption): string => 
 
   // Special handling for gptPlugins endpoint
   if (endpoint === EModelEndpoint.gptPlugins) {
+    console.log('[getResponseSender] gptPlugins endpoint detected');
+    console.log('[getResponseSender] model:', model);
+    console.log('[getResponseSender] chatGptLabel:', chatGptLabel);
+    console.log('[getResponseSender] modelLabel:', modelLabel);
+    console.log('[getResponseSender] full endpointOption:', endpointOption);
+    
     // Honor custom labels if provided
     if (chatGptLabel) {
+      console.log('[getResponseSender] Returning chatGptLabel:', chatGptLabel);
       return chatGptLabel;
     }
     if (modelLabel) {
+      console.log('[getResponseSender] Returning modelLabel:', modelLabel);
       return modelLabel;
     }
     
     // Model-specific names for gptPlugins
     if (model === 'DeNews' || model.includes('DeNews')) {
+      console.log('[getResponseSender] Matched DeNews, returning: DeNews AI');
       return 'DeNews AI';
     }
     if (model === 'DeResearch' || model.includes('DeResearch')) {
+      console.log('[getResponseSender] Matched DeResearch, returning: DeResearch AI');
       return 'DeResearch AI';
     }
     if (model === 'DeFacts' || model.includes('DeFacts')) {
+      console.log('[getResponseSender] Matched DeFacts, returning: DeFacts AI');
       return 'DeFacts AI';
     }
     
     // Default fallback for gptPlugins
-    return (alternateName[endpoint] as string | undefined) ?? 'DeFacts AI';
+    const fallback = (alternateName[endpoint] as string | undefined) ?? 'DeFacts AI';
+    console.log('[getResponseSender] No match, returning fallback:', fallback);
+    return fallback;
   }
 
   if (
