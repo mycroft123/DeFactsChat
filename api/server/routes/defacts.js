@@ -1,5 +1,5 @@
 // api/server/routes/defacts.js
-// Complete DeFacts router with debugging and error handling
+// Complete DeFacts router compatible with LibreChat's plugin system
 
 const express = require('express');
 const router = express.Router();
@@ -104,57 +104,91 @@ const MODEL_CONFIGS = {
   },
 };
 
-// Debug middleware - logs all requests
+// Debug middleware
 router.use((req, res, next) => {
-  console.log(`[DeFacts] ${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(`[DeFacts Plugin] ${new Date().toISOString()} - ${req.method} ${req.path}`);
   if (req.body?.model) {
-    console.log(`[DeFacts] Model: ${req.body.model}, Messages: ${req.body?.messages?.length || 0}`);
+    console.log(`[DeFacts Plugin] Model: ${req.body.model}, Messages: ${req.body?.messages?.length || 0}`);
   }
   next();
 });
 
-// Main chat completions endpoint
-router.post('/v1/chat/completions', handleChatCompletion);
-
-// Compatibility endpoint for GPT Plugins format
-router.post('/chat/completions', handleChatCompletion);
-
-// Shared handler function
+// Main handler function
 async function handleChatCompletion(req, res) {
-  // Detailed logging
-  console.log('=== DEFACTS CHAT REQUEST ===');
-  console.log('Time:', new Date().toISOString());
-  console.log('Model requested:', req.body.model);
-  console.log('Stream:', req.body.stream);
-  console.log('Message count:', req.body.messages?.length);
-  if (req.body.messages?.length > 0) {
-    console.log('Last message preview:', req.body.messages[req.body.messages.length - 1].content?.substring(0, 100) + '...');
-  }
-  console.log('===========================');
+  console.log('[DeFacts Plugin] Chat completion request:', {
+    model: req.body.model,
+    messages: req.body.messages?.length,
+    stream: req.body.stream,
+    endpoint: req.originalUrl,
+  });
 
   try {
     const { messages, model, stream = false, ...otherParams } = req.body;
     
-    // Get configuration for the requested model
+    // Check if this is one of our custom models
     const config = MODEL_CONFIGS[model];
-    const systemPrompt = SYSTEM_PROMPTS[model];
     
-    if (!config || !systemPrompt) {
-      console.log('[DeFacts] ERROR: Invalid model requested:', model);
-      return res.status(400).json({ 
+    // If not our model, pass through to OpenAI directly
+    if (!config) {
+      console.log('[DeFacts Plugin] Not a DeFacts model, passing through to OpenAI:', model);
+      try {
+        if (stream) {
+          // Streaming passthrough
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Connection', 'keep-alive');
+          
+          const streamResponse = await openai.chat.completions.create({
+            messages,
+            model,
+            stream: true,
+            ...otherParams,
+          });
+          
+          for await (const chunk of streamResponse) {
+            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          }
+          
+          res.write('data: [DONE]\n\n');
+          res.end();
+        } else {
+          // Non-streaming passthrough
+          const response = await openai.chat.completions.create({
+            messages,
+            model,
+            stream: false,
+            ...otherParams,
+          });
+          res.json(response);
+        }
+      } catch (error) {
+        console.error('[DeFacts Plugin] OpenAI passthrough error:', error);
+        if (error.response?.data) {
+          return res.status(error.response.status).json(error.response.data);
+        }
+        throw error;
+      }
+      return;
+    }
+    
+    // It's one of our custom models
+    console.log(`[DeFacts Plugin] Using custom model ${model} -> ${config.model} (${config.client})`);
+    
+    const systemPrompt = SYSTEM_PROMPTS[model];
+    const client = config.client === 'perplexity' ? perplexity : openai;
+    
+    // Check if API key exists
+    if (!client.apiKey) {
+      console.error(`[DeFacts Plugin] Missing API key for ${config.client}`);
+      return res.status(500).json({
         error: {
-          message: `Invalid model: ${model}. Choose from: ${Object.keys(MODEL_CONFIGS).join(', ')}`,
-          type: 'invalid_request_error',
-          param: 'model',
-          code: 'model_not_found'
+          message: `Missing API key for ${config.client}`,
+          type: 'invalid_configuration',
+          param: null,
+          code: 'missing_api_key'
         }
       });
     }
-    
-    console.log(`[DeFacts] Using ${config.client} client with model: ${config.model}`);
-    
-    // Select the appropriate client
-    const client = config.client === 'perplexity' ? perplexity : openai;
     
     // Prepend system prompt to messages
     const enhancedMessages = [
@@ -162,9 +196,17 @@ async function handleChatCompletion(req, res) {
       ...messages
     ];
     
-    // Handle streaming
+    // Log the request details
+    console.log(`[DeFacts Plugin] Making ${config.client} API call:`, {
+      model: config.model,
+      temperature: config.temperature,
+      max_tokens: config.max_tokens,
+      messageCount: enhancedMessages.length,
+    });
+    
+    // Make the API call
     if (stream) {
-      console.log('[DeFacts] Starting streaming response...');
+      // Streaming response
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -183,25 +225,29 @@ async function handleChatCompletion(req, res) {
         let chunkCount = 0;
         for await (const chunk of streamResponse) {
           chunkCount++;
-          // Format SSE response with DeFacts model name
-          const data = JSON.stringify({
+          // IMPORTANT: Keep the original model name in the response
+          const modifiedChunk = {
             ...chunk,
-            model: model,  // Keep the DeFacts model name
-          });
-          res.write(`data: ${data}\n\n`);
+            model: model, // Keep DeFacts/DeNews/DeResearch
+          };
+          res.write(`data: ${JSON.stringify(modifiedChunk)}\n\n`);
         }
         
-        console.log(`[DeFacts] Streaming completed. Sent ${chunkCount} chunks`);
+        console.log(`[DeFacts Plugin] Streaming completed. Sent ${chunkCount} chunks`);
         res.write('data: [DONE]\n\n');
         res.end();
       } catch (streamError) {
-        console.error('[DeFacts] Streaming error:', streamError);
-        res.write(`data: ${JSON.stringify({ error: streamError.message })}\n\n`);
+        console.error('[DeFacts Plugin] Streaming error:', streamError);
+        res.write(`data: ${JSON.stringify({ 
+          error: { 
+            message: streamError.message,
+            type: 'stream_error'
+          } 
+        })}\n\n`);
         res.end();
       }
     } else {
       // Non-streaming response
-      console.log('[DeFacts] Making non-streaming API call...');
       try {
         const completion = await client.chat.completions.create({
           messages: enhancedMessages,
@@ -212,13 +258,10 @@ async function handleChatCompletion(req, res) {
           ...otherParams,
         });
         
-        console.log('[DeFacts] API call successful');
-        console.log(`[DeFacts] Response tokens: ${completion.usage?.total_tokens || 'unknown'}`);
-        
-        // Return response with DeFacts model name
+        // IMPORTANT: Return with our model name, not the underlying model
         const response = {
           ...completion,
-          model: model,  // Keep the DeFacts model name
+          model: model, // Keep DeFacts/DeNews/DeResearch
           defacts_metadata: {
             actual_model: config.model,
             mode: model,
@@ -226,46 +269,76 @@ async function handleChatCompletion(req, res) {
           }
         };
         
+        console.log('[DeFacts Plugin] Success:', {
+          model: response.model,
+          usage: response.usage,
+          actualModel: config.model,
+        });
+        
         res.json(response);
       } catch (apiError) {
-        console.error('[DeFacts] API Error:', apiError.message);
-        console.error('[DeFacts] Error details:', apiError.response?.data || apiError);
+        console.error('[DeFacts Plugin] API call error:', apiError);
+        console.error('[DeFacts Plugin] Error details:', apiError.response?.data || apiError.message);
         
-        // If it's an API error from OpenAI/Perplexity, pass it through
-        if (apiError.response?.status && apiError.response?.data) {
-          return res.status(apiError.response.status).json(apiError.response.data);
+        // If it's an API error, return it in OpenAI format
+        if (apiError.response?.data?.error) {
+          // Replace any mention of the real model with our custom model name
+          const errorMessage = apiError.response.data.error.message?.replace(
+            new RegExp(config.model, 'g'), 
+            model
+          ) || apiError.response.data.error.message;
+          
+          return res.status(apiError.response.status).json({
+            error: {
+              ...apiError.response.data.error,
+              message: errorMessage,
+            }
+          });
         }
         
-        // Otherwise, return a generic error
-        return res.status(500).json({
-          error: {
-            message: apiError.message || 'Failed to process request',
-            type: 'api_error',
-            code: 'internal_error'
-          }
-        });
+        // Generic API error
+        throw apiError;
       }
     }
     
   } catch (error) {
-    console.error('[DeFacts] Unexpected error:', error);
-    res.status(500).json({ 
+    console.error('[DeFacts Plugin] Unexpected error:', error);
+    
+    // Return error in OpenAI format
+    res.status(500).json({
       error: {
-        message: 'Internal server error',
-        type: 'server_error',
-        details: error.message,
+        message: error.message || 'An error occurred during your request.',
+        type: 'internal_error',
+        param: null,
+        code: null,
       }
     });
   }
 }
 
-// Models endpoint (for LibreChat)
-router.get('/v1/models', (req, res) => {
-  console.log('[DeFacts] Models endpoint called');
+// Plugin system expects these exact paths
+router.post('/v1/chat/completions', handleChatCompletion);
+router.post('/chat/completions', handleChatCompletion);
+router.post('/completions', handleChatCompletion); // Some plugin configs use this
+
+// Models endpoint - return ALL models including OpenAI's
+router.get('/v1/models', async (req, res) => {
+  console.log('[DeFacts Plugin] Models endpoint called');
   
-  const models = {
-    object: 'list',
-    data: Object.keys(MODEL_CONFIGS).map(modelName => ({
+  try {
+    // Try to get OpenAI's models
+    let openaiModels = [];
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const modelsResponse = await openai.models.list();
+        openaiModels = modelsResponse.data;
+      } catch (error) {
+        console.error('[DeFacts Plugin] Could not fetch OpenAI models:', error.message);
+      }
+    }
+    
+    // Add our custom models
+    const customModels = Object.keys(MODEL_CONFIGS).map(modelName => ({
       id: modelName,
       object: 'model',
       created: Math.floor(Date.now() / 1000),
@@ -273,38 +346,70 @@ router.get('/v1/models', (req, res) => {
       permission: [],
       root: modelName,
       parent: null,
-    })),
-  };
-  
-  console.log('[DeFacts] Returning models:', models.data.map(m => m.id).join(', '));
-  res.json(models);
+    }));
+    
+    // Combine all models
+    const allModels = [
+      ...openaiModels,
+      ...customModels,
+    ];
+    
+    console.log(`[DeFacts Plugin] Returning ${allModels.length} models (${openaiModels.length} OpenAI + ${customModels.length} DeFacts)`);
+    
+    res.json({
+      object: 'list',
+      data: allModels,
+    });
+  } catch (error) {
+    console.error('[DeFacts Plugin] Models endpoint error:', error);
+    // If we can't get OpenAI models, just return ours
+    res.json({
+      object: 'list',
+      data: Object.keys(MODEL_CONFIGS).map(modelName => ({
+        id: modelName,
+        object: 'model',
+        created: Math.floor(Date.now() / 1000),
+        owned_by: 'defacts-ai',
+        permission: [],
+        root: modelName,
+        parent: null,
+      })),
+    });
+  }
 });
 
 // Health check endpoint
 router.get('/health', (req, res) => {
   const health = {
     status: 'ok',
+    mode: 'plugin',
     timestamp: new Date().toISOString(),
     models: Object.keys(MODEL_CONFIGS),
     clients: {
       openai: !!process.env.OPENAI_API_KEY,
       perplexity: !!process.env.PERPLEXITY_API_KEY,
+    },
+    environment: {
+      pluginModels: process.env.PLUGIN_MODELS,
+      pluginsBaseUrl: process.env.PLUGINS_BASE_URL,
     }
   };
-  console.log('[DeFacts] Health check:', health);
+  console.log('[DeFacts Plugin] Health check:', health);
   res.json(health);
 });
 
 // Test endpoint
 router.get('/test', (req, res) => {
-  console.log('[DeFacts] Test endpoint called');
+  console.log('[DeFacts Plugin] Test endpoint called');
   res.json({
-    message: 'DeFacts router is working!',
+    message: 'DeFacts Plugin router is working!',
     timestamp: new Date().toISOString(),
+    mode: 'plugin-system',
     availableModels: Object.keys(MODEL_CONFIGS),
-    environment: {
+    configuration: {
       hasOpenAIKey: !!process.env.OPENAI_API_KEY,
       hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
+      pluginModels: process.env.PLUGIN_MODELS?.split(',') || [],
     }
   });
 });
@@ -319,7 +424,7 @@ router.options('*', (req, res) => {
 
 // 404 handler
 router.use((req, res) => {
-  console.log(`[DeFacts] 404 - Route not found: ${req.method} ${req.path}`);
+  console.log(`[DeFacts Plugin] 404 - Route not found: ${req.method} ${req.path}`);
   res.status(404).json({
     error: {
       message: `Route not found: ${req.method} ${req.path}`,
@@ -327,6 +432,7 @@ router.use((req, res) => {
       available_routes: [
         'POST /v1/chat/completions',
         'POST /chat/completions',
+        'POST /completions',
         'GET /v1/models',
         'GET /health',
         'GET /test'
