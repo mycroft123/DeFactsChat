@@ -1,29 +1,26 @@
-// Add this at the VERY TOP of your defacts.js file, before any route definitions:
-
-// Global request logger - catches ALL requests to this router
-router.use((req, res, next) => {
-    console.log('===========================================');
-    console.log('[DEFACTS ROUTER HIT]', new Date().toISOString());
-    console.log('Method:', req.method);
-    console.log('URL:', req.url);
-    console.log('Full URL:', req.originalUrl);
-    console.log('Base URL:', req.baseUrl);
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
-    if (req.body) {
-      console.log('Body:', JSON.stringify(req.body, null, 2));
-    }
-    console.log('===========================================');
-    next();
-  });
-
-
-
 // api/server/routes/defacts.js
 // Complete DeFacts router compatible with LibreChat's plugin system
 
 const express = require('express');
 const router = express.Router();
 const OpenAI = require('openai');
+
+// Global request logger - catches ALL requests to this router
+// MUST BE AFTER router is defined
+router.use((req, res, next) => {
+  console.log('===========================================');
+  console.log('[DEFACTS ROUTER HIT]', new Date().toISOString());
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Full URL:', req.originalUrl);
+  console.log('Base URL:', req.baseUrl);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  if (req.body) {
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+  }
+  console.log('===========================================');
+  next();
+});
 
 // Initialize OpenAI client (for DeFacts and DeResearch)
 const openai = new OpenAI({
