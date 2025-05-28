@@ -122,21 +122,6 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     }
   }, [isCollapsed]);
 
-  // Sync currentAIMode with conversation model
-  useEffect(() => {
-    if (conversation?.endpoint === 'gptPlugins' && conversation?.model) {
-      const modelToMode: Record<string, string> = {
-        'DeFacts': 'defacts',
-        'DeNews': 'denews',
-        'DeResearch': 'deresearch'
-      };
-      const mode = modelToMode[conversation.model as string];
-      if (mode) {
-        setCurrentAIMode(mode);
-      }
-    }
-  }, [conversation?.endpoint, conversation?.model]);
-
   const getPlaceholderText = useCallback(() => {
     switch (currentAIMode) {
       case 'defacts':
