@@ -221,7 +221,7 @@ endpoints:
       titleModel: 'defacts-model-v1'
       titleMethod: 'completion'
       modelDisplayLabel: 'DeFacts AI'
-      iconURL: 'https://your-domain.com/defacts-icon.png'  # Replace with your actual icon URL
+      iconURL: 'https://imauscty4e4ddllrj32jcna2gei5xpgigjxgplkbugqoceyo2j2q.arweave.net/QwFJCnjhODGtcU70kTQaMRHbvMgybmetQaGg4RMO0nU'  # Replace with your actual icon URL
       # Add any custom parameters your API needs
       # addParams:
       #   custom_param: 'value'
