@@ -125,9 +125,6 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
 
   // In ChatForm, update the currentAIMode initialization to read from conversation:
 
-// Replace this line:
-const [currentAIMode, setCurrentAIMode] = useState('defacts');
-
 // With this:
 const [currentAIMode, setCurrentAIMode] = useState(() => {
   // Check if we're using the DeFacts endpoint (gptPlugins)
