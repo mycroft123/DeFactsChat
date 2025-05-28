@@ -1,5 +1,5 @@
 // api/server/routes/defacts.js
-// Custom router that handles DeFacts, DeNews, and DeResearch models
+// Complete DeFacts router with debugging and error handling
 
 const express = require('express');
 const router = express.Router();
@@ -104,6 +104,15 @@ const MODEL_CONFIGS = {
   },
 };
 
+// Debug middleware - logs all requests
+router.use((req, res, next) => {
+  console.log(`[DeFacts] ${new Date().toISOString()} - ${req.method} ${req.path}`);
+  if (req.body?.model) {
+    console.log(`[DeFacts] Model: ${req.body.model}, Messages: ${req.body?.messages?.length || 0}`);
+  }
+  next();
+});
+
 // Main chat completions endpoint
 router.post('/v1/chat/completions', handleChatCompletion);
 
@@ -112,20 +121,37 @@ router.post('/chat/completions', handleChatCompletion);
 
 // Shared handler function
 async function handleChatCompletion(req, res) {
+  // Detailed logging
+  console.log('=== DEFACTS CHAT REQUEST ===');
+  console.log('Time:', new Date().toISOString());
+  console.log('Model requested:', req.body.model);
+  console.log('Stream:', req.body.stream);
+  console.log('Message count:', req.body.messages?.length);
+  if (req.body.messages?.length > 0) {
+    console.log('Last message preview:', req.body.messages[req.body.messages.length - 1].content?.substring(0, 100) + '...');
+  }
+  console.log('===========================');
+
   try {
     const { messages, model, stream = false, ...otherParams } = req.body;
-    
-    console.log('DeFacts Router - Model requested:', model);
     
     // Get configuration for the requested model
     const config = MODEL_CONFIGS[model];
     const systemPrompt = SYSTEM_PROMPTS[model];
     
     if (!config || !systemPrompt) {
+      console.log('[DeFacts] ERROR: Invalid model requested:', model);
       return res.status(400).json({ 
-        error: `Invalid model: ${model}. Choose from: DeFacts, DeNews, DeResearch` 
+        error: {
+          message: `Invalid model: ${model}. Choose from: ${Object.keys(MODEL_CONFIGS).join(', ')}`,
+          type: 'invalid_request_error',
+          param: 'model',
+          code: 'model_not_found'
+        }
       });
     }
+    
+    console.log(`[DeFacts] Using ${config.client} client with model: ${config.model}`);
     
     // Select the appropriate client
     const client = config.client === 'perplexity' ? perplexity : openai;
@@ -138,94 +164,174 @@ async function handleChatCompletion(req, res) {
     
     // Handle streaming
     if (stream) {
+      console.log('[DeFacts] Starting streaming response...');
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
       
-      const streamResponse = await client.chat.completions.create({
-        messages: enhancedMessages,
-        model: config.model,
-        temperature: config.temperature,
-        max_tokens: config.max_tokens,
-        stream: true,
-        ...otherParams,
-      });
-      
-      for await (const chunk of streamResponse) {
-        // Format SSE response
-        const data = JSON.stringify({
-          ...chunk,
-          model: model,  // Keep the DeFacts model name
+      try {
+        const streamResponse = await client.chat.completions.create({
+          messages: enhancedMessages,
+          model: config.model,
+          temperature: config.temperature,
+          max_tokens: config.max_tokens,
+          stream: true,
+          ...otherParams,
         });
-        res.write(`data: ${data}\n\n`);
+        
+        let chunkCount = 0;
+        for await (const chunk of streamResponse) {
+          chunkCount++;
+          // Format SSE response with DeFacts model name
+          const data = JSON.stringify({
+            ...chunk,
+            model: model,  // Keep the DeFacts model name
+          });
+          res.write(`data: ${data}\n\n`);
+        }
+        
+        console.log(`[DeFacts] Streaming completed. Sent ${chunkCount} chunks`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+      } catch (streamError) {
+        console.error('[DeFacts] Streaming error:', streamError);
+        res.write(`data: ${JSON.stringify({ error: streamError.message })}\n\n`);
+        res.end();
       }
-      
-      res.write('data: [DONE]\n\n');
-      res.end();
     } else {
       // Non-streaming response
-      const completion = await client.chat.completions.create({
-        messages: enhancedMessages,
-        model: config.model,
-        temperature: config.temperature,
-        max_tokens: config.max_tokens,
-        stream: false,
-        ...otherParams,
-      });
-      
-      // Return response with DeFacts model name
-      res.json({
-        ...completion,
-        model: model,  // Keep the DeFacts model name
-        defacts_metadata: {
-          actual_model: config.model,
-          mode: model,
+      console.log('[DeFacts] Making non-streaming API call...');
+      try {
+        const completion = await client.chat.completions.create({
+          messages: enhancedMessages,
+          model: config.model,
+          temperature: config.temperature,
+          max_tokens: config.max_tokens,
+          stream: false,
+          ...otherParams,
+        });
+        
+        console.log('[DeFacts] API call successful');
+        console.log(`[DeFacts] Response tokens: ${completion.usage?.total_tokens || 'unknown'}`);
+        
+        // Return response with DeFacts model name
+        const response = {
+          ...completion,
+          model: model,  // Keep the DeFacts model name
+          defacts_metadata: {
+            actual_model: config.model,
+            mode: model,
+            client: config.client,
+          }
+        };
+        
+        res.json(response);
+      } catch (apiError) {
+        console.error('[DeFacts] API Error:', apiError.message);
+        console.error('[DeFacts] Error details:', apiError.response?.data || apiError);
+        
+        // If it's an API error from OpenAI/Perplexity, pass it through
+        if (apiError.response?.status && apiError.response?.data) {
+          return res.status(apiError.response.status).json(apiError.response.data);
         }
-      });
+        
+        // Otherwise, return a generic error
+        return res.status(500).json({
+          error: {
+            message: apiError.message || 'Failed to process request',
+            type: 'api_error',
+            code: 'internal_error'
+          }
+        });
+      }
     }
     
   } catch (error) {
-    console.error('DeFacts Router Error:', error);
+    console.error('[DeFacts] Unexpected error:', error);
     res.status(500).json({ 
-      error: 'Failed to process request',
-      details: error.message 
+      error: {
+        message: 'Internal server error',
+        type: 'server_error',
+        details: error.message,
+      }
     });
   }
 }
 
 // Models endpoint (for LibreChat)
 router.get('/v1/models', (req, res) => {
-  res.json({
+  console.log('[DeFacts] Models endpoint called');
+  
+  const models = {
     object: 'list',
-    data: [
-      {
-        id: 'DeFacts',
-        object: 'model',
-        created: Date.now(),
-        owned_by: 'defacts-ai',
-        permission: [],
-        root: 'DeFacts',
-        parent: null,
-      },
-      {
-        id: 'DeNews',
-        object: 'model',
-        created: Date.now(),
-        owned_by: 'defacts-ai',
-        permission: [],
-        root: 'DeNews',
-        parent: null,
-      },
-      {
-        id: 'DeResearch',
-        object: 'model',
-        created: Date.now(),
-        owned_by: 'defacts-ai',
-        permission: [],
-        root: 'DeResearch',
-        parent: null,
-      },
-    ],
+    data: Object.keys(MODEL_CONFIGS).map(modelName => ({
+      id: modelName,
+      object: 'model',
+      created: Math.floor(Date.now() / 1000),
+      owned_by: 'defacts-ai',
+      permission: [],
+      root: modelName,
+      parent: null,
+    })),
+  };
+  
+  console.log('[DeFacts] Returning models:', models.data.map(m => m.id).join(', '));
+  res.json(models);
+});
+
+// Health check endpoint
+router.get('/health', (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    models: Object.keys(MODEL_CONFIGS),
+    clients: {
+      openai: !!process.env.OPENAI_API_KEY,
+      perplexity: !!process.env.PERPLEXITY_API_KEY,
+    }
+  };
+  console.log('[DeFacts] Health check:', health);
+  res.json(health);
+});
+
+// Test endpoint
+router.get('/test', (req, res) => {
+  console.log('[DeFacts] Test endpoint called');
+  res.json({
+    message: 'DeFacts router is working!',
+    timestamp: new Date().toISOString(),
+    availableModels: Object.keys(MODEL_CONFIGS),
+    environment: {
+      hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+      hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
+    }
+  });
+});
+
+// Handle OPTIONS for CORS
+router.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(200);
+});
+
+// 404 handler
+router.use((req, res) => {
+  console.log(`[DeFacts] 404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({
+    error: {
+      message: `Route not found: ${req.method} ${req.path}`,
+      type: 'not_found',
+      available_routes: [
+        'POST /v1/chat/completions',
+        'POST /chat/completions',
+        'GET /v1/models',
+        'GET /health',
+        'GET /test'
+      ]
+    }
   });
 });
 
