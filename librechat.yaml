@@ -327,18 +327,8 @@ endpoints:
     capabilities: ["execute_code", "file_search", "actions", "tools"]
   
   custom:
-    # DeFacts AI - Your custom endpoint with three models
-    - name: "DeFacts AI"
-      apiKey: "${OPENAI_API_KEY}"  # Uses your OpenAI API key from environment
-      baseURL: "http://localhost:3080/api/defacts/v1"  # Points to your local defacts route
-      models:
-        default: ["DeFacts", "DeNews", "DeResearch"]
-        fetch: false
-      titleConvo: true
-      titleModel: "DeFacts"
-      modelDisplayLabel: "DeFacts AI"
-      dropParams: ["stream"]  # Disable streaming to avoid issues initially
-      iconURL: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="green" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>'
+    # REMOVED DeFacts AI section - it conflicts with plugin system
+    # Your DeFacts models work through the GPT Plugins system, not custom endpoints
     
     # Your existing endpoints remain unchanged
     - name: 'groq'
