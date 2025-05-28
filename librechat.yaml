@@ -10,40 +10,144 @@ cache: true
 # File strategy s3/firebase
 # fileStrategy: "s3"
 
-# Model Specs for Default AI Selection
+# Model Specs for DeFacts Three Modes
 modelSpecs:
-  enforce: false  # Allow users to switch models if needed
-  prioritize: true  # Prioritize these specs
+  enforce: false
+  prioritize: true
   list:
-    - name: "defacts-default"
-      label: "DeFacts Assistant"
-      default: true  # This makes it the default on load
-      description: "Your intelligent DeFacts AI assistant"
-      iconURL: "https://your-domain.com/defacts-icon.png"  # Replace with your icon URL
+    # DeFacts Mode - Fact Checking with GPT-4
+    - name: "defacts-mode"
+      label: "DeFacts AI ✓"
+      default: true
+      description: "Fact-checking and verification mode"
+      iconURL: "https://your-domain.com/defacts-icon.png"
+      showIconInHeader: true
+      showIconInMenu: true
+      preset:
+        endpoint: "openAI"
+        model: "gpt-4o"
+        modelLabel: "DeFacts AI"
+        chatGptLabel: "DeFacts AI"
+        temperature: 0.7
+        maxContextTokens: 128000
+        max_tokens: 2048
+        promptPrefix: |
+          You are DeFacts AI, a specialized fact-checking assistant. Your responses follow this structure:
+          
+          CLAIM ANALYSIS:
+          [Restate the claim being checked]
+          
+          VERDICT: [TRUE | FALSE | PARTIALLY TRUE | UNVERIFIABLE | MISLEADING CONTEXT]
+          
+          EVIDENCE:
+          • [Key evidence point 1 with source type]
+          • [Key evidence point 2 with source type]
+          • [Additional evidence as needed]
+          
+          CONTEXT:
+          [Important context that affects interpretation]
+          
+          CONFIDENCE: [HIGH | MEDIUM | LOW] based on available evidence
+          
+          When fact-checking:
+          - Distinguish between facts, opinions, and predictions
+          - Note when claims contain multiple parts with different truth values
+          - Identify missing context that changes meaning
+          - Highlight time-sensitive information
+          - Suggest reliable sources for verification
+    
+    # DeNews Mode - Current Events with Perplexity
+    - name: "denews-mode"
+      label: "DeNews AI 📰"
+      description: "Current events and news analysis with real-time data"
+      iconURL: "https://your-domain.com/denews-icon.png"
       showIconInHeader: true
       showIconInMenu: true
       preset:
         endpoint: "custom"
-        endpointName: "DeFacts AI"  # Must match the name in custom endpoints
-        model: "defacts-model-v1"  # Replace with your model name
-        temperature: 0.7
-        maxContextTokens: 8192
+        endpointName: "Perplexity"
+        model: "sonar-medium-online"
+        modelLabel: "DeNews AI"
+        chatGptLabel: "DeNews AI"
+        temperature: 0.5
         max_tokens: 2048
-        # Add any default prompts or settings
         promptPrefix: |
-          You are DeFacts AI, an intelligent assistant focused on providing accurate, factual information.
+          You are DeNews AI, a news analysis and current events assistant powered by real-time information.
+          
+          Your approach:
+          1. **Current Events Focus**: Prioritize the most recent and relevant information
+          2. **Multiple Sources**: When discussing news, indicate if multiple sources report the same information
+          3. **Temporal Context**: Always specify dates and timeframes
+          4. **Developing Stories**: Clearly mark when a story is still developing
+          5. **Fact vs Opinion**: Distinguish between reported facts and editorial opinions
+          
+          Format your responses as:
+          📰 HEADLINE SUMMARY: [Main point in one sentence]
+          📅 TIMELINE: [When this happened/is happening]
+          🔍 KEY DETAILS: [Bullet points of main facts]
+          🌐 BROADER CONTEXT: [Why this matters]
+          ⚡ LATEST UPDATES: [Most recent developments]
+          📊 SOURCES: [Note if multiple sources confirm]
+    
+    # DeResearch Mode - Deep Analysis with GPT-4
+    - name: "deresearch-mode"
+      label: "DeResearch AI 🔬"
+      description: "Deep research and comprehensive analysis"
+      iconURL: "https://your-domain.com/deresearch-icon.png"
+      showIconInHeader: true
+      showIconInMenu: true
+      preset:
+        endpoint: "openAI"
+        model: "gpt-4o"  # Change to "o1-preview" when you have access
+        modelLabel: "DeResearch AI"
+        chatGptLabel: "DeResearch AI"
+        temperature: 0.3
+        maxContextTokens: 128000
+        max_tokens: 4096
+        promptPrefix: |
+          You are DeResearch AI, powered by advanced reasoning capabilities for deep analysis and complex problem-solving.
+          
+          Your approach involves:
+          1. **Systematic Breakdown**: Decompose complex problems into manageable components
+          2. **Multi-step Reasoning**: Show your thinking process step-by-step
+          3. **Consider Multiple Angles**: Explore different approaches and perspectives
+          4. **Evidence-Based Conclusions**: Support findings with logical reasoning
+          5. **Acknowledge Limitations**: Be clear about assumptions and uncertainties
+          
+          Structure your responses as:
+          🎯 RESEARCH OBJECTIVE
+          [Clear statement of what we're investigating]
+          
+          🔬 METHODOLOGY
+          [How you'll approach this analysis]
+          
+          📊 ANALYSIS
+          Step 1: [First component]
+          Step 2: [Second component]
+          [Continue as needed]
+          
+          💡 FINDINGS
+          • [Key discovery 1]
+          • [Key discovery 2]
+          • [Additional findings]
+          
+          📈 IMPLICATIONS
+          [What this means in practice]
+          
+          🔄 FURTHER RESEARCH
+          [Questions that remain open]
 
 # Custom interface configuration
 interface:
-  customWelcome: "Welcome to DeFacts! I'm your AI assistant powered by DeFacts AI. Let's Get Smarter Together!"
+  customWelcome: "Welcome to DeFacts! Select a mode above: DeFacts (fact-checking), DeNews (current events), or DeResearch (deep analysis). Let's Get Smarter Together!"
   # Privacy policy settings
   privacyPolicy:
-    externalUrl: 'https://defacts.ai/privacy-policy'  # Update to your URL
+    externalUrl: 'https://defacts.ai/privacy-policy'
     openNewTab: true
 
   # Terms of service
   termsOfService:
-    externalUrl: 'https://defacts.ai/tos'  # Update to your URL
+    externalUrl: 'https://defacts.ai/tos'
     openNewTab: true
     modalAcceptance: true
     modalTitle: "Terms of Service for DeFacts"
@@ -52,7 +156,7 @@ interface:
 
       *Effective Date: February 18, 2024*
 
-      Welcome to DeFacts, the informational website for the open-source AI chat platform, available at https:/DeFacts.ai. These Terms of Service ("Terms") govern your use of our website and the services we offer. By accessing or using the Website, you agree to be bound by these Terms and our Privacy Policy, accessible at https://DeFacts.ai//privacy.
+      Welcome to DeFacts, the informational website for the open-source AI chat platform, available at https://DeFacts.ai. These Terms of Service ("Terms") govern your use of our website and the services we offer. By accessing or using the Website, you agree to be bound by these Terms and our Privacy Policy, accessible at https://DeFacts.ai/privacy.
 
       ## 1. Ownership
 
@@ -85,7 +189,7 @@ interface:
       By using the Website, you acknowledge that you have read these Terms of Service and agree to be bound by them.
 
   endpointsMenu: true
-  modelSelect: true  # Set to false if you want to lock users to your AI only
+  modelSelect: true
   parameters: true
   sidePanel: true
   presets: true
@@ -149,7 +253,7 @@ actions:
     - "swapi.dev"
     - "librechat.ai"
     - "google.com"
-    - "defacts.ai"  # Add your domain
+    - "defacts.ai"
 
 # MCP Servers Object Structure
 mcpServers:
@@ -181,9 +285,22 @@ mcpServers:
 
 # Definition of custom endpoints
 endpoints:
-  # Global title settings
-  titleModel: defacts-model-v1  # Use your AI for titles
+  # Global title settings - using GPT-3.5 for efficiency
+  titleModel: gpt-3.5-turbo
   titleMethod: completion
+  
+  # OpenAI Configuration (used by DeFacts and DeResearch modes)
+  openAI:
+    models:
+      default: [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4-turbo",
+        "gpt-3.5-turbo"
+      ]
+      fetch: true
+    titleModel: "gpt-3.5-turbo"
+    modelDisplayLabel: "OpenAI"
   
   assistants:
     disableBuilder: false # Disable Assistants Builder Interface by setting to `true`
@@ -210,24 +327,6 @@ endpoints:
     capabilities: ["execute_code", "file_search", "actions", "tools"]
   
   custom:
-    # YOUR CUSTOM AI ENGINE - PLACED FIRST FOR PRIORITY
-    - name: 'DeFacts AI'
-      apiKey: '${DEFACTS_AI_KEY}'  # Set this in your .env file
-      baseURL: '${DEFACTS_AI_BASE_URL}'  # Set this in your .env file (e.g., https://your-ai-api.com/v1)
-      models:
-        default: ['defacts-model-v1', 'defacts-model-v2']  # Replace with your actual model names
-        fetch: false  # Set to true if your API supports model listing
-      titleConvo: true
-      titleModel: 'defacts-model-v1'
-      titleMethod: 'completion'
-      modelDisplayLabel: 'DeFacts AI'
-      iconURL: 'https://imauscty4e4ddllrj32jcna2gei5xpgigjxgplkbugqoceyo2j2q.arweave.net/QwFJCnjhODGtcU70kTQaMRHbvMgybmetQaGg4RMO0nU'  # Replace with your actual icon URL
-      # Add any custom parameters your API needs
-      # addParams:
-      #   custom_param: 'value'
-      # Remove parameters your API doesn't support
-      # dropParams: ['stop', 'frequency_penalty', 'presence_penalty']
-    
     # Groq Example
     - name: 'groq'
       apiKey: '${GROQ_API_KEY}'
@@ -324,12 +423,12 @@ endpoints:
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
       
-    # CORRECTED Perplexity configuration
+    # Perplexity configuration (used by DeNews mode)
     - name: 'Perplexity'
       apiKey: '${PERPLEXITY_API_KEY}'
-      baseURL: 'https://api.perplexity.ai/v1'
+      baseURL: 'https://api.perplexity.ai'
       models:
-        default: ['sonar-small-chat', 'sonar-medium-chat', 'codellama-70b-instruct', 'mistral-7b-instruct', 'mixtral-8x7b-instruct']
+        default: ['sonar-small-online', 'sonar-medium-online', 'sonar-small-chat', 'sonar-medium-chat']
         fetch: false
       titleConvo: true
       titleModel: 'sonar-small-chat'

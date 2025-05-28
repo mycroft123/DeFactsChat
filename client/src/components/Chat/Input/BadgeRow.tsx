@@ -8,7 +8,7 @@ import React, {
   forwardRef,
   useReducer,
 } from 'react';
-import { useRecoilValue, useRecoilCallback } from 'recoil';
+import { useRecoilValue, useRecoilCallback, useSetRecoilState } from 'recoil';
 import type { LucideIcon } from 'lucide-react';
 import CodeInterpreter from './CodeInterpreter';
 import type { BadgeItem } from '~/common';
@@ -158,6 +158,9 @@ function BadgeRow({
 
   const allBadges = useChatBadges();
   const isEditing = useRecoilValue(store.isEditingBadges);
+  
+  // Add the setConversation hook for DeFacts integration
+  const setConversation = useSetRecoilState(store.conversation);
 
   const badges = useMemo(
     () => allBadges.filter((badge) => badge.isAvailable !== false),
@@ -298,15 +301,50 @@ function BadgeRow({
     [toggleBadge, onToggle],
   );
 
-  const handleAIModeChange = useCallback(
-    (mode: string) => {
-      setAIMode(mode);
-      if (onAIModeChange) {
-        onAIModeChange(mode);
-      }
-    },
-    [onAIModeChange],
-  );
+// Replace your handleAIModeChange function with this enhanced version:
+
+const handleAIModeChange = useCallback(
+  (mode: string) => {
+    setAIMode(mode);
+    
+    // Map button clicks to modelSpec names from your YAML
+    const modeToSpecName: Record<string, string> = {
+      'defacts': 'defacts-mode',
+      'denews': 'denews-mode',
+      'deresearch': 'deresearch-mode'
+    };
+    
+    // Custom display information for each mode
+    const modeDisplayInfo: Record<string, { label: string; icon: string }> = {
+      'defacts': { label: 'DeFacts AI', icon: '✓' },
+      'denews': { label: 'DeNews AI', icon: '📰' },
+      'deresearch': { label: 'DeResearch AI', icon: '🔬' }
+    };
+    
+    const specName = modeToSpecName[mode];
+    const displayInfo = modeDisplayInfo[mode];
+    
+    // Update the conversation to use the selected model spec
+    setConversation((prev: any) => ({
+      ...prev,
+      // This tells LibreChat to use the selected model spec
+      spec: specName,
+      // Add custom display information
+      chatGptLabel: displayInfo.label,
+      modelLabel: displayInfo.label,
+      // Store the mode for reference
+      defactsMode: mode,
+      // These ensure the spec is used
+      endpoint: null,
+      model: null,
+    }));
+    
+    if (onAIModeChange) {
+      onAIModeChange(mode);
+    }
+  },
+  [onAIModeChange, setConversation],
+);
 
   useEffect(() => {
     if (!dragState.draggedBadge) {
