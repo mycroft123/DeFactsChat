@@ -45,6 +45,8 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const [isTextAreaFocused, setIsTextAreaFocused] = useState(false);
   const [backupBadges, setBackupBadges] = useState<Pick<BadgeItem, 'id'>[]>([]);
   const [currentAIMode, setCurrentAIMode] = useState('defacts');
+  const [forceUpdate, setForceUpdate] = useState(0);
+  const placeholderRef = useRef('Ask DeFacts General Knowledge');
 
   const SpeechToText = useRecoilValue(store.speechToText);
   const TextToSpeech = useRecoilValue(store.textToSpeech);
@@ -122,18 +124,102 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     }
   }, [isCollapsed]);
 
-  const getPlaceholderText = useCallback(() => {
-    switch (currentAIMode) {
+  // Update placeholder text when AI mode changes
+  const handleAIModeChange = useCallback((mode: string) => {
+    console.log('AI Mode changing to:', mode);
+    setCurrentAIMode(mode);
+    
+    // Update placeholder based on mode
+    switch (mode) {
       case 'defacts':
-        return 'Ask DeFacts General Knowledge';
+        placeholderRef.current = 'Ask DeFacts General Knowledge';
+        break;
       case 'denews':
-        return 'Ask DeNews Recent Events';
+        placeholderRef.current = 'Ask DeNews Recent Events';
+        break;
       case 'deresearch':
-        return 'Ask DeResearch Deep Insights';
+        placeholderRef.current = 'Ask DeResearch Deep Insights';
+        break;
       default:
-        return 'Message DeFacts';
+        placeholderRef.current = 'Message DeFacts';
     }
-  }, [currentAIMode]);
+    
+    // Force update and apply placeholder
+    setForceUpdate(prev => prev + 1);
+    
+    // Immediately update the textarea placeholder
+    if (textAreaRef.current) {
+      textAreaRef.current.placeholder = placeholderRef.current;
+    }
+  }, []);
+
+  // Handle model change when AI mode buttons are clicked
+  const handleModelChange = useCallback((model: string) => {
+    console.log('ChatForm: Updating model to:', model);
+    
+    // Update the form's model value
+    methods.setValue('model', model);
+    
+    // If there's a conversation context update function, use it
+    if (newConversation) {
+      // Create a new conversation with the selected model
+      newConversation({
+        template: {
+          ...conversation,
+          model: model,
+          endpoint: 'gptPlugins',
+        },
+      });
+    } else if (conversation) {
+      // If we need to update existing conversation
+      // This depends on how your LibreChat handles conversation updates
+      console.log('Need to update existing conversation model to:', model);
+      // You might need to call an API or update function here
+    }
+  }, [methods, newConversation, conversation]);
+
+  // Ensure placeholder stays updated
+  useEffect(() => {
+    if (!textAreaRef.current) return;
+    
+    // Set initial placeholder
+    textAreaRef.current.placeholder = placeholderRef.current;
+    
+    // Create observer to watch for placeholder changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'placeholder') {
+          if (textAreaRef.current && textAreaRef.current.placeholder !== placeholderRef.current) {
+            // Force it back to our desired placeholder
+            textAreaRef.current.placeholder = placeholderRef.current;
+          }
+        }
+      });
+    });
+    
+    // Start observing
+    observer.observe(textAreaRef.current, {
+      attributes: true,
+      attributeFilter: ['placeholder']
+    });
+    
+    // Also check periodically in case something bypasses the observer
+    const interval = setInterval(() => {
+      if (textAreaRef.current && textAreaRef.current.placeholder !== placeholderRef.current) {
+        textAreaRef.current.placeholder = placeholderRef.current;
+      }
+    }, 100);
+    
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
+  }, [forceUpdate]); // Re-run when forceUpdate changes
+
+  // Get placeholder text based on current mode
+  const getPlaceholderText = useCallback(() => {
+    return placeholderRef.current;
+  }, [forceUpdate]); // Include forceUpdate to ensure re-render
 
   useAutoSave({
     files,
@@ -177,82 +263,6 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
 
   const textValue = useWatch({ control: methods.control, name: 'text' });
 
-// Replace your existing protective useEffect (around line 173) with this enhanced version:
-
-useEffect(() => {
-  // Clean localStorage of any build commands
-  try {
-    Object.keys(localStorage).forEach(key => {
-      const value = localStorage.getItem(key);
-      if (value && value.includes('cd packages/data-provider')) {
-        console.warn(`Removing localStorage key "${key}" containing build command`);
-        localStorage.removeItem(key);
-      }
-    });
-  } catch (error) {
-    console.error('Error cleaning localStorage:', error);
-  }
-
-  // Check once on component mount
-  if (textAreaRef.current?.value?.includes('cd packages/data-provider')) {
-    console.warn('Cleared build command from textarea on mount');
-    textAreaRef.current.value = '';
-    methods.setValue('text', '');
-  }
-  
-  // Also check if it's in the form's current value
-  const currentText = methods.getValues('text');
-  if (currentText?.includes('cd packages/data-provider')) {
-    console.warn('Cleared build command from form value on mount');
-    methods.setValue('text', '');
-  }
-}, []); // Empty dependency array = only runs once on mount
-
-  // Force our custom placeholder to persist
-  useEffect(() => {
-    if (textAreaRef.current) {
-      const customPlaceholder = getPlaceholderText();
-      
-      // Set initial placeholder
-      textAreaRef.current.placeholder = customPlaceholder;
-      
-      // Watch for changes and override them
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          if (mutation.type === 'attributes' && mutation.attributeName === 'placeholder') {
-            if (textAreaRef.current && textAreaRef.current.placeholder !== customPlaceholder) {
-              console.log('Overriding placeholder from:', textAreaRef.current.placeholder, 'to:', customPlaceholder);
-              textAreaRef.current.placeholder = customPlaceholder;
-            }
-          }
-        });
-      });
-      
-      observer.observe(textAreaRef.current, {
-        attributes: true,
-        attributeFilter: ['placeholder']
-      });
-      
-      // Also override on a slight delay to catch any async updates
-      const timeoutId = setTimeout(() => {
-        if (textAreaRef.current) {
-          textAreaRef.current.placeholder = customPlaceholder;
-        }
-      }, 100);
-      
-      return () => {
-        observer.disconnect();
-        clearTimeout(timeoutId);
-      };
-    }
-  }, [getPlaceholderText, currentAIMode]);
-
-  // DEBUG: Log when AI mode changes
-  useEffect(() => {
-    console.log('AI Mode changed to:', currentAIMode);
-    console.log('Expected placeholder:', getPlaceholderText());
-  }, [currentAIMode, getPlaceholderText]);
-
   useEffect(() => {
     if (textAreaRef.current) {
       const style = window.getComputedStyle(textAreaRef.current);
@@ -295,6 +305,7 @@ useEffect(() => {
   return (
     <form
       onSubmit={methods.handleSubmit(submitMessage)}
+      autoComplete="off"
       className={cn(
         'mx-auto flex flex-row gap-3 sm:px-2',
         maximizeChatSpace ? 'w-full max-w-full' : 'md:max-w-3xl xl:max-w-4xl',
@@ -351,7 +362,12 @@ useEffect(() => {
                   ref={(e) => {
                     ref(e);
                     (textAreaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = e;
+                    // Set placeholder immediately when ref is attached
+                    if (e) {
+                      e.placeholder = placeholderRef.current;
+                    }
                   }}
+                  key={`textarea-${currentAIMode}-${forceUpdate}`}
                   disabled={disableInputs || isNotAppendable}
                   onPaste={handlePaste}
                   onKeyDown={handleKeyDown}
@@ -398,7 +414,8 @@ useEffect(() => {
                 showEphemeralBadges={!isAgentsEndpoint(endpoint) && !isAssistantsEndpoint(endpoint)}
                 conversationId={conversationId}
                 onChange={setBadges}
-                onAIModeChange={setCurrentAIMode}
+                onAIModeChange={handleAIModeChange}
+                onModelChange={handleModelChange}
                 isInChat={
                   Array.isArray(conversation?.messages) && conversation.messages.length >= 1
                 }
