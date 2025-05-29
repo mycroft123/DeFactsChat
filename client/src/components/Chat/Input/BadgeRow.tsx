@@ -322,9 +322,9 @@ function BadgeRow({
       
       // Map mode to model names
       const modeToModel: Record<string, string> = {
-        'defacts': 'DeFacts',
-        'denews': 'DeNews',
-        'deresearch': 'DeResearch'
+        'defacts': 'Facts',
+        'denews': 'News',
+        'deresearch': 'Research'
       };
       
       const modelName = modeToModel[mode];
