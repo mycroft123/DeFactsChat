@@ -135,10 +135,10 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
         placeholderRef.current = 'Ask DeFacts General Knowledge';
         break;
       case 'denews':
-        placeholderRef.current = 'Ask DeFacts Recent Events';
+        placeholderRef.current = 'Ask DeNews Recent Events';
         break;
       case 'deresearch':
-        placeholderRef.current = 'Ask Research Deep Insights';
+        placeholderRef.current = 'Ask DeResearch Deep Insights';
         break;
       default:
         placeholderRef.current = 'Message DeFacts';
