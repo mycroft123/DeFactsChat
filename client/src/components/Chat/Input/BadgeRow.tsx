@@ -322,9 +322,9 @@ function BadgeRow({
       
       // Map mode to model names
       const modeToModel: Record<string, string> = {
-        'defacts': 'defacts',
-        'denews': 'denews',
-        'deresearch': 'deresearch'
+        'defacts': 'Facts',
+        'denews': 'News',
+        'deresearch': 'Research'
       };
       
       const modelName = modeToModel[mode];
@@ -431,12 +431,12 @@ function BadgeRow({
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
                 ${aiMode === 'defacts' 
-                  ? 'bg-green-50 text-green-700 border-green-300 font-semibold' 
+                  ? 'bg-green-500 text-white border-green-600 font-semibold shadow-md' 
                   : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
-              Facts
+              DeFacts
             </button>
             <button
               type="button"
@@ -449,12 +449,12 @@ function BadgeRow({
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
                 ${aiMode === 'denews' 
-                  ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold' 
+                  ? 'bg-blue-500 text-white border-blue-600 font-semibold shadow-md' 
                   : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
-              News
+              DeNews
             </button>
             <button
               type="button"
@@ -467,12 +467,12 @@ function BadgeRow({
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
                 ${aiMode === 'deresearch' 
-                  ? 'bg-red-50 text-red-700 border-red-300 font-semibold' 
+                  ? 'bg-red-500 text-white border-red-600 font-semibold shadow-md' 
                   : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
-              Research
+              DeResearch
             </button>
           </div>
           {/* <CodeInterpreter conversationId={conversationId} /> */}
