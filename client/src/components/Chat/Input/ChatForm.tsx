@@ -177,6 +177,22 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
 
   const textValue = useWatch({ control: methods.control, name: 'text' });
 
+  useEffect(() => {
+    // Check once on component mount
+    if (textAreaRef.current?.value?.includes('cd packages/data-provider')) {
+      console.warn('Cleared build command from textarea on mount');
+      textAreaRef.current.value = '';
+      methods.setValue('text', '');
+    }
+    
+    // Also check if it's in the form's current value
+    const currentText = methods.getValues('text');
+    if (currentText?.includes('cd packages/data-provider')) {
+      console.warn('Cleared build command from form value on mount');
+      methods.setValue('text', '');
+    }
+  }, []); // Empty dependency array = only runs once on mount
+
   // Force our custom placeholder to persist
   useEffect(() => {
     if (textAreaRef.current) {
