@@ -150,6 +150,31 @@ router.use((req, res, next) => {
 // Main handler function
 async function handleChatCompletion(req, res) {
   console.log('============ DETAILED MODEL DEBUG ============');
+  
+  // BUTTON SELECTION CONFIRMATION
+  console.log('🎯 BUTTON SELECTION CHECK:');
+  console.log('   Model received:', req.body.model);
+  console.log('   Is DeFacts?', req.body.model === 'DeFacts');
+  console.log('   Is DeNews?', req.body.model === 'DeNews');
+  console.log('   Is DeResearch?', req.body.model === 'DeResearch');
+  
+  // Visual indicator for which button was pressed
+  if (req.body.model === 'DeFacts') {
+    console.log('   ✅ DEFACTS BUTTON PRESSED - Will use fact-checking mode');
+  } else if (req.body.model === 'DeNews') {
+    console.log('   📰 DENEWS BUTTON PRESSED - Will use news analysis mode');
+  } else if (req.body.model === 'DeResearch') {
+    console.log('   🔬 DERESEARCH BUTTON PRESSED - Will use research mode');
+  } else {
+    console.log('   ⚠️  STANDARD MODEL - Not a DeFacts custom model:', req.body.model);
+  }
+  
+  // Log the user's actual message
+  const userMessage = req.body.messages?.find(m => m.role === 'user')?.content;
+  if (userMessage) {
+    console.log('   User query preview:', userMessage.substring(0, 100) + '...');
+  }
+  
   console.log('[DeFacts Plugin] Chat completion request:', {
     model: req.body.model,
     messages: req.body.messages?.length,
@@ -242,6 +267,17 @@ async function handleChatCompletion(req, res) {
     console.log(`[DeFacts Plugin] CUSTOM MODEL DETECTED: ${model}`);
     console.log(`[DeFacts Plugin] Using config:`, config);
     console.log(`[DeFacts Plugin] Will call ${config.client} API with model: ${config.model}`);
+    
+    // PROMPT CUSTOMIZATION CONFIRMATION
+    console.log('');
+    console.log('🎨 PROMPT CUSTOMIZATION ACTIVE:');
+    console.log('   Selected mode:', model);
+    console.log('   System prompt being used:', SYSTEM_PROMPTS[model]?.substring(0, 50) + '...');
+    console.log('   Temperature:', config.temperature);
+    console.log('   Max tokens:', config.max_tokens);
+    console.log('   API client:', config.client);
+    console.log('   Actual model:', config.model);
+    console.log('');
     
     const systemPrompt = SYSTEM_PROMPTS[model];
     const client = config.client === 'perplexity' ? perplexity : openai;
