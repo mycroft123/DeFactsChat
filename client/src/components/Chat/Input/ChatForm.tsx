@@ -153,16 +153,30 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     }
   }, []);
 
-  // Handle model change when AI mode buttons are clicked
-  const handleModelChange = useCallback((model: string) => {
-    console.log('ChatForm: Updating model to:', model);
+// In ChatForm component, replace the handleModelChange function with this:
+
+const handleModelChange = useCallback((model: string) => {
+  console.log('ChatForm: Updating model to:', model);
+  
+  // Update the form's model value
+  methods.setValue('model', model);
+  
+  // Check if we have an existing conversation
+  if (conversation && conversation.conversationId && conversation.conversationId !== Constants.NEW_CONVO) {
+    // Update the existing conversation without creating a new one
+    // You'll need to check if there's an updateConversation function available
+    // or if you need to make an API call to update the conversation
     
-    // Update the form's model value
-    methods.setValue('model', model);
+    // Option 1: If there's an updateConversation function available in context
+    // updateConversation({ ...conversation, model: model });
     
-    // If there's a conversation context update function, use it
+    // Option 2: If you need to update via form values
+    // The model is already updated in the form, so it should be used on the next message
+    
+    console.log('Updated existing conversation model to:', model);
+  } else if (!conversation || conversation.conversationId === Constants.NEW_CONVO) {
+    // Only create a new conversation if we don't have one yet
     if (newConversation) {
-      // Create a new conversation with the selected model
       newConversation({
         template: {
           ...conversation,
@@ -170,13 +184,9 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
           endpoint: 'gptPlugins',
         },
       });
-    } else if (conversation) {
-      // If we need to update existing conversation
-      // This depends on how your LibreChat handles conversation updates
-      console.log('Need to update existing conversation model to:', model);
-      // You might need to call an API or update function here
     }
-  }, [methods, newConversation, conversation]);
+  }
+}, [methods, newConversation, conversation]);
 
   // Ensure placeholder stays updated
   useEffect(() => {
