@@ -436,7 +436,7 @@ function BadgeRow({
                 }
               `}
             >
-              Facts
+              DeFacts
             </button>
             <button
               type="button"
@@ -449,12 +449,12 @@ function BadgeRow({
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
                 ${aiMode === 'denews' 
-                  ? 'bg-blue-500 text-white border-blue-600 font-semibold shadow-md' 
+                  ? 'bg-green-500 text-white border-green-600 font-semibold shadow-md' 
                   : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
-              News
+              DeNews
             </button>
             <button
               type="button"
@@ -467,12 +467,12 @@ function BadgeRow({
                 px-3 py-1.5 rounded-md text-sm font-medium 
                 transition-all duration-200 border
                 ${aiMode === 'deresearch' 
-                  ? 'bg-red-500 text-white border-red-600 font-semibold shadow-md' 
+                  ? 'bg-green-500 text-white border-green-600 font-semibold shadow-md' 
                   : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                 }
               `}
             >
-              Research
+              DeResearch
             </button>
           </div>
           {/* <CodeInterpreter conversationId={conversationId} /> */}
