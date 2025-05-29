@@ -132,13 +132,13 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     // Update placeholder based on mode
     switch (mode) {
       case 'defacts':
-        placeholderRef.current = 'Ask DeFacts \nGeneral Knowledge';
+        placeholderRef.current = 'Ask DeFacts General Knowledge';
         break;
       case 'denews':
-        placeholderRef.current = 'Ask DeFacts \nRecent Events';
+        placeholderRef.current = 'Ask DeFacts Recent Events';
         break;
       case 'deresearch':
-        placeholderRef.current = 'Ask Research \nDeep Insights';
+        placeholderRef.current = 'Ask Research Deep Insights';
         break;
       default:
         placeholderRef.current = 'Message DeFacts';
