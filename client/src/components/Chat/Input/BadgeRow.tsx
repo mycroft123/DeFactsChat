@@ -436,7 +436,7 @@ function BadgeRow({
                 }
               `}
             >
-              DeFacts
+              Facts
             </button>
             <button
               type="button"
@@ -454,7 +454,7 @@ function BadgeRow({
                 }
               `}
             >
-              DeNews
+              News
             </button>
             <button
               type="button"
@@ -472,7 +472,7 @@ function BadgeRow({
                 }
               `}
             >
-              DeResearch
+              Research
             </button>
           </div>
           {/* <CodeInterpreter conversationId={conversationId} /> */}
