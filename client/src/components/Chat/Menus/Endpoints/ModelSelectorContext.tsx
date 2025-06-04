@@ -68,12 +68,13 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     returnHandlers: true,
   });
 
-  // State
+  // State with default values for DeFacts
   const [selectedValues, setSelectedValues] = useState<SelectedValues>({
-    endpoint: conversation?.endpoint || '',
-    model: conversation?.model || '',
+    endpoint: conversation?.endpoint || 'gptPlugins',
+    model: conversation?.model || 'DeFacts',
     modelSpec: conversation?.spec || '',
   });
+  
   useSelectorEffects({
     agentsMap,
     conversation,
