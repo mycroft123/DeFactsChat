@@ -1,5 +1,5 @@
 import debounce from 'lodash/debounce';
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import { isAgentsEndpoint, isAssistantsEndpoint } from 'librechat-data-provider';
 import type * as t from 'librechat-data-provider';
 import type { Endpoint, SelectedValues } from '~/common';
@@ -68,12 +68,45 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     returnHandlers: true,
   });
 
-  // State with default values for DeFacts
-  const [selectedValues, setSelectedValues] = useState<SelectedValues>({
-    endpoint: conversation?.endpoint || 'gptPlugins',
-    model: conversation?.model || 'DeFacts',
-    modelSpec: conversation?.spec || '',
-  });
+  // Helper function to get default values
+  const getDefaultValues = (): SelectedValues => {
+    // If there's an active conversation, use its values
+    if (conversation?.endpoint && conversation?.model) {
+      return {
+        endpoint: conversation.endpoint,
+        model: conversation.model,
+        modelSpec: conversation.spec || '',
+      };
+    }
+    
+    // Default to DeFacts
+    return {
+      endpoint: 'gptPlugins',
+      model: 'DeFacts',
+      modelSpec: '',
+    };
+  };
+
+  // State with default values
+  const [selectedValues, setSelectedValues] = useState<SelectedValues>(getDefaultValues());
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Set defaults when no conversation exists
+  useEffect(() => {
+    if (!hasInitialized && !conversation?.endpoint && !conversation?.model) {
+      setSelectedValues({
+        endpoint: 'gptPlugins',
+        model: 'DeFacts',
+        modelSpec: '',
+      });
+      setHasInitialized(true);
+      
+      // Also trigger the selection handler to update the conversation state
+      if (onSelectEndpoint) {
+        onSelectEndpoint('gptPlugins', { model: 'DeFacts' });
+      }
+    }
+  }, [conversation, hasInitialized, onSelectEndpoint]);
   
   useSelectorEffects({
     agentsMap,
