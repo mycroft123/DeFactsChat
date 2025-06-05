@@ -50,19 +50,24 @@ function ModelSelectorContent() {
     [localize, modelSpecs, selectedValues, mappedEndpoints],
   );
 
-  const trigger = (
-    <button
-      className="my-1 flex h-10 w-full max-w-[70vw] items-center justify-center gap-2 rounded-xl border border-border-light bg-surface-secondary px-3 py-2 text-sm text-text-primary hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-      aria-label={localize('com_ui_select_model')}
-    >
-      {selectedIcon && React.isValidElement(selectedIcon) && (
-        <div className="flex flex-shrink-0 items-center justify-center overflow-hidden">
-          {selectedIcon}
-        </div>
-      )}
-      <span className="flex-grow truncate text-left">{selectedDisplayValue}</span>
-    </button>
-  );
+// In ModelSelector.tsx, update the trigger button text:
+
+const trigger = (
+  <button
+    className="my-1 flex h-10 w-full max-w-[70vw] items-center justify-center gap-2 rounded-xl border border-border-light bg-surface-secondary px-3 py-2 text-sm text-text-primary hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+    aria-label={localize('com_ui_select_model')}
+  >
+    {selectedIcon && React.isValidElement(selectedIcon) && (
+      <div className="flex flex-shrink-0 items-center justify-center overflow-hidden">
+        {selectedIcon}
+      </div>
+    )}
+    <span className="flex-grow truncate text-left">
+      Compare: {selectedDisplayValue}
+    </span>
+    <span className="text-xs text-gray-500 ml-2">(Main: DeFacts)</span>
+  </button>
+);
 
   return (
     <div className="relative flex w-full max-w-md flex-col items-center gap-2">

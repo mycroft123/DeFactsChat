@@ -71,20 +71,31 @@ export default function Header() {
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
   // Compare Models click handler (same as AddMultiConvo)
-  const handleCompareModels = () => {
-    if (!conversation) return;
-    
-    const { title: _t, ...convo } = conversation;
-    setAddedConvo({
-      ...convo,
-      title: '',
-    });
+// In Header component, modify handleCompareModels:
 
-    const textarea = document.getElementById(mainTextareaId);
-    if (textarea) {
-      textarea.focus();
-    }
-  };
+const handleCompareModels = () => {
+  if (!conversation) return;
+  
+  // Get the comparison model from localStorage
+  const comparisonModel = localStorage.getItem('defacts_comparison_model') || 'gpt-3.5-turbo';
+  const comparisonEndpoint = localStorage.getItem('defacts_comparison_endpoint') || 'openAI';
+  
+  const { title: _t, ...convo } = conversation;
+  
+  // Set the comparison conversation with the selected model
+  setAddedConvo({
+    ...convo,
+    title: '',
+    model: comparisonModel,
+    endpoint: comparisonEndpoint,
+    isComparison: true, // Add this flag
+  });
+
+  const textarea = document.getElementById(mainTextareaId);
+  if (textarea) {
+    textarea.focus();
+  }
+};
   
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">

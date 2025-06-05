@@ -68,18 +68,9 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     returnHandlers: true,
   });
 
-  // Helper function to get default values
+  // Helper function to get default values - ALWAYS DeFacts for main chat
   const getDefaultValues = (): SelectedValues => {
-    // If there's an active conversation, use its values
-    if (conversation?.endpoint && conversation?.model) {
-      return {
-        endpoint: conversation.endpoint,
-        model: conversation.model,
-        modelSpec: conversation.spec || '',
-      };
-    }
-    
-    // Default to DeFacts
+    // Always default to DeFacts, regardless of conversation state
     return {
       endpoint: 'gptPlugins',
       model: 'DeFacts',
@@ -87,32 +78,44 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     };
   };
 
-  // State with default values
-  const [selectedValues, setSelectedValues] = useState<SelectedValues>(getDefaultValues());
+  // Helper function to get comparison values from localStorage
+  const getComparisonValues = (): SelectedValues => {
+    const savedEndpoint = localStorage.getItem('defacts_comparison_endpoint');
+    const savedModel = localStorage.getItem('defacts_comparison_model');
+    const savedSpec = localStorage.getItem('defacts_comparison_spec');
+    
+    return {
+      endpoint: savedEndpoint || 'openAI',
+      model: savedModel || 'gpt-3.5-turbo',
+      modelSpec: savedSpec || '',
+    };
+  };
+
+  // State with default values - always shows comparison selection in UI
+  const [selectedValues, setSelectedValues] = useState<SelectedValues>(getComparisonValues());
   const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Set defaults when no conversation exists
+  // Initialize DeFacts as default on mount
   useEffect(() => {
-    if (!hasInitialized && !conversation?.endpoint && !conversation?.model) {
-      setSelectedValues({
-        endpoint: 'gptPlugins',
-        model: 'DeFacts',
-        modelSpec: '',
-      });
-      setHasInitialized(true);
-      
-      // Also trigger the selection handler to update the conversation state
+    if (!hasInitialized) {
+      // Force DeFacts as the main conversation model
       if (onSelectEndpoint) {
         onSelectEndpoint('gptPlugins', { model: 'DeFacts' });
       }
+      setHasInitialized(true);
     }
-  }, [conversation, hasInitialized, onSelectEndpoint]);
-  
+  }, [hasInitialized, onSelectEndpoint]);
+
+  // Override selector effects to maintain comparison values in UI
   useSelectorEffects({
     agentsMap,
     conversation,
     assistantsMap,
-    setSelectedValues,
+    setSelectedValues: (values) => {
+      // Always show comparison values in the selector UI
+      const compValues = getComparisonValues();
+      setSelectedValues(compValues);
+    },
   });
 
   const [searchValue, setSearchValueState] = useState('');
@@ -146,24 +149,52 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
 
   const handleSelectSpec = (spec: t.TModelSpec) => {
     let model = spec.preset.model ?? null;
-    onSelectSpec?.(spec);
-    if (isAgentsEndpoint(spec.preset.endpoint)) {
+    let endpoint = spec.preset.endpoint;
+    
+    // Save the selection for comparison use
+    localStorage.setItem('defacts_comparison_spec', spec.name);
+    localStorage.setItem('defacts_comparison_endpoint', endpoint);
+    
+    if (isAgentsEndpoint(endpoint)) {
       model = spec.preset.agent_id ?? '';
-    } else if (isAssistantsEndpoint(spec.preset.endpoint)) {
+      localStorage.setItem('defacts_comparison_model', model);
+    } else if (isAssistantsEndpoint(endpoint)) {
       model = spec.preset.assistant_id ?? '';
+      localStorage.setItem('defacts_comparison_model', model);
+    } else if (model) {
+      localStorage.setItem('defacts_comparison_model', model);
     }
+    
+    // Always use DeFacts for main conversation
+    const deFactsSpec = {
+      ...spec,
+      preset: {
+        ...spec.preset,
+        endpoint: 'gptPlugins',
+        model: 'DeFacts',
+      }
+    };
+    onSelectSpec?.(deFactsSpec);
+    
+    // Update UI to show comparison selection
     setSelectedValues({
-      endpoint: spec.preset.endpoint,
-      model,
+      endpoint: endpoint,
+      model: model || '',
       modelSpec: spec.name,
     });
   };
 
   const handleSelectEndpoint = (endpoint: Endpoint) => {
+    // Save endpoint for comparison use
+    localStorage.setItem('defacts_comparison_endpoint', endpoint.value);
+    
     if (!endpoint.hasModels) {
+      // Always use DeFacts for main conversation
       if (endpoint.value) {
-        onSelectEndpoint?.(endpoint.value);
+        onSelectEndpoint?.('gptPlugins');
       }
+      
+      // Update UI to show comparison selection
       setSelectedValues({
         endpoint: endpoint.value,
         model: '',
@@ -173,22 +204,27 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
   };
 
   const handleSelectModel = (endpoint: Endpoint, model: string) => {
+    // Save selection for comparison use
+    localStorage.setItem('defacts_comparison_endpoint', endpoint.value);
+    localStorage.setItem('defacts_comparison_model', model);
+    
+    // Always use DeFacts for main conversation
     if (isAgentsEndpoint(endpoint.value)) {
-      onSelectEndpoint?.(endpoint.value, {
-        agent_id: model,
-        model: agentsMap?.[model]?.model ?? '',
+      onSelectEndpoint?.('gptPlugins', {
+        model: 'DeFacts',
       });
     } else if (isAssistantsEndpoint(endpoint.value)) {
-      onSelectEndpoint?.(endpoint.value, {
-        assistant_id: model,
-        model: assistantsMap?.[endpoint.value]?.[model]?.model ?? '',
+      onSelectEndpoint?.('gptPlugins', {
+        model: 'DeFacts',
       });
-    } else if (endpoint.value) {
-      onSelectEndpoint?.(endpoint.value, { model });
+    } else {
+      onSelectEndpoint?.('gptPlugins', { model: 'DeFacts' });
     }
+    
+    // Update UI to show comparison selection
     setSelectedValues({
       endpoint: endpoint.value,
-      model,
+      model: model,
       modelSpec: '',
     });
   };
