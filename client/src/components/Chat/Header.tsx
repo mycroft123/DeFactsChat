@@ -25,6 +25,39 @@ export default function Header() {
   const { conversation } = useChatContext();
   const { setConversation: setAddedConvo } = useAddedChatContext();
   
+  // Track the last selected model for comparison
+  const [lastSelectedModel, setLastSelectedModel] = useState({
+    endpoint: 'openAI',
+    model: 'gpt-3.5-turbo'
+  });
+  
+  // Listen for model selection changes
+  useEffect(() => {
+    // Check conversation changes to track what was selected
+    if (conversation && conversation.endpoint !== 'gptPlugins') {
+      // User selected a non-DeFacts model, save it for comparison
+      setLastSelectedModel({
+        endpoint: conversation.endpoint,
+        model: conversation.model || 'gpt-3.5-turbo'
+      });
+      // Also save to localStorage as backup
+      localStorage.setItem('defacts_comparison_endpoint', conversation.endpoint);
+      localStorage.setItem('defacts_comparison_model', conversation.model || 'gpt-3.5-turbo');
+    }
+  }, [conversation?.endpoint, conversation?.model]);
+  
+  // Also check localStorage on mount in case there's a saved preference
+  useEffect(() => {
+    const savedEndpoint = localStorage.getItem('defacts_comparison_endpoint');
+    const savedModel = localStorage.getItem('defacts_comparison_model');
+    if (savedEndpoint && savedModel) {
+      setLastSelectedModel({
+        endpoint: savedEndpoint,
+        model: savedModel
+      });
+    }
+  }, []);
+  
   const interfaceConfig = useMemo(
     () => startupConfig?.interface ?? defaultInterface,
     [startupConfig],
@@ -70,37 +103,31 @@ export default function Header() {
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
-  // Compare Models click handler (same as AddMultiConvo)
-// In your Header component, replace the handleCompareModels function with this:
+  // Modified compare handler
+  const handleCompareModels = () => {
+    if (!conversation) return;
+    
+    const { title: _t, ...convo } = conversation;
+    
+    console.log('Compare button clicked:', {
+      mainModel: 'DeFacts',
+      comparisonModel: lastSelectedModel.model,
+      comparisonEndpoint: lastSelectedModel.endpoint
+    });
+    
+    // Use the last selected non-DeFacts model for comparison
+    setAddedConvo({
+      ...convo,
+      title: '',
+      model: lastSelectedModel.model,
+      endpoint: lastSelectedModel.endpoint,
+    });
 
-const handleCompareModels = () => {
-  if (!conversation) return;
-  
-  const { title: _t, ...convo } = conversation;
-  
-  // Get stored comparison values or use defaults
-  const comparisonModel = localStorage.getItem('defacts_comparison_model') || 'gpt-3.5-turbo';
-  const comparisonEndpoint = localStorage.getItem('defacts_comparison_endpoint') || 'openAI';
-  
-  // Debug log to verify values
-  console.log('Compare button clicked:', {
-    mainModel: 'DeFacts',
-    comparisonModel,
-    comparisonEndpoint
-  });
-  
-  setAddedConvo({
-    ...convo,
-    title: '',
-    model: comparisonModel,
-    endpoint: comparisonEndpoint,
-  });
-
-  const textarea = document.getElementById(mainTextareaId);
-  if (textarea) {
-    textarea.focus();
-  }
-};
+    const textarea = document.getElementById(mainTextareaId);
+    if (textarea) {
+      textarea.focus();
+    }
+  };
   
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
@@ -140,7 +167,10 @@ const handleCompareModels = () => {
           {/* Desktop - inline layout */}
           {!isSmallScreen && (
             <>
-              <ModelSelector startupConfig={startupConfig} />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Compare with:</span>
+                <ModelSelector startupConfig={startupConfig} />
+              </div>
               {hasAccessToMultiConvo === true && conversation && (
                 <button 
                   onClick={handleCompareModels}
@@ -160,6 +190,7 @@ const handleCompareModels = () => {
           {isSmallScreen && (
             <>
               <div className="flex items-center gap-2 overflow-x-auto">
+                <span className="text-xs text-gray-500 flex-shrink-0">Compare with:</span>
                 <ModelSelector startupConfig={startupConfig} />
                 {hasAccessToMultiConvo === true && conversation && (
                   <button 
