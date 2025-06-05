@@ -112,12 +112,39 @@ const initializeClient = async ({ req, res, endpointOption }) => {
 
   if (!useAzure && pluginsConfig) {
     clientOptions.streamRate = pluginsConfig.streamRate;
+    // ADD TITLE CONFIGURATION FROM PLUGINS CONFIG
+    clientOptions.titleConvo = pluginsConfig.titleConvo ?? true;
+    clientOptions.titleModel = pluginsConfig.titleModel ?? 'gpt-3.5-turbo';
+    clientOptions.titleMethod = pluginsConfig.titleMethod ?? 'completion';
   }
 
   /** @type {undefined | TBaseEndpoint} */
   const allConfig = req.app.locals.all;
   if (allConfig) {
     clientOptions.streamRate = allConfig.streamRate;
+  }
+
+  // FALLBACK: Ensure title configuration is set even without specific config
+  if (clientOptions.titleConvo === undefined) {
+    clientOptions.titleConvo = process.env.TITLE_CONVO === 'true' || true;
+  }
+  if (!clientOptions.titleModel) {
+    clientOptions.titleModel = process.env.TITLE_MODEL || 'gpt-3.5-turbo';
+  }
+  if (!clientOptions.titleMethod) {
+    clientOptions.titleMethod = process.env.TITLE_METHOD || 'completion';
+  }
+
+  // Debug logging
+  if (isEnabled(DEBUG_PLUGINS)) {
+    console.log('[GPT Plugins - Title Config]', {
+      titleConvo: clientOptions.titleConvo,
+      titleModel: clientOptions.titleModel,
+      titleMethod: clientOptions.titleMethod,
+      endpoint: endpoint,
+      useAzure: useAzure,
+      reverseProxyUrl: clientOptions.reverseProxyUrl,
+    });
   }
 
   if (!apiKey) {
