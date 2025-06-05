@@ -538,11 +538,11 @@ class PluginsClient extends OpenAIClient {
     return result.filter((message) => message.content.length > 0);
   }
 
-  async generateTitle(userMessage, replyMessage) {
-    const titleInstruction = `Please generate a short, concise title for this conversation based on the following exchange. The title should be no more than 6 words, capitalize each word, and do not use punctuation.
-  
-  User: ${userMessage.text || userMessage.message}
-  Assistant: ${replyMessage.text || replyMessage.message}
+  async titleConvo({ text, responseText, conversationId }) {
+    const titleInstruction = `Please generate a short, concise title...
+    
+    User: ${text}
+    Assistant: ${responseText}
   
   Title:`;
   

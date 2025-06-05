@@ -152,6 +152,14 @@ router.post(
       endpointOption.tools = await validateTools(user, endpointOption.tools);
       const { client } = await initializeClient({ req, res, endpointOption });
 
+      // DEBUG: Log client initialization
+      console.log('[TITLE DEBUG - gptPlugins] Client initialized:', {
+        clientType: client?.constructor?.name,
+        hasGenerateTitle: typeof client?.generateTitle === 'function',
+        titleConvo: client?.options?.titleConvo,
+        titleModel: client?.options?.titleModel,
+      });
+
       const onChainEnd = () => {
         if (!client.skipSaveUserMessage) {
           saveMessage(
@@ -209,12 +217,29 @@ router.post(
       });
       res.end();
 
+      // DEBUG: Title generation check
+      console.log('[TITLE DEBUG - gptPlugins route]', {
+        parentMessageId,
+        NO_PARENT: Constants.NO_PARENT,
+        isNoParent: parentMessageId === Constants.NO_PARENT,
+        newConvo,
+        hasClient: !!client,
+        clientType: client?.constructor?.name,
+        willGenerateTitle: parentMessageId === Constants.NO_PARENT && newConvo,
+        conversationTitle: conversation?.title,
+      });
+
       if (parentMessageId === Constants.NO_PARENT && newConvo) {
-        addTitle(req, {
-          text,
-          response,
-          client,
-        });
+        console.log('[TITLE DEBUG - gptPlugins] Calling addTitle...');
+        try {
+          await addTitle(req, {
+            text,
+            response,
+            client,
+          });
+        } catch (error) {
+          console.error('[TITLE DEBUG - gptPlugins] Error in addTitle:', error);
+        }
       }
 
       response.plugins = plugins.map((p) => ({ ...p, loading: false }));
