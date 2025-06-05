@@ -106,16 +106,12 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     }
   }, [hasInitialized, onSelectEndpoint]);
 
-  // Override selector effects to maintain comparison values in UI
+  // Use selector effects normally
   useSelectorEffects({
     agentsMap,
     conversation,
     assistantsMap,
-    setSelectedValues: (values) => {
-      // Always show comparison values in the selector UI
-      const compValues = getComparisonValues();
-      setSelectedValues(compValues);
-    },
+    setSelectedValues,
   });
 
   const [searchValue, setSearchValueState] = useState('');
