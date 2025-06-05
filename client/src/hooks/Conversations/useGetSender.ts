@@ -17,7 +17,7 @@ export default function useGetSender() {
       const isMainChat = !addedConversation || 
         (mainConversation && endpointOption.conversationId === mainConversation.conversationId);
       
-      // Force DeFacts AI for main chat
+      // Force DeFacts AI for main chat - 
       if (isMainChat) {
         return 'DeFacts AI';
       }
@@ -28,4 +28,6 @@ export default function useGetSender() {
     },
     [endpointsConfig, mainConversation, addedConversation],
   );
+
+
 }
