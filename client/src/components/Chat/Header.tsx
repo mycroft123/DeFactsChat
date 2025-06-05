@@ -71,24 +71,29 @@ export default function Header() {
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
   // Compare Models click handler (same as AddMultiConvo)
-// In Header component, modify handleCompareModels:
+// In your Header component, replace the handleCompareModels function with this:
 
 const handleCompareModels = () => {
   if (!conversation) return;
   
-  // Get the comparison model from localStorage
+  const { title: _t, ...convo } = conversation;
+  
+  // Get stored comparison values or use defaults
   const comparisonModel = localStorage.getItem('defacts_comparison_model') || 'gpt-3.5-turbo';
   const comparisonEndpoint = localStorage.getItem('defacts_comparison_endpoint') || 'openAI';
   
-  const { title: _t, ...convo } = conversation;
+  // Debug log to verify values
+  console.log('Compare button clicked:', {
+    mainModel: 'DeFacts',
+    comparisonModel,
+    comparisonEndpoint
+  });
   
-  // Set the comparison conversation with the selected model
   setAddedConvo({
     ...convo,
     title: '',
     model: comparisonModel,
     endpoint: comparisonEndpoint,
-    isComparison: true, // Add this flag
   });
 
   const textarea = document.getElementById(mainTextareaId);
