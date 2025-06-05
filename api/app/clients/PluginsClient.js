@@ -537,6 +537,77 @@ class PluginsClient extends OpenAIClient {
 
     return result.filter((message) => message.content.length > 0);
   }
+
+  async generateTitle(userMessage, replyMessage) {
+    const titleInstruction = `Please generate a short, concise title for this conversation based on the following exchange. The title should be no more than 6 words, capitalize each word, and do not use punctuation.
+  
+  User: ${userMessage.text || userMessage.message}
+  Assistant: ${replyMessage.text || replyMessage.message}
+  
+  Title:`;
+  
+    try {
+      // Use the title-specific model if configured
+      const titleModel = this.options.titleModel || 'gpt-3.5-turbo';
+      
+      // Create a simple payload for title generation
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that generates concise conversation titles.'
+        },
+        {
+          role: 'user',
+          content: titleInstruction
+        }
+      ];
+  
+      // Save current options
+      const originalOptions = { ...this.modelOptions };
+      
+      // Override with title generation settings
+      this.modelOptions = {
+        model: titleModel,
+        temperature: 0.3,
+        max_tokens: 20,
+      };
+  
+      // If using a reverse proxy for DeFacts, use direct OpenAI for title
+      const originalUrl = this.completionsUrl;
+      if (this.options.reverseProxyUrl?.includes('defacts')) {
+        this.completionsUrl = 'https://api.openai.com/v1/chat/completions';
+      }
+  
+      // Get the title
+      const result = await this.getCompletion(messages, null, new AbortController());
+      
+      // Restore original settings
+      this.modelOptions = originalOptions;
+      this.completionsUrl = originalUrl;
+  
+      if (!result?.choices?.[0]?.message?.content) {
+        throw new Error('No title generated');
+      }
+  
+      // Clean up the title
+      const title = result.choices[0].message.content
+        .replace(/["'`]/g, '') // Remove quotes
+        .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
+        .replace(/\s+/g, ' ') // Multiple spaces to single
+        .trim()
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+  
+      console.log('[TITLE DEBUG - PluginsClient] Generated title:', title);
+      return title;
+  
+    } catch (error) {
+      console.error('[TITLE DEBUG - PluginsClient] Error generating title:', error);
+      // Fallback title
+      return 'New Conversation';
+    }
+  }
 }
 
 module.exports = PluginsClient;
