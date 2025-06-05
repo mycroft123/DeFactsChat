@@ -244,7 +244,8 @@ const useNewConvo = (index = 0) => {
       const conversation = {
         conversationId: Constants.NEW_CONVO as string,
         title: 'New Chat',
-        endpoint: null,
+        endpoint: 'gptPlugins',  // or 'openAI' depending on your setup
+        model: 'DeFacts',        // or 'gpt-4o' if using openAI endpoint
         ...template,
         createdAt: '',
         updatedAt: '',
