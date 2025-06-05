@@ -68,9 +68,18 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     returnHandlers: true,
   });
 
-  // Helper function to get default values - ALWAYS DeFacts for main chat
+  // Helper function to get default values
   const getDefaultValues = (): SelectedValues => {
-    // Always default to DeFacts, regardless of conversation state
+    // If there's an active conversation, use its values
+    if (conversation?.endpoint && conversation?.model) {
+      return {
+        endpoint: conversation.endpoint,
+        model: conversation.model,
+        modelSpec: conversation.spec || '',
+      };
+    }
+    
+    // Default to DeFacts
     return {
       endpoint: 'gptPlugins',
       model: 'DeFacts',
@@ -78,35 +87,27 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     };
   };
 
-  // Helper function to get comparison values from localStorage
-  const getComparisonValues = (): SelectedValues => {
-    const savedEndpoint = localStorage.getItem('defacts_comparison_endpoint');
-    const savedModel = localStorage.getItem('defacts_comparison_model');
-    const savedSpec = localStorage.getItem('defacts_comparison_spec');
-    
-    return {
-      endpoint: savedEndpoint || 'openAI',
-      model: savedModel || 'gpt-3.5-turbo',
-      modelSpec: savedSpec || '',
-    };
-  };
-
-  // State with default values - always shows comparison selection in UI
-  const [selectedValues, setSelectedValues] = useState<SelectedValues>(getComparisonValues());
+  // State with default values
+  const [selectedValues, setSelectedValues] = useState<SelectedValues>(getDefaultValues());
   const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Initialize DeFacts as default on mount
+  // Set defaults when no conversation exists
   useEffect(() => {
-    if (!hasInitialized) {
-      // Force DeFacts as the main conversation model
+    if (!hasInitialized && !conversation?.endpoint && !conversation?.model) {
+      setSelectedValues({
+        endpoint: 'gptPlugins',
+        model: 'DeFacts',
+        modelSpec: '',
+      });
+      setHasInitialized(true);
+      
+      // Also trigger the selection handler to update the conversation state
       if (onSelectEndpoint) {
         onSelectEndpoint('gptPlugins', { model: 'DeFacts' });
       }
-      setHasInitialized(true);
     }
-  }, [hasInitialized, onSelectEndpoint]);
-
-  // Use selector effects normally
+  }, [conversation, hasInitialized, onSelectEndpoint]);
+  
   useSelectorEffects({
     agentsMap,
     conversation,
@@ -145,52 +146,24 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
 
   const handleSelectSpec = (spec: t.TModelSpec) => {
     let model = spec.preset.model ?? null;
-    let endpoint = spec.preset.endpoint;
-    
-    // Save the selection for comparison use
-    localStorage.setItem('defacts_comparison_spec', spec.name);
-    localStorage.setItem('defacts_comparison_endpoint', endpoint);
-    
-    if (isAgentsEndpoint(endpoint)) {
+    onSelectSpec?.(spec);
+    if (isAgentsEndpoint(spec.preset.endpoint)) {
       model = spec.preset.agent_id ?? '';
-      localStorage.setItem('defacts_comparison_model', model);
-    } else if (isAssistantsEndpoint(endpoint)) {
+    } else if (isAssistantsEndpoint(spec.preset.endpoint)) {
       model = spec.preset.assistant_id ?? '';
-      localStorage.setItem('defacts_comparison_model', model);
-    } else if (model) {
-      localStorage.setItem('defacts_comparison_model', model);
     }
-    
-    // Always use DeFacts for main conversation
-    const deFactsSpec = {
-      ...spec,
-      preset: {
-        ...spec.preset,
-        endpoint: 'gptPlugins',
-        model: 'DeFacts',
-      }
-    };
-    onSelectSpec?.(deFactsSpec);
-    
-    // Update UI to show comparison selection
     setSelectedValues({
-      endpoint: endpoint,
-      model: model || '',
+      endpoint: spec.preset.endpoint,
+      model,
       modelSpec: spec.name,
     });
   };
 
   const handleSelectEndpoint = (endpoint: Endpoint) => {
-    // Save endpoint for comparison use
-    localStorage.setItem('defacts_comparison_endpoint', endpoint.value);
-    
     if (!endpoint.hasModels) {
-      // Always use DeFacts for main conversation
       if (endpoint.value) {
-        onSelectEndpoint?.('gptPlugins');
+        onSelectEndpoint?.(endpoint.value);
       }
-      
-      // Update UI to show comparison selection
       setSelectedValues({
         endpoint: endpoint.value,
         model: '',
@@ -200,27 +173,22 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
   };
 
   const handleSelectModel = (endpoint: Endpoint, model: string) => {
-    // Save selection for comparison use
-    localStorage.setItem('defacts_comparison_endpoint', endpoint.value);
-    localStorage.setItem('defacts_comparison_model', model);
-    
-    // Always use DeFacts for main conversation
     if (isAgentsEndpoint(endpoint.value)) {
-      onSelectEndpoint?.('gptPlugins', {
-        model: 'DeFacts',
+      onSelectEndpoint?.(endpoint.value, {
+        agent_id: model,
+        model: agentsMap?.[model]?.model ?? '',
       });
     } else if (isAssistantsEndpoint(endpoint.value)) {
-      onSelectEndpoint?.('gptPlugins', {
-        model: 'DeFacts',
+      onSelectEndpoint?.(endpoint.value, {
+        assistant_id: model,
+        model: assistantsMap?.[endpoint.value]?.[model]?.model ?? '',
       });
-    } else {
-      onSelectEndpoint?.('gptPlugins', { model: 'DeFacts' });
+    } else if (endpoint.value) {
+      onSelectEndpoint?.(endpoint.value, { model });
     }
-    
-    // Update UI to show comparison selection
     setSelectedValues({
       endpoint: endpoint.value,
-      model: model,
+      model,
       modelSpec: '',
     });
   };
