@@ -75,6 +75,94 @@ class PluginsClient extends OpenAIClient {
     };
   }
 
+  async titleConvo({ text, responseText, conversationId }) {
+    console.log('[TITLE DEBUG - PluginsClient] titleConvo called with:', {
+      text: text?.substring(0, 50),
+      responseText: responseText?.substring(0, 50),
+      conversationId,
+      titleModel: this.options.titleModel,
+      reverseProxyUrl: this.options.reverseProxyUrl
+    });
+    
+    const titleInstruction = `Please generate a short, concise title for this conversation. The title should be no more than 6 words, capitalize each word, and do not use punctuation.
+    
+User: ${text}
+Assistant: ${responseText?.substring(0, 200)}
+
+Title:`;
+  
+    try {
+      // Use the title-specific model if configured
+      const titleModel = this.options.titleModel || 'gpt-3.5-turbo';
+      
+      console.log('[TITLE DEBUG - PluginsClient] Using title model:', titleModel);
+      
+      // Create a simple payload for title generation
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that generates concise conversation titles.'
+        },
+        {
+          role: 'user',
+          content: titleInstruction
+        }
+      ];
+  
+      // Save current options
+      const originalOptions = { ...this.modelOptions };
+      const originalUrl = this.completionsUrl;
+      
+      // Override with title generation settings
+      this.modelOptions = {
+        model: titleModel,
+        temperature: 0.3,
+        max_tokens: 20,
+      };
+  
+      // If using a reverse proxy for DeFacts, use direct OpenAI for title
+      if (this.options.reverseProxyUrl?.includes('defacts')) {
+        console.log('[TITLE DEBUG - PluginsClient] Switching from DeFacts proxy to direct OpenAI');
+        this.completionsUrl = 'https://api.openai.com/v1/chat/completions';
+      }
+      
+      console.log('[TITLE DEBUG - PluginsClient] Making API call to:', this.completionsUrl);
+  
+      // Get the title
+      const result = await this.getCompletion(messages, null, new AbortController());
+      
+      console.log('[TITLE DEBUG - PluginsClient] API response:', result);
+      
+      // Restore original settings
+      this.modelOptions = originalOptions;
+      this.completionsUrl = originalUrl;
+  
+      if (!result?.choices?.[0]?.message?.content) {
+        throw new Error('No title generated from API response');
+      }
+  
+      // Clean up the title
+      const title = result.choices[0].message.content
+        .trim()
+        .replace(/^["']|["']$/g, '') // Remove quotes
+        .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
+        .replace(/\s+/g, ' ') // Multiple spaces to single
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+        .substring(0, 80); // Limit length
+  
+      console.log('[TITLE DEBUG - PluginsClient] Generated title:', title);
+      return title;
+  
+    } catch (error) {
+      console.error('[TITLE DEBUG - PluginsClient] Error generating title:', error.message);
+      console.error('[TITLE DEBUG - PluginsClient] Full error:', error);
+      // Fallback title
+      return 'New Conversation';
+    }
+  }
+
   async initialize({ user, message, onAgentAction, onChainEnd, signal }) {
     const modelOptions = {
       modelName: this.agentOptions.model,
@@ -536,77 +624,6 @@ class PluginsClient extends OpenAIClient {
     }
 
     return result.filter((message) => message.content.length > 0);
-  }
-
-  async titleConvo({ text, responseText, conversationId }) {
-    const titleInstruction = `Please generate a short, concise title...
-    
-    User: ${text}
-    Assistant: ${responseText}
-  
-  Title:`;
-  
-    try {
-      // Use the title-specific model if configured
-      const titleModel = this.options.titleModel || 'gpt-3.5-turbo';
-      
-      // Create a simple payload for title generation
-      const messages = [
-        {
-          role: 'system',
-          content: 'You are a helpful assistant that generates concise conversation titles.'
-        },
-        {
-          role: 'user',
-          content: titleInstruction
-        }
-      ];
-  
-      // Save current options
-      const originalOptions = { ...this.modelOptions };
-      
-      // Override with title generation settings
-      this.modelOptions = {
-        model: titleModel,
-        temperature: 0.3,
-        max_tokens: 20,
-      };
-  
-      // If using a reverse proxy for DeFacts, use direct OpenAI for title
-      const originalUrl = this.completionsUrl;
-      if (this.options.reverseProxyUrl?.includes('defacts')) {
-        this.completionsUrl = 'https://api.openai.com/v1/chat/completions';
-      }
-  
-      // Get the title
-      const result = await this.getCompletion(messages, null, new AbortController());
-      
-      // Restore original settings
-      this.modelOptions = originalOptions;
-      this.completionsUrl = originalUrl;
-  
-      if (!result?.choices?.[0]?.message?.content) {
-        throw new Error('No title generated');
-      }
-  
-      // Clean up the title
-      const title = result.choices[0].message.content
-        .replace(/["'`]/g, '') // Remove quotes
-        .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
-        .replace(/\s+/g, ' ') // Multiple spaces to single
-        .trim()
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-  
-      console.log('[TITLE DEBUG - PluginsClient] Generated title:', title);
-      return title;
-  
-    } catch (error) {
-      console.error('[TITLE DEBUG - PluginsClient] Error generating title:', error);
-      // Fallback title
-      return 'New Conversation';
-    }
   }
 }
 
