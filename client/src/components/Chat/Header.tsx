@@ -115,7 +115,7 @@ export default function Header() {
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
-  // Modified compare handler
+  // Modified compare handler with proper comparison marking
   const handleCompareModels = () => {
     if (!conversation) return;
     
@@ -127,13 +127,20 @@ export default function Header() {
       comparisonEndpoint: lastSelectedModel.endpoint
     });
     
-    // Use the last selected non-DeFacts model for comparison
-    setAddedConvo({
+    // Create comparison conversation with special flag
+    const comparisonConvo = {
       ...convo,
       title: '',
       model: lastSelectedModel.model,
       endpoint: lastSelectedModel.endpoint,
-    });
+      // Add a flag to identify this as a comparison
+      isComparison: true,
+      // This ensures the comparison is properly marked when it goes through SSE
+      _isAddedRequest: true
+    };
+    
+    // Use the last selected non-DeFacts model for comparison
+    setAddedConvo(comparisonConvo);
 
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
