@@ -106,3 +106,5 @@ const buildDefaultConvo = ({
 
   return defaultConvo;
 };
+
+export default buildDefaultConvo;
