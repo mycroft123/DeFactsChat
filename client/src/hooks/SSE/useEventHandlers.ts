@@ -430,6 +430,8 @@ export default function useEventHandlers({
 
 // In useEventHandlers.ts, replace the entire finalHandler callback with this:
 
+// In useEventHandlers.ts, replace the ENTIRE finalHandler callback with this:
+
 const finalHandler = useCallback(
   (data: TFinalResData, submission: EventSubmission) => {
     const { requestMessage, responseMessage, conversation, runMessages } = data;
@@ -439,6 +441,17 @@ const finalHandler = useCallback(
       isRegenerate = false,
       isTemporary = false,
     } = submission;
+
+    console.log('🔍 [finalHandler] Processing response:', {
+      conversationId: conversation.conversationId,
+      model: conversation.model,
+      endpoint: conversation.endpoint,
+      submissionModel: submissionConvo.model,
+      submissionEndpoint: submissionConvo.endpoint,
+      isAddedRequest,
+      isComparison: submissionConvo.isComparison,
+      _isAddedRequest: submissionConvo._isAddedRequest
+    });
 
     setShowStopButton(false);
     setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
@@ -463,6 +476,8 @@ const finalHandler = useCallback(
     } else if (requestMessage != null && responseMessage != null) {
       finalMessages = [...messages, requestMessage, responseMessage];
     }
+    
+    // Always update messages for the current view
     if (finalMessages.length > 0) {
       setMessages(finalMessages);
       queryClient.setQueryData<TMessage[]>(
@@ -497,49 +512,65 @@ const finalHandler = useCallback(
       }, 2500);
     }
 
-    /* CRITICAL FIX: Only update conversation state if NOT in comparison mode */
-    if (setConversation && isAddedRequest !== true) {
-      setConversation((prevState) => {
-        // If this is a comparison response (isAddedRequest is false but the response
-        // is from a different model than the current conversation), don't update
-        const isComparisonResponse = 
-          prevState?.model && 
-          conversation.model && 
-          prevState.model !== conversation.model;
+    /* CRITICAL FIX: Handle conversation state updates for comparison mode */
+    
+    // Check if this is a comparison response
+    const isComparisonSubmission = submissionConvo.isComparison || submissionConvo._isAddedRequest;
+    const isComparisonResponse = conversation.model !== 'DeFacts' && conversation.endpoint !== 'gptPlugins';
+    
+    // Only update conversation state if we have setConversation
+    if (setConversation) {
+      // For comparison requests OR responses from non-DeFacts models
+      if (isAddedRequest === true || isComparisonSubmission || isComparisonResponse) {
+        console.log('🛡️ [finalHandler] Comparison detected, NOT updating main conversation state', {
+          isAddedRequest,
+          isComparisonSubmission,
+          isComparisonResponse,
+          model: conversation.model,
+          endpoint: conversation.endpoint
+        });
         
-        if (isComparisonResponse) {
-          // Only update the query cache for the comparison conversation
-          const comparisonUpdate = {
+        // Store comparison data in a separate cache key for the comparison view
+        const comparisonKey = `${conversation.conversationId}_comparison`;
+        queryClient.setQueryData(
+          [QueryKeys.conversation, comparisonKey],
+          conversation
+        );
+        
+        // DO NOT update the main conversation state
+        // DO NOT call setConversation
+      } else {
+        // This is a main conversation response (DeFacts)
+        console.log('✅ [finalHandler] Updating main conversation state (DeFacts)', {
+          model: conversation.model || submissionConvo.model,
+          endpoint: conversation.endpoint || submissionConvo.endpoint
+        });
+        
+        setConversation((prevState) => {
+          const update = {
+            ...prevState,
             ...(conversation as TConversation),
           };
-          queryClient.setQueryData(
-            [QueryKeys.conversation, conversation.conversationId],
-            comparisonUpdate
-          );
-          // Return the previous state unchanged
-          return prevState;
+          
+          // Always preserve DeFacts for main conversation
+          if (prevState?.model === 'DeFacts' && prevState?.endpoint === 'gptPlugins') {
+            update.model = 'DeFacts';
+            update.endpoint = 'gptPlugins';
+          }
+          
+          const cachedConvo = queryClient.getQueryData<TConversation>([
+            QueryKeys.conversation,
+            conversation.conversationId,
+          ]);
+          if (!cachedConvo) {
+            queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
+          }
+          return update;
+        });
+        
+        if (location.pathname === '/c/new') {
+          navigate(`/c/${conversation.conversationId}`, { replace: true });
         }
-
-        // Normal flow - update the conversation state
-        const update = {
-          ...prevState,
-          ...(conversation as TConversation),
-        };
-        if (prevState?.model != null && prevState.model !== submissionConvo.model) {
-          update.model = prevState.model;
-        }
-        const cachedConvo = queryClient.getQueryData<TConversation>([
-          QueryKeys.conversation,
-          conversation.conversationId,
-        ]);
-        if (!cachedConvo) {
-          queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
-        }
-        return update;
-      });
-      
-      if (location.pathname === '/c/new') {
-        navigate(`/c/${conversation.conversationId}`, { replace: true });
       }
     }
 
