@@ -428,113 +428,138 @@ export default function useEventHandlers({
     ],
   );
 
-  const finalHandler = useCallback(
-    (data: TFinalResData, submission: EventSubmission) => {
-      const { requestMessage, responseMessage, conversation, runMessages } = data;
-      const {
-        messages,
-        conversation: submissionConvo,
-        isRegenerate = false,
-        isTemporary = false,
-      } = submission;
+// In useEventHandlers.ts, replace the entire finalHandler callback with this:
 
-      setShowStopButton(false);
-      setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
+const finalHandler = useCallback(
+  (data: TFinalResData, submission: EventSubmission) => {
+    const { requestMessage, responseMessage, conversation, runMessages } = data;
+    const {
+      messages,
+      conversation: submissionConvo,
+      isRegenerate = false,
+      isTemporary = false,
+    } = submission;
 
-      const currentMessages = getMessages();
-      /* Early return if messages are empty; i.e., the user navigated away */
-      if (!currentMessages || currentMessages.length === 0) {
-        setIsSubmitting(false);
-        return;
-      }
+    setShowStopButton(false);
+    setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
 
-      /* a11y announcements */
-      announcePolite({ message: 'end', isStatus: true });
-      announcePolite({ message: getAllContentText(responseMessage) });
+    const currentMessages = getMessages();
+    /* Early return if messages are empty; i.e., the user navigated away */
+    if (!currentMessages || currentMessages.length === 0) {
+      setIsSubmitting(false);
+      return;
+    }
 
-      /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
-      let finalMessages: TMessage[] = [];
-      if (runMessages) {
-        finalMessages = [...runMessages];
-      } else if (isRegenerate && responseMessage) {
-        finalMessages = [...messages, responseMessage];
-      } else if (requestMessage != null && responseMessage != null) {
-        finalMessages = [...messages, requestMessage, responseMessage];
-      }
-      if (finalMessages.length > 0) {
-        setMessages(finalMessages);
-        queryClient.setQueryData<TMessage[]>(
-          [QueryKeys.messages, conversation.conversationId],
-          finalMessages,
-        );
-      } else if (
-        isAssistantsEndpoint(submissionConvo.endpoint) &&
-        (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
-      ) {
-        queryClient.setQueryData<TMessage[]>(
-          [QueryKeys.messages, conversation.conversationId],
-          [...currentMessages],
-        );
-      }
+    /* a11y announcements */
+    announcePolite({ message: 'end', isStatus: true });
+    announcePolite({ message: getAllContentText(responseMessage) });
 
-      const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
-      if (isNewConvo) {
-        removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
-      }
+    /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
+    let finalMessages: TMessage[] = [];
+    if (runMessages) {
+      finalMessages = [...runMessages];
+    } else if (isRegenerate && responseMessage) {
+      finalMessages = [...messages, responseMessage];
+    } else if (requestMessage != null && responseMessage != null) {
+      finalMessages = [...messages, requestMessage, responseMessage];
+    }
+    if (finalMessages.length > 0) {
+      setMessages(finalMessages);
+      queryClient.setQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId],
+        finalMessages,
+      );
+    } else if (
+      isAssistantsEndpoint(submissionConvo.endpoint) &&
+      (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
+    ) {
+      queryClient.setQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId],
+        [...currentMessages],
+      );
+    }
 
-      /* Refresh title */
-      if (
-        genTitle &&
-        isNewConvo &&
-        !isTemporary &&
-        requestMessage &&
-        requestMessage.parentMessageId === Constants.NO_PARENT
-      ) {
-        setTimeout(() => {
-          genTitle.mutate({ conversationId: conversation.conversationId as string });
-        }, 2500);
-      }
+    const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
+    if (isNewConvo) {
+      removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
+    }
 
-      if (setConversation && isAddedRequest !== true) {
-        setConversation((prevState) => {
-          const update = {
-            ...prevState,
+    /* Refresh title */
+    if (
+      genTitle &&
+      isNewConvo &&
+      !isTemporary &&
+      requestMessage &&
+      requestMessage.parentMessageId === Constants.NO_PARENT
+    ) {
+      setTimeout(() => {
+        genTitle.mutate({ conversationId: conversation.conversationId as string });
+      }, 2500);
+    }
+
+    /* CRITICAL FIX: Only update conversation state if NOT in comparison mode */
+    if (setConversation && isAddedRequest !== true) {
+      setConversation((prevState) => {
+        // If this is a comparison response (isAddedRequest is false but the response
+        // is from a different model than the current conversation), don't update
+        const isComparisonResponse = 
+          prevState?.model && 
+          conversation.model && 
+          prevState.model !== conversation.model;
+        
+        if (isComparisonResponse) {
+          // Only update the query cache for the comparison conversation
+          const comparisonUpdate = {
             ...(conversation as TConversation),
           };
-          if (prevState?.model != null && prevState.model !== submissionConvo.model) {
-            update.model = prevState.model;
-          }
-          const cachedConvo = queryClient.getQueryData<TConversation>([
-            QueryKeys.conversation,
-            conversation.conversationId,
-          ]);
-          if (!cachedConvo) {
-            queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
-          }
-          return update;
-        });
-        if (location.pathname === '/c/new') {
-          navigate(`/c/${conversation.conversationId}`, { replace: true });
+          queryClient.setQueryData(
+            [QueryKeys.conversation, conversation.conversationId],
+            comparisonUpdate
+          );
+          // Return the previous state unchanged
+          return prevState;
         }
-      }
 
-      setIsSubmitting(false);
-    },
-    [
-      setShowStopButton,
-      setCompleted,
-      getMessages,
-      announcePolite,
-      genTitle,
-      setConversation,
-      isAddedRequest,
-      setIsSubmitting,
-      setMessages,
-      queryClient,
-      location.pathname,
-      navigate,
-    ],
-  );
+        // Normal flow - update the conversation state
+        const update = {
+          ...prevState,
+          ...(conversation as TConversation),
+        };
+        if (prevState?.model != null && prevState.model !== submissionConvo.model) {
+          update.model = prevState.model;
+        }
+        const cachedConvo = queryClient.getQueryData<TConversation>([
+          QueryKeys.conversation,
+          conversation.conversationId,
+        ]);
+        if (!cachedConvo) {
+          queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
+        }
+        return update;
+      });
+      
+      if (location.pathname === '/c/new') {
+        navigate(`/c/${conversation.conversationId}`, { replace: true });
+      }
+    }
+
+    setIsSubmitting(false);
+  },
+  [
+    setShowStopButton,
+    setCompleted,
+    getMessages,
+    announcePolite,
+    genTitle,
+    setConversation,
+    isAddedRequest,
+    setIsSubmitting,
+    setMessages,
+    queryClient,
+    location.pathname,
+    navigate,
+  ],
+);
 
   const errorHandler = useCallback(
     ({ data, submission }: { data?: TResData; submission: EventSubmission }) => {
