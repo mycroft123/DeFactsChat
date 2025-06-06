@@ -2,7 +2,7 @@ import { v4 } from 'uuid';
 import { useCallback, useRef } from 'react';
 import { useSetRecoilState } from 'recoil';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   QueryKeys,
   Constants,
@@ -428,169 +428,179 @@ export default function useEventHandlers({
     ],
   );
 
-// In useEventHandlers.ts, replace the entire finalHandler callback with this:
+  const finalHandler = useCallback(
+    (data: TFinalResData, submission: EventSubmission) => {
+      const { requestMessage, responseMessage, conversation, runMessages } = data;
+      const {
+        messages,
+        conversation: submissionConvo,
+        isRegenerate = false,
+        isTemporary = false,
+      } = submission;
 
-// In useEventHandlers.ts, replace the ENTIRE finalHandler callback with this:
+      console.log('🔍 [finalHandler] Processing response:', {
+        conversationId: conversation.conversationId,
+        model: conversation.model,
+        endpoint: conversation.endpoint,
+        submissionModel: submissionConvo.model,
+        submissionEndpoint: submissionConvo.endpoint,
+        isAddedRequest,
+        isComparison: submissionConvo.isComparison,
+        _isAddedRequest: submissionConvo._isAddedRequest
+      });
 
-const finalHandler = useCallback(
-  (data: TFinalResData, submission: EventSubmission) => {
-    const { requestMessage, responseMessage, conversation, runMessages } = data;
-    const {
-      messages,
-      conversation: submissionConvo,
-      isRegenerate = false,
-      isTemporary = false,
-    } = submission;
+      setShowStopButton(false);
+      setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
 
-    console.log('🔍 [finalHandler] Processing response:', {
-      conversationId: conversation.conversationId,
-      model: conversation.model,
-      endpoint: conversation.endpoint,
-      submissionModel: submissionConvo.model,
-      submissionEndpoint: submissionConvo.endpoint,
-      isAddedRequest,
-      isComparison: submissionConvo.isComparison,
-      _isAddedRequest: submissionConvo._isAddedRequest
-    });
+      const currentMessages = getMessages();
+      /* Early return if messages are empty; i.e., the user navigated away */
+      if (!currentMessages || currentMessages.length === 0) {
+        setIsSubmitting(false);
+        return;
+      }
 
-    setShowStopButton(false);
-    setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
+      /* a11y announcements */
+      announcePolite({ message: 'end', isStatus: true });
+      announcePolite({ message: getAllContentText(responseMessage) });
 
-    const currentMessages = getMessages();
-    /* Early return if messages are empty; i.e., the user navigated away */
-    if (!currentMessages || currentMessages.length === 0) {
-      setIsSubmitting(false);
-      return;
-    }
-
-    /* a11y announcements */
-    announcePolite({ message: 'end', isStatus: true });
-    announcePolite({ message: getAllContentText(responseMessage) });
-
-    /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
-    let finalMessages: TMessage[] = [];
-    if (runMessages) {
-      finalMessages = [...runMessages];
-    } else if (isRegenerate && responseMessage) {
-      finalMessages = [...messages, responseMessage];
-    } else if (requestMessage != null && responseMessage != null) {
-      finalMessages = [...messages, requestMessage, responseMessage];
-    }
-    
-    // Always update messages for the current view
-    if (finalMessages.length > 0) {
-      setMessages(finalMessages);
-      queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, conversation.conversationId],
-        finalMessages,
-      );
-    } else if (
-      isAssistantsEndpoint(submissionConvo.endpoint) &&
-      (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
-    ) {
-      queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, conversation.conversationId],
-        [...currentMessages],
-      );
-    }
-
-    const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
-    if (isNewConvo) {
-      removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
-    }
-
-    /* Refresh title */
-    if (
-      genTitle &&
-      isNewConvo &&
-      !isTemporary &&
-      requestMessage &&
-      requestMessage.parentMessageId === Constants.NO_PARENT
-    ) {
-      setTimeout(() => {
-        genTitle.mutate({ conversationId: conversation.conversationId as string });
-      }, 2500);
-    }
-
-    /* CRITICAL FIX: Handle conversation state updates for comparison mode */
-    
-    // Check if this is a comparison response
-    const isComparisonSubmission = submissionConvo.isComparison || submissionConvo._isAddedRequest;
-    const isComparisonResponse = conversation.model !== 'DeFacts' && conversation.endpoint !== 'gptPlugins';
-    
-    // Only update conversation state if we have setConversation
-    if (setConversation) {
-      // For comparison requests OR responses from non-DeFacts models
-      if (isAddedRequest === true || isComparisonSubmission || isComparisonResponse) {
-        console.log('🛡️ [finalHandler] Comparison detected, NOT updating main conversation state', {
-          isAddedRequest,
-          isComparisonSubmission,
-          isComparisonResponse,
-          model: conversation.model,
-          endpoint: conversation.endpoint
-        });
+      /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
+      let finalMessages: TMessage[] = [];
+      if (runMessages) {
+        finalMessages = [...runMessages];
+      } else if (isRegenerate && responseMessage) {
+        finalMessages = [...messages, responseMessage];
+      } else if (requestMessage != null && responseMessage != null) {
+        finalMessages = [...messages, requestMessage, responseMessage];
+      }
+      
+      // Determine if this is a comparison response
+      const isComparisonSubmission = submissionConvo.isComparison || submissionConvo._isAddedRequest;
+      const isComparisonResponse = (conversation.model !== 'DeFacts' && conversation.endpoint !== 'gptPlugins') || isAddedRequest === true;
+      const isComparison = isComparisonSubmission || isComparisonResponse;
+      
+      // Update messages with appropriate cache key
+      if (finalMessages.length > 0) {
+        setMessages(finalMessages);
         
-        // Store comparison data in a separate cache key for the comparison view
-        const comparisonKey = `${conversation.conversationId}_comparison`;
-        queryClient.setQueryData(
-          [QueryKeys.conversation, comparisonKey],
-          conversation
-        );
+        // Use different cache keys for main vs comparison
+        const cacheKey = isComparison 
+          ? [QueryKeys.messages, `${conversation.conversationId}_comparison`]
+          : [QueryKeys.messages, conversation.conversationId];
+          
+        queryClient.setQueryData<TMessage[]>(cacheKey, finalMessages);
         
-        // DO NOT update the main conversation state
-        // DO NOT call setConversation
-      } else {
-        // This is a main conversation response (DeFacts)
-        console.log('✅ [finalHandler] Updating main conversation state (DeFacts)', {
-          model: conversation.model || submissionConvo.model,
-          endpoint: conversation.endpoint || submissionConvo.endpoint
-        });
-        
-        setConversation((prevState) => {
-          const update = {
-            ...prevState,
-            ...(conversation as TConversation),
+        // Also update the regular key if it's the main conversation
+        if (!isComparison) {
+          queryClient.setQueryData<TMessage[]>(
+            [QueryKeys.messages, conversation.conversationId],
+            finalMessages
+          );
+        }
+      } else if (
+        isAssistantsEndpoint(submissionConvo.endpoint) &&
+        (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
+      ) {
+        const cacheKey = isComparison 
+          ? [QueryKeys.messages, `${conversation.conversationId}_comparison`]
+          : [QueryKeys.messages, conversation.conversationId];
+          
+        queryClient.setQueryData<TMessage[]>(cacheKey, [...currentMessages]);
+      }
+
+      const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
+      if (isNewConvo) {
+        removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
+      }
+
+      /* Refresh title */
+      if (
+        genTitle &&
+        isNewConvo &&
+        !isTemporary &&
+        requestMessage &&
+        requestMessage.parentMessageId === Constants.NO_PARENT
+      ) {
+        setTimeout(() => {
+          genTitle.mutate({ conversationId: conversation.conversationId as string });
+        }, 2500);
+      }
+
+      /* Handle conversation state updates */
+      if (setConversation) {
+        if (isComparison) {
+          console.log('🛡️ [finalHandler] Comparison detected, updating comparison cache only', {
+            isAddedRequest,
+            isComparisonSubmission,
+            isComparisonResponse,
+            model: conversation.model,
+            endpoint: conversation.endpoint
+          });
+          
+          // Store comparison conversation data separately
+          const comparisonConvo = {
+            ...conversation,
+            isComparison: true,
+            _originalModel: conversation.model,
+            _originalEndpoint: conversation.endpoint
           };
           
-          // Always preserve DeFacts for main conversation
-          if (prevState?.model === 'DeFacts' && prevState?.endpoint === 'gptPlugins') {
-            update.model = 'DeFacts';
-            update.endpoint = 'gptPlugins';
-          }
+          queryClient.setQueryData(
+            [QueryKeys.conversation, `${conversation.conversationId}_comparison`],
+            comparisonConvo
+          );
           
-          const cachedConvo = queryClient.getQueryData<TConversation>([
-            QueryKeys.conversation,
-            conversation.conversationId,
-          ]);
-          if (!cachedConvo) {
-            queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
+          // DO NOT call setConversation for comparisons
+        } else {
+          // This is a main conversation response (DeFacts)
+          console.log('✅ [finalHandler] Updating main conversation state', {
+            model: conversation.model || submissionConvo.model,
+            endpoint: conversation.endpoint || submissionConvo.endpoint
+          });
+          
+          setConversation((prevState) => {
+            const update = {
+              ...prevState,
+              ...(conversation as TConversation),
+            };
+            
+            // Ensure DeFacts remains for main conversation
+            if (prevState?.model === 'DeFacts' || update.model === 'DeFacts') {
+              update.model = 'DeFacts';
+              update.endpoint = 'gptPlugins';
+            }
+            
+            // Cache the main conversation
+            queryClient.setQueryData(
+              [QueryKeys.conversation, conversation.conversationId],
+              update
+            );
+            
+            return update;
+          });
+          
+          if (location.pathname === '/c/new') {
+            navigate(`/c/${conversation.conversationId}`, { replace: true });
           }
-          return update;
-        });
-        
-        if (location.pathname === '/c/new') {
-          navigate(`/c/${conversation.conversationId}`, { replace: true });
         }
       }
-    }
 
-    setIsSubmitting(false);
-  },
-  [
-    setShowStopButton,
-    setCompleted,
-    getMessages,
-    announcePolite,
-    genTitle,
-    setConversation,
-    isAddedRequest,
-    setIsSubmitting,
-    setMessages,
-    queryClient,
-    location.pathname,
-    navigate,
-  ],
-);
+      setIsSubmitting(false);
+    },
+    [
+      setShowStopButton,
+      setCompleted,
+      getMessages,
+      announcePolite,
+      genTitle,
+      setConversation,
+      isAddedRequest,
+      setIsSubmitting,
+      setMessages,
+      queryClient,
+      location.pathname,
+      navigate,
+    ],
+  );
 
   const errorHandler = useCallback(
     ({ data, submission }: { data?: TResData; submission: EventSubmission }) => {
@@ -813,4 +823,29 @@ const finalHandler = useCallback(
     attachmentHandler,
     abortConversation,
   };
+}
+
+// Export this helper hook separately for use in comparison views
+export function useComparisonMessages(conversationId: string | null) {
+  const queryClient = useQueryClient();
+  
+  return useQuery({
+    queryKey: [QueryKeys.messages, `${conversationId}_comparison`],
+    queryFn: () => {
+      // First try to get comparison messages
+      const comparisonMessages = queryClient.getQueryData<TMessage[]>(
+        [QueryKeys.messages, `${conversationId}_comparison`]
+      );
+      
+      if (comparisonMessages && comparisonMessages.length > 0) {
+        return comparisonMessages;
+      }
+      
+      // Fallback to regular messages if no comparison messages yet
+      return queryClient.getQueryData<TMessage[]>(
+        [QueryKeys.messages, conversationId]
+      ) || [];
+    },
+    enabled: !!conversationId,
+  });
 }
