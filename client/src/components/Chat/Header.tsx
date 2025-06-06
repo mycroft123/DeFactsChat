@@ -23,7 +23,10 @@ export default function Header() {
   
   // Add the chat context hooks for compare functionality
   const { conversation, setConversation } = useChatContext();
-  const { setConversation: setAddedConvo } = useAddedChatContext();
+  const { setConversation: setAddedConvo, conversation: addedConversation } = useAddedChatContext();
+  
+  // State to prevent multiple clicks
+  const [isComparing, setIsComparing] = useState(false);
   
   // Force DeFacts as default on mount
   useEffect(() => {
@@ -40,7 +43,7 @@ export default function Header() {
   // Track the last selected model for comparison - default to GPT-4
   const [lastSelectedModel, setLastSelectedModel] = useState({
     endpoint: 'openAI',
-    model: 'gpt-4' // Changed from 'gpt-3.5-turbo' to 'gpt-4'
+    model: 'gpt-4'
   });
   
   // Listen for model selection changes
@@ -50,7 +53,7 @@ export default function Header() {
       // User selected a non-DeFacts model, save it for comparison
       setLastSelectedModel({
         endpoint: conversation.endpoint,
-        model: conversation.model || 'gpt-4' // Changed default to gpt-4
+        model: conversation.model || 'gpt-4'
       });
       // Also save to localStorage as backup
       localStorage.setItem('defacts_comparison_endpoint', conversation.endpoint);
@@ -120,31 +123,64 @@ export default function Header() {
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
   // Modified compare handler with proper comparison marking - force GPT-4
-  const handleCompareModels = () => {
-    if (!conversation) return;
+  const handleCompareModels = (e) => {
+    // Prevent default to avoid any bubble-up issues
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     
-    const { title: _t, ...convo } = conversation;
+    // Prevent multiple clicks
+    if (!conversation || isComparing) {
+      console.log('Compare blocked:', { hasConversation: !!conversation, isComparing });
+      return;
+    }
+    
+    // Check if we already have an added conversation
+    if (addedConversation) {
+      console.log('Already comparing, clearing existing comparison');
+      setAddedConvo(null);
+      setTimeout(() => {
+        handleCompareModels(e);
+      }, 100);
+      return;
+    }
+    
+    // Set comparing state to prevent double-clicks
+    setIsComparing(true);
+    
+    const { title: _t, conversationId, ...convo } = conversation;
     
     console.log('Compare button clicked:', {
       mainModel: 'DeFacts',
       comparisonModel: 'gpt-4',
-      comparisonEndpoint: 'openAI'
+      comparisonEndpoint: 'openAI',
+      timestamp: Date.now(),
+      isMobile: isSmallScreen
     });
     
     // Create comparison conversation with special flag - force GPT-4
     const comparisonConvo = {
       ...convo,
+      conversationId: undefined, // Clear conversation ID to ensure new thread
       title: '',
       model: 'gpt-4', // Force GPT-4 here
       endpoint: 'openAI', // Force OpenAI endpoint
       // Add a flag to identify this as a comparison
       isComparison: true,
       // This ensures the comparison is properly marked when it goes through SSE
-      _isAddedRequest: true
+      _isAddedRequest: true,
+      // Add timestamp to ensure uniqueness
+      _timestamp: Date.now()
     };
     
     // Use GPT-4 for comparison
     setAddedConvo(comparisonConvo);
+
+    // Reset comparing state after a delay
+    setTimeout(() => {
+      setIsComparing(false);
+    }, 1000);
 
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
@@ -173,8 +209,8 @@ export default function Header() {
           </button>
         </div>
         
-        {/* Right side icons - Always visible on desktop, conditional on mobile */}
-        {(!isSmallScreen || !showAdvanced) && (
+        {/* Right side icons - Only show on desktop */}
+        {!isSmallScreen && (
           <div className="flex items-center gap-2">
             {hasAccessToBookmarks === true && <BookmarkMenu />}
             <ExportAndShareMenu
@@ -190,16 +226,17 @@ export default function Header() {
           {/* Desktop - inline layout */}
           {!isSmallScreen && (
             <>
-             {/*} <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Compare with:</span>
-                <ModelSelector startupConfig={startupConfig} />
-              </div>*/}
               {hasAccessToMultiConvo === true && conversation && (
                 <button 
                   onClick={handleCompareModels}
-                  className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
+                  disabled={isComparing}
+                  className={`flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                    isComparing 
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
+                      : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50'
+                  }`}
                 >
-                  Compare GPT 4.0
+                  {isComparing ? 'Comparing...' : 'Compare GPT 4.0'}
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
@@ -212,20 +249,23 @@ export default function Header() {
           {/* Mobile - stacked layout */}
           {isSmallScreen && (
             <>
-              <div className="flex items-center gap-2 overflow-x-auto">
-               {/* <span className="text-xs text-gray-500 flex-shrink-0">Compare with:</span>
-                <ModelSelector startupConfig={startupConfig} />*/}
+              <div className="flex items-center gap-2 justify-between w-full">
                 {hasAccessToMultiConvo === true && conversation && (
                   <button 
                     onClick={handleCompareModels}
-                    className="flex h-10 flex-shrink-0 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
+                    disabled={isComparing}
+                    className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                      isComparing 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
+                        : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50'
+                    }`}
                   >
-                    Compare GPT 4.0
+                    {isComparing ? 'Comparing...' : 'Compare GPT 4.0'}
                   </button>
                 )}
-              </div>
-              <div className="flex gap-2">
                 <TemporaryChat />
+              </div>
+              <div className="flex gap-2 justify-between w-full">
                 {hasAccessToBookmarks === true && <BookmarkMenu />}
                 <ExportAndShareMenu
                   isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
