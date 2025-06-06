@@ -107,7 +107,7 @@ export default function Header() {
   const handleCompareModels = () => {
     if (!conversation) return;
     
-    const { title: _t, ...convo } = conversation;
+    const { title: _t, conversationId: _id, ...convo } = conversation;
     
     console.log('Compare button clicked:', {
       mainModel: 'DeFacts',
@@ -115,14 +115,15 @@ export default function Header() {
       comparisonEndpoint: lastSelectedModel.endpoint
     });
     
-    // Use the last selected non-DeFacts model for comparison
+    // Create a new conversation for comparison without the old ID
     setAddedConvo({
       ...convo,
+      conversationId: 'new', // Force a new conversation
       title: '',
       model: lastSelectedModel.model,
       endpoint: lastSelectedModel.endpoint,
     });
-
+  
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
       textarea.focus();
