@@ -123,54 +123,31 @@ export default function Header() {
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
   // Modified compare handler with proper comparison marking - force GPT-4
-  const handleCompareModels = (e) => {
-    // Prevent default to avoid any bubble-up issues
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+  const handleCompareModels = () => {
+    if (!conversation) return;
     
-    // Prevent multiple clicks
-    if (!conversation || isComparing) {
-      console.log('Compare blocked:', { hasConversation: !!conversation, isComparing });
-      return;
-    }
-    
-    // Set comparing state to prevent double-clicks
-    setIsComparing(true);
-    
-    const { title: _t, conversationId, ...convo } = conversation;
+    const { title: _t, ...convo } = conversation;
     
     console.log('Compare button clicked:', {
       mainModel: 'DeFacts',
       comparisonModel: 'gpt-4',
-      comparisonEndpoint: 'openAI',
-      timestamp: Date.now(),
-      isMobile: isSmallScreen
+      comparisonEndpoint: 'openAI'
     });
     
     // Create comparison conversation with special flag - force GPT-4
     const comparisonConvo = {
       ...convo,
-      conversationId: undefined, // Clear conversation ID to ensure new thread
       title: '',
       model: 'gpt-4', // Force GPT-4 here
       endpoint: 'openAI', // Force OpenAI endpoint
       // Add a flag to identify this as a comparison
       isComparison: true,
       // This ensures the comparison is properly marked when it goes through SSE
-      _isAddedRequest: true,
-      // Add timestamp to ensure uniqueness
-      _timestamp: Date.now()
+      _isAddedRequest: true
     };
     
     // Use GPT-4 for comparison
     setAddedConvo(comparisonConvo);
-
-    // Reset comparing state after a delay
-    setTimeout(() => {
-      setIsComparing(false);
-    }, 1000);
 
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
@@ -219,14 +196,9 @@ export default function Header() {
               {hasAccessToMultiConvo === true && conversation && (
                 <button 
                   onClick={handleCompareModels}
-                  disabled={isComparing}
-                  className={`flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                    isComparing 
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
-                      : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50'
-                  }`}
+                  className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
                 >
-                  {isComparing ? 'Comparing...' : 'Compare GPT 4.0'}
+                  Compare GPT 4.0
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
