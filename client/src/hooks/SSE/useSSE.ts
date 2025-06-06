@@ -104,6 +104,41 @@ export default function useSSE(
       payload = removeNullishValues(payload) as TPayload;
     }
 
+    // DEBUG: Log the complete payload being sent
+    console.log('🚀 [useSSE] Payload being sent:', {
+      model: payload.model,
+      endpoint: payload.endpoint,
+      endpointType: payload.endpointType,
+      conversationId: payload.conversationId,
+      isAddedRequest,
+      runIndex,
+      temperature: payload.temperature,
+      top_p: payload.top_p,
+      max_tokens: payload.max_tokens,
+      systemPrompt: payload.system_prompt,
+      promptPrefix: payload.promptPrefix,
+      messages: payload.messages?.map((msg: any) => ({
+        role: msg.role,
+        content: typeof msg.content === 'string' 
+          ? msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : '')
+          : msg.content,
+        name: msg.name,
+      })),
+      tools: payload.tools?.map((tool: any) => tool.name || tool.type),
+      functions: payload.functions?.map((func: any) => func.name),
+      isComparison: submission.conversation?.isComparison,
+      _isAddedRequest: submission.conversation?._isAddedRequest,
+    });
+
+    // DEBUG: Log submission details
+    console.log('📋 [useSSE] Submission details:', {
+      conversationModel: submission.conversation?.model,
+      conversationEndpoint: submission.conversation?.endpoint,
+      userMessageText: submission.userMessage?.text?.substring(0, 100),
+      isRegenerate: submission.isRegenerate,
+      isAddedRequest,
+    });
+
     let textIndex = null;
 
     const sse = new SSE(payloadData.server, {
