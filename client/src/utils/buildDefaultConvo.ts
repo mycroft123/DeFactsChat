@@ -83,7 +83,26 @@ const buildDefaultConvo = ({
 
   defaultConvo.tools = lastConversationSetup?.tools ?? lastSelectedTools ?? defaultConvo.tools;
 
+  // FORCE DEFACTS FOR MAIN CONVERSATIONS
+  // Check if this is NOT a comparison conversation
+  // Comparison conversations have a flag or are created with specific context
+  const isComparison = conversation.isComparison || false;
+  
+  if (!isComparison) {
+    console.log('🚀 [buildDefaultConvo] Forcing DeFacts for main conversation');
+    defaultConvo.endpoint = EModelEndpoint.gptPlugins;
+    defaultConvo.model = 'DeFacts';
+    
+    // Clear any assistant/agent IDs that might interfere
+    if (defaultConvo.assistant_id) {
+      defaultConvo.assistant_id = undefined;
+    }
+    if (defaultConvo.agent_id) {
+      defaultConvo.agent_id = undefined;
+    }
+  } else {
+    console.log('🔄 [buildDefaultConvo] Comparison conversation - using selected model:', defaultConvo.model);
+  }
+
   return defaultConvo;
 };
-
-export default buildDefaultConvo;

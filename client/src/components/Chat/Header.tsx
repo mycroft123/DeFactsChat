@@ -22,8 +22,20 @@ export default function Header() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   
   // Add the chat context hooks for compare functionality
-  const { conversation } = useChatContext();
+  const { conversation, setConversation } = useChatContext();
   const { setConversation: setAddedConvo } = useAddedChatContext();
+  
+  // Force DeFacts as default on mount
+  useEffect(() => {
+    if (conversation && conversation.endpoint !== 'gptPlugins') {
+      console.log('🔧 Forcing DeFacts for main conversation');
+      setConversation(prev => ({
+        ...prev,
+        endpoint: 'gptPlugins',
+        model: 'DeFacts'
+      }));
+    }
+  }, []); // Run once on mount
   
   // Track the last selected model for comparison
   const [lastSelectedModel, setLastSelectedModel] = useState({
@@ -107,7 +119,7 @@ export default function Header() {
   const handleCompareModels = () => {
     if (!conversation) return;
     
-    const { title: _t, conversationId: _id, ...convo } = conversation;
+    const { title: _t, ...convo } = conversation;
     
     console.log('Compare button clicked:', {
       mainModel: 'DeFacts',
@@ -115,15 +127,14 @@ export default function Header() {
       comparisonEndpoint: lastSelectedModel.endpoint
     });
     
-    // Create a new conversation for comparison without the old ID
+    // Use the last selected non-DeFacts model for comparison
     setAddedConvo({
       ...convo,
-      conversationId: 'new', // Force a new conversation
       title: '',
       model: lastSelectedModel.model,
       endpoint: lastSelectedModel.endpoint,
     });
-  
+
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
       textarea.focus();
