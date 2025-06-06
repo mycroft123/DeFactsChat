@@ -11,23 +11,56 @@ export default function useGetSender() {
   
   return useCallback(
     (endpointOption: TEndpointOption) => {
-      // Check if this is the main chat by comparing conversation IDs
-      // If there's no addedConversation, it's definitely the main chat
-      // If the endpointOption matches the main conversation, it's the main chat
-      const isMainChat = !addedConversation || 
-        (mainConversation && endpointOption.conversationId === mainConversation.conversationId);
+      // Comprehensive debug logging
+      const timestamp = new Date().toISOString();
+      const debugInfo = {
+        timestamp,
+        endpointOption: {
+          conversationId: endpointOption.conversationId,
+          endpoint: endpointOption.endpoint,
+          model: endpointOption.model,
+          modelLabel: endpointOption.modelLabel,
+        },
+        contexts: {
+          hasMainConvo: !!mainConversation,
+          mainConvoId: mainConversation?.conversationId,
+          mainConvoModel: mainConversation?.model,
+          mainConvoEndpoint: mainConversation?.endpoint,
+          hasAddedConvo: !!addedConversation,
+          addedConvoId: addedConversation?.conversationId,
+          addedConvoModel: addedConversation?.model,
+          addedConvoEndpoint: addedConversation?.endpoint,
+        }
+      };
       
-      // Force DeFacts AI for main chat - 
-      if (isMainChat) {
+      console.log('🔍 [useGetSender] Called:', debugInfo);
+      
+      // Determine which chat this is
+      const isAddedChat = addedConversation && 
+        endpointOption.conversationId === addedConversation.conversationId;
+      
+      const isMainChat = mainConversation && 
+        endpointOption.conversationId === mainConversation.conversationId;
+      
+      console.log('🎯 [useGetSender] Chat Detection:', {
+        isMainChat,
+        isAddedChat,
+        shouldShowDeFacts: isMainChat && !isAddedChat
+      });
+      
+      // Force DeFacts AI for main chat
+      if (isMainChat && !isAddedChat) {
+        console.log('✅ [useGetSender] Returning: DeFacts AI (forced for main chat)');
         return 'DeFacts AI';
       }
       
       // Use normal logic for comparison chat
       const { modelDisplayLabel } = endpointsConfig?.[endpointOption.endpoint ?? ''] ?? {};
-      return getResponseSender({ ...endpointOption, modelDisplayLabel });
+      const result = getResponseSender({ ...endpointOption, modelDisplayLabel });
+      
+      console.log('📤 [useGetSender] Returning:', result, '(normal logic)');
+      return result;
     },
     [endpointsConfig, mainConversation, addedConversation],
   );
-
-
 }
