@@ -201,7 +201,6 @@ export default function Header() {
                   Compare GPT 4.0
                 </button>
               )}
-              {hasAccessToBookmarks === true && <BookmarkMenu />}
               <div className="ml-2">
                 <TemporaryChat />
               </div>
