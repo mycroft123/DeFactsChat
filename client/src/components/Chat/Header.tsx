@@ -37,10 +37,10 @@ export default function Header() {
     }
   }, []); // Run once on mount
   
-  // Track the last selected model for comparison
+  // Track the last selected model for comparison - default to GPT-4
   const [lastSelectedModel, setLastSelectedModel] = useState({
     endpoint: 'openAI',
-    model: 'gpt-3.5-turbo'
+    model: 'gpt-4' // Changed from 'gpt-3.5-turbo' to 'gpt-4'
   });
   
   // Listen for model selection changes
@@ -50,11 +50,11 @@ export default function Header() {
       // User selected a non-DeFacts model, save it for comparison
       setLastSelectedModel({
         endpoint: conversation.endpoint,
-        model: conversation.model || 'gpt-3.5-turbo'
+        model: conversation.model || 'gpt-4' // Changed default to gpt-4
       });
       // Also save to localStorage as backup
       localStorage.setItem('defacts_comparison_endpoint', conversation.endpoint);
-      localStorage.setItem('defacts_comparison_model', conversation.model || 'gpt-3.5-turbo');
+      localStorage.setItem('defacts_comparison_model', conversation.model || 'gpt-4');
     }
   }, [conversation?.endpoint, conversation?.model]);
   
@@ -67,6 +67,10 @@ export default function Header() {
         endpoint: savedEndpoint,
         model: savedModel
       });
+    } else {
+      // If nothing saved, ensure GPT-4 is set as default
+      localStorage.setItem('defacts_comparison_endpoint', 'openAI');
+      localStorage.setItem('defacts_comparison_model', 'gpt-4');
     }
   }, []);
   
@@ -115,7 +119,7 @@ export default function Header() {
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
-  // Modified compare handler with proper comparison marking
+  // Modified compare handler with proper comparison marking - force GPT-4
   const handleCompareModels = () => {
     if (!conversation) return;
     
@@ -123,23 +127,23 @@ export default function Header() {
     
     console.log('Compare button clicked:', {
       mainModel: 'DeFacts',
-      comparisonModel: lastSelectedModel.model,
-      comparisonEndpoint: lastSelectedModel.endpoint
+      comparisonModel: 'gpt-4',
+      comparisonEndpoint: 'openAI'
     });
     
-    // Create comparison conversation with special flag
+    // Create comparison conversation with special flag - force GPT-4
     const comparisonConvo = {
       ...convo,
       title: '',
-      model: lastSelectedModel.model,
-      endpoint: lastSelectedModel.endpoint,
+      model: 'gpt-4', // Force GPT-4 here
+      endpoint: 'openAI', // Force OpenAI endpoint
       // Add a flag to identify this as a comparison
       isComparison: true,
       // This ensures the comparison is properly marked when it goes through SSE
       _isAddedRequest: true
     };
     
-    // Use the last selected non-DeFacts model for comparison
+    // Use GPT-4 for comparison
     setAddedConvo(comparisonConvo);
 
     const textarea = document.getElementById(mainTextareaId);
@@ -186,16 +190,16 @@ export default function Header() {
           {/* Desktop - inline layout */}
           {!isSmallScreen && (
             <>
-              <div className="flex items-center gap-2">
+             {/*} <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500">Compare with:</span>
                 <ModelSelector startupConfig={startupConfig} />
-              </div>
+              </div>*/}
               {hasAccessToMultiConvo === true && conversation && (
                 <button 
                   onClick={handleCompareModels}
                   className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
                 >
-                  Compare
+                  Compare GPT 4.0
                 </button>
               )}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
@@ -216,7 +220,7 @@ export default function Header() {
                     onClick={handleCompareModels}
                     className="flex h-10 flex-shrink-0 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
                   >
-                    Compare
+                    Compare GPT 4.0
                   </button>
                 )}
               </div>
