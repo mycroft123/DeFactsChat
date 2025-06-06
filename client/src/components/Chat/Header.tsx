@@ -23,7 +23,7 @@ export default function Header() {
   
   // Add the chat context hooks for compare functionality
   const { conversation, setConversation } = useChatContext();
-  const { setConversation: setAddedConvo, conversation: addedConversation } = useAddedChatContext();
+  const { setConversation: setAddedConvo } = useAddedChatContext();
   
   // State to prevent multiple clicks
   const [isComparing, setIsComparing] = useState(false);
@@ -133,16 +133,6 @@ export default function Header() {
     // Prevent multiple clicks
     if (!conversation || isComparing) {
       console.log('Compare blocked:', { hasConversation: !!conversation, isComparing });
-      return;
-    }
-    
-    // Check if we already have an added conversation
-    if (addedConversation) {
-      console.log('Already comparing, clearing existing comparison');
-      setAddedConvo(null);
-      setTimeout(() => {
-        handleCompareModels(e);
-      }, 100);
       return;
     }
     
