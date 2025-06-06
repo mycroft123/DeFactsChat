@@ -213,8 +213,8 @@ export default function Header() {
           {isSmallScreen && (
             <>
               <div className="flex items-center gap-2 overflow-x-auto">
-                <span className="text-xs text-gray-500 flex-shrink-0">Compare with:</span>
-                <ModelSelector startupConfig={startupConfig} />
+               {/* <span className="text-xs text-gray-500 flex-shrink-0">Compare with:</span>
+                <ModelSelector startupConfig={startupConfig} />*/}
                 {hasAccessToMultiConvo === true && conversation && (
                   <button 
                     onClick={handleCompareModels}
