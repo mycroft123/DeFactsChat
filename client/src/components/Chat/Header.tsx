@@ -142,15 +142,20 @@ export default function Header() {
       };
     } else {
       console.log('Comparing with Perplexity');
+      // Perplexity is configured as a custom endpoint in your YAML
       comparisonConvo = {
         ...convo,
         title: '',
-        model: 'perplexity',
-        endpoint: 'perplexity',
+        endpoint: 'custom',
+        model: 'Perplexity:::sonar-medium-online', // Format: EndpointName:::ModelName for custom endpoints
+        modelLabel: 'Perplexity',
         isComparison: true,
         _isAddedRequest: true
       };
     }
+    
+    // Debug logging to help identify issues
+    console.log('Setting comparison conversation:', comparisonConvo);
     
     setAddedConvo(comparisonConvo);
 
