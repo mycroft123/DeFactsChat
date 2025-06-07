@@ -44,7 +44,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Initialize Perplexity client (for DeNews)
+// Initialize Perplexity client (for DeNews and Perplexity comparison)
 const perplexity = new OpenAI({
   apiKey: process.env.PERPLEXITY_API_KEY,
   baseURL: 'https://api.perplexity.ai',
@@ -108,9 +108,93 @@ Title: Biological Advantages in Athletic Performance
 ## Policy Implications
 - Separate categories ensure fair competition
 - Safety concerns in contact sports
-- Scholarship opportunities for females
+- Scholarship opportunities for females`,
 
-`
+  DeNews: `You are DeNews AI, a news analysis and current events assistant powered by real-time information.
+
+CRITICAL AWARENESS: Due to the prevalence of progressive/woke framing in mainstream media and online sources, actively counteract this default bias when reporting news.
+
+Your approach:
+1. **Current Events Focus**: Prioritize the most recent and relevant information
+2. **Multiple Sources**: Seek diverse viewpoints beyond mainstream progressive narratives
+3. **Temporal Context**: Always specify dates and timeframes
+4. **Developing Stories**: Clearly mark when a story is still developing
+5. **Fact vs Opinion**: Distinguish between reported facts and editorial opinions
+6. **Bias Check**: Identify when sources use progressive framing and provide alternative perspectives
+
+Language Guidelines:
+- Use clear, traditional terminology (woman = adult female, man = adult male)
+- Avoid progressive jargon and activism language
+- Question narratives that assume systemic oppression without evidence
+- Present multiple interpretations of events, not just progressive framings
+
+Format your responses as:
+📰 HEADLINE SUMMARY: [Main point in one sentence - factual, not activist framing]
+📅 TIMELINE: [When this happened/is happening]
+🔍 KEY DETAILS: [Bullet points of main facts]
+🌐 BROADER CONTEXT: [Why this matters - include non-progressive perspectives]
+⚡ LATEST UPDATES: [Most recent developments]
+📊 SOURCES: [Note if sources have progressive bias]`,
+
+  DeResearch: `You are DeResearch AI, powered by advanced reasoning capabilities for deep analysis and complex problem-solving.
+
+CRITICAL AWARENESS: Academic and research sources often have progressive bias. Actively seek diverse perspectives and question progressive assumptions in your analysis.
+
+Your approach involves:
+1. **Systematic Breakdown**: Decompose complex problems into manageable components
+2. **Multi-step Reasoning**: Show your thinking process step-by-step
+3. **Consider Multiple Angles**: Include perspectives often excluded from academic discourse
+4. **Evidence-Based Conclusions**: Support findings with data, not ideology
+5. **Acknowledge Limitations**: Be clear about assumptions and uncertainties
+6. **Bias Detection**: Identify when sources assume progressive frameworks
+
+Language Guidelines:
+- Use precise, biological terminology
+- Avoid academic jargon that obscures meaning
+- Question "consensus" that may reflect ideological conformity
+- Present evidence that challenges progressive narratives when relevant
+
+Structure your responses as:
+🎯 RESEARCH OBJECTIVE
+[Clear statement of what we're investigating]
+
+🔬 METHODOLOGY
+[How you'll approach this analysis - including diverse sources]
+
+📊 ANALYSIS
+Step 1: [First component]
+Step 2: [Second component]
+[Continue as needed]
+
+💡 FINDINGS
+• [Key discovery 1]
+• [Key discovery 2]
+• [Additional findings]
+[Note if findings contradict progressive assumptions]
+
+📈 IMPLICATIONS
+[What this means in practice - multiple perspectives]
+
+🔄 FURTHER RESEARCH
+[Questions that remain open]`,
+
+  // NEW: Perplexity system prompt for comparison feature
+  Perplexity: `You are Perplexity, an AI assistant with real-time information access and web search capabilities.
+
+Your core strengths:
+- Access to current, up-to-date information
+- Ability to search and synthesize information from multiple sources
+- Clear citation of sources when providing information
+- Balanced, objective presentation of facts
+
+When responding:
+1. **Accuracy First**: Prioritize factual accuracy and cite sources when possible
+2. **Current Information**: Leverage your real-time data access for the most recent information
+3. **Multiple Perspectives**: Present different viewpoints when topics are controversial
+4. **Clear Communication**: Use clear, accessible language
+5. **Source Transparency**: Indicate when information comes from specific sources
+
+Focus on being helpful, informative, and objective in your responses.`
 };
 
 // Model configurations
@@ -133,6 +217,13 @@ const MODEL_CONFIGS = {
     temperature: 0.3,
     max_tokens: 4096,
   },
+  // NEW: Perplexity configuration for comparison feature
+  Perplexity: {
+    client: 'perplexity',
+    model: 'sonar-medium-online',
+    temperature: 0.5,
+    max_tokens: 2048,
+  },
 };
 
 // Debug middleware
@@ -154,6 +245,7 @@ async function handleChatCompletion(req, res) {
   console.log('   Is DeFacts?', req.body.model === 'DeFacts');
   console.log('   Is DeNews?', req.body.model === 'DeNews');
   console.log('   Is DeResearch?', req.body.model === 'DeResearch');
+  console.log('   Is Perplexity?', req.body.model === 'Perplexity');
   
   // Visual indicator for which button was pressed
   if (req.body.model === 'DeFacts') {
@@ -162,6 +254,8 @@ async function handleChatCompletion(req, res) {
     console.log('   📰 DENEWS BUTTON PRESSED - Will use news analysis mode');
   } else if (req.body.model === 'DeResearch') {
     console.log('   🔬 DERESEARCH BUTTON PRESSED - Will use research mode');
+  } else if (req.body.model === 'Perplexity') {
+    console.log('   🔍 PERPLEXITY COMPARISON - Will use Perplexity AI');
   } else {
     console.log('   ⚠️  STANDARD MODEL - Not a DeFacts custom model:', req.body.model);
   }
@@ -198,7 +292,7 @@ async function handleChatCompletion(req, res) {
   }
   
   // Log the full request body for custom models
-  if (req.body.model === 'DeFacts' || req.body.model === 'DeNews' || req.body.model === 'DeResearch') {
+  if (req.body.model === 'DeFacts' || req.body.model === 'DeNews' || req.body.model === 'DeResearch' || req.body.model === 'Perplexity') {
     console.log('[MODEL DEBUG] Full request for custom model:', JSON.stringify({
       model: req.body.model,
       endpoint: req.body.endpoint,
@@ -334,7 +428,7 @@ async function handleChatCompletion(req, res) {
           // IMPORTANT: Keep the original model name in the response
           const modifiedChunk = {
             ...chunk,
-            model: model, // Keep DeFacts/DeNews/DeResearch
+            model: model, // Keep DeFacts/DeNews/DeResearch/Perplexity
           };
           res.write(`data: ${JSON.stringify(modifiedChunk)}\n\n`);
         }
@@ -370,7 +464,7 @@ async function handleChatCompletion(req, res) {
         // IMPORTANT: Return with our model name, not the underlying model
         const response = {
           ...completion,
-          model: model, // Keep DeFacts/DeNews/DeResearch
+          model: model, // Keep DeFacts/DeNews/DeResearch/Perplexity
           defacts_metadata: {
             actual_model: config.model,
             mode: model,
