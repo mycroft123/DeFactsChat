@@ -91,8 +91,8 @@ modelSpecs:
       showIconInMenu: true
       preset:
         endpoint: "custom"
-        endpointName: "Perplexity"
-        model: "llama-3.1-sonar-small-128k-online"
+        endpointName: "OpenRouter"
+        model: "perplexity/sonar"
         modelLabel: "DeNews AI"
         chatGptLabel: "DeNews AI"
         temperature: 0.5
@@ -292,11 +292,12 @@ endpoints:
       models:
         default: [
           'meta-llama/llama-3-70b-instruct',
-          'perplexity/llama-3.1-sonar-small-128k-online',
-          'perplexity/llama-3.1-sonar-large-128k-online',
-          'perplexity/llama-3.1-sonar-huge-128k-online'
+          'perplexity/sonar',
+          'perplexity/sonar-pro',
+          'perplexity/llama-3.1-sonar-8b-online',
+          'perplexity/llama-3.1-sonar-70b-online'
         ]
-        fetch: false  # Change to false since we're explicitly listing models
+        fetch: false
       titleConvo: true
       titleModel: 'meta-llama/llama-3-70b-instruct'
       dropParams: ['stop']
@@ -318,17 +319,3 @@ endpoints:
       forcePrompt: false
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
-      
-    - name: 'Perplexity'
-      apiKey: '${PERPLEXITY_API_KEY}'
-      baseURL: 'https://api.perplexity.ai'
-      models:
-        default: ['llama-3.1-sonar-small-128k-online', 'llama-3.1-sonar-large-128k-online', 'llama-3.1-sonar-huge-128k-online']
-        fetch: false
-      titleConvo: true
-      titleModel: 'llama-3.1-sonar-small-128k-online'
-      titleMethod: 'completion'
-      modelDisplayLabel: 'Perplexity'
-      dropParams: ['stop', 'user', 'frequency_penalty', 'presence_penalty', 'functions', 'function_call', 'tools', 'tool_choice']
-      inputTokenCost: 0.0000025
-      outputTokenCost: 0.0000025
