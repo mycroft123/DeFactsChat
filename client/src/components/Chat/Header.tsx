@@ -155,35 +155,36 @@ const handleCompareModels = () => {
     });
     
     // Create comparison conversation using OpenRouter
-    comparisonConvo = {
-      ...convo,
-      conversationId: convo.conversationId,
-      title: '',
-      model: perplexityModel,
-      endpoint: 'custom',
-      spec: 'OpenRouter', // Use OpenRouter instead of direct Perplexity
-      endpointType: 'custom',
-      modelLabel: 'Perplexity',
-      chatGptLabel: 'Perplexity (via OpenRouter)',
-      // Include OpenRouter configuration
-      customName: 'OpenRouter',
-      customEndpoint: 'OpenRouter',
-      // Add comparison flags
-      isComparison: true,
-      _isAddedRequest: true,
-      // Include standard fields with correct types
-      temperature: 0.7,
-      maxOutputTokens: 2048,
-      tools: [],
-      agentOptions: null,
-      resendFiles: false,
-      imageDetail: 'auto', // Changed from null to 'auto' (valid values: 'low', 'auto', 'high')
-      iconURL: null,
-      greeting: '', // Changed from null to empty string
-      promptPrefix: null,
-      examples: [],
-      files: []
-    };
+// Create comparison conversation using OpenRouter
+comparisonConvo = {
+  ...convo,
+  conversationId: convo.conversationId,
+  title: '',
+  model: perplexityModel,
+  endpoint: 'custom',  // ← Keep this as 'custom'
+  spec: 'OpenRouter',
+  endpointType: 'OpenRouter',  // ← This should be 'OpenRouter'
+  modelLabel: 'Perplexity',
+  chatGptLabel: 'Perplexity (via OpenRouter)',
+  // Include OpenRouter configuration
+  customName: 'OpenRouter',
+  customEndpoint: 'OpenRouter',
+  // Add comparison flags
+  isComparison: true,
+  _isAddedRequest: true,
+  // Include standard fields with correct types
+  temperature: 0.7,
+  maxOutputTokens: 2048,
+  tools: [],
+  agentOptions: null,
+  resendFiles: false,
+  imageDetail: 'auto',
+  iconURL: null,
+  greeting: '',
+  promptPrefix: null,
+  examples: [],
+  files: []
+};
   } else {
     // Default to GPT-4
     comparisonConvo = {
