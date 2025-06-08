@@ -172,6 +172,8 @@ export default function Header() {
       _isAddedRequest: true
     };
     
+    console.log('Final comparison conversation:', comparisonConvo);
+    
     setAddedConvo(comparisonConvo);
 
     const textarea = document.getElementById(mainTextareaId);
