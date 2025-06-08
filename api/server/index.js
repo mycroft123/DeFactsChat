@@ -185,5 +185,11 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
+// Near the top after loading environment variables
+console.log('=== DeFactsChat Environment Check ===');
+console.log('OPENROUTER_KEY:', process.env.OPENROUTER_KEY ? `Set (${process.env.OPENROUTER_KEY.substring(0, 10)}...)` : 'NOT SET');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('====================================');
+
 // export app for easier testing purposes
 module.exports = app;

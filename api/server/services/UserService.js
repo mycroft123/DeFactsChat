@@ -42,6 +42,12 @@ const updateUserPluginsService = async (user, pluginKey, action) => {
  *              an error indicating that there is no user key available.
  */
 const getUserKey = async ({ userId, name }) => {
+  // Check for OpenRouter in environment first
+  if ((name === 'OpenRouter' || name === 'custom') && process.env.OPENROUTER_KEY) {
+    logger.debug('[getUserKey] Using OpenRouter key from environment for user:', userId);
+    return process.env.OPENROUTER_KEY;
+  }
+  
   const keyValue = await Key.findOne({ userId, name }).lean();
   if (!keyValue) {
     throw new Error(
@@ -65,6 +71,13 @@ const getUserKey = async ({ userId, name }) => {
  *              it throws an error indicating that the user key is invalid.
  */
 const getUserKeyValues = async ({ userId, name }) => {
+  // Check for OpenRouter in environment first
+  if ((name === 'OpenRouter' || name === 'custom') && process.env.OPENROUTER_KEY) {
+    logger.debug('[getUserKeyValues] Using OpenRouter key from environment');
+    // Return in the format the system expects
+    return { apiKey: process.env.OPENROUTER_KEY };
+  }
+  
   let userValues = await getUserKey({ userId, name });
   try {
     userValues = JSON.parse(userValues);
@@ -89,6 +102,12 @@ const getUserKeyValues = async ({ userId, name }) => {
  *              returns its expiry date. If the key is not found, it returns null for the expiry date.
  */
 const getUserKeyExpiry = async ({ userId, name }) => {
+  // For OpenRouter env key, return no expiry
+  if ((name === 'OpenRouter' || name === 'custom') && process.env.OPENROUTER_KEY) {
+    logger.debug('[getUserKeyExpiry] OpenRouter key from environment never expires');
+    return { expiresAt: null };
+  }
+  
   const keyValue = await Key.findOne({ userId, name }).lean();
   if (!keyValue) {
     return { expiresAt: null };
@@ -109,6 +128,12 @@ const getUserKeyExpiry = async ({ userId, name }) => {
  *              after encrypting the provided value. It sets the provided expiry date for the key (or unsets for no expiry).
  */
 const updateUserKey = async ({ userId, name, value, expiresAt = null }) => {
+  // Prevent updating OpenRouter key if using environment variable
+  if ((name === 'OpenRouter' || name === 'custom') && process.env.OPENROUTER_KEY) {
+    logger.warn('[updateUserKey] Attempted to update OpenRouter key, but using environment variable');
+    return { message: 'OpenRouter key is managed by environment variable' };
+  }
+  
   const encryptedValue = await encrypt(value);
   let updateObject = {
     userId,
@@ -142,6 +167,12 @@ const updateUserKey = async ({ userId, name, value, expiresAt = null }) => {
  *              If all is true, it ignores the name and deletes all keys for the user.
  */
 const deleteUserKey = async ({ userId, name, all = false }) => {
+  // Prevent deleting OpenRouter key if using environment variable
+  if (!all && (name === 'OpenRouter' || name === 'custom') && process.env.OPENROUTER_KEY) {
+    logger.warn('[deleteUserKey] Attempted to delete OpenRouter key, but using environment variable');
+    return { message: 'OpenRouter key is managed by environment variable' };
+  }
+  
   if (all) {
     return await Key.deleteMany({ userId });
   }
@@ -159,6 +190,11 @@ const deleteUserKey = async ({ userId, name, all = false }) => {
  * containing the type of error (`ErrorTypes.EXPIRED_USER_KEY`), the expiration date in the local string format, and the endpoint.
  */
 const checkUserKeyExpiry = (expiresAt, endpoint) => {
+  // Skip expiry check for OpenRouter env key
+  if ((endpoint === 'OpenRouter' || endpoint === 'custom') && process.env.OPENROUTER_KEY) {
+    return; // Environment keys never expire
+  }
+  
   const expiresAtDate = new Date(expiresAt);
   if (expiresAtDate < new Date()) {
     const errorMessage = JSON.stringify({
@@ -169,6 +205,13 @@ const checkUserKeyExpiry = (expiresAt, endpoint) => {
     throw new Error(errorMessage);
   }
 };
+
+// Log environment status on module load
+if (process.env.OPENROUTER_KEY) {
+  logger.info('[UserService] OpenRouter key detected in environment');
+} else {
+  logger.warn('[UserService] No OpenRouter key found in environment');
+}
 
 module.exports = {
   getUserKey,
