@@ -166,6 +166,9 @@ export default function Header() {
       title: '',
       model: comparisonModel,
       endpoint: comparisonEndpoint,
+      // Add model label for display
+      modelLabel: selectedCompareModel === 'perplexity' ? 'Perplexity' : null,
+      chatGptLabel: selectedCompareModel === 'perplexity' ? 'Perplexity' : null,
       // Add a flag to identify this as a comparison
       isComparison: true,
       // This ensures the comparison is properly marked when it goes through SSE
