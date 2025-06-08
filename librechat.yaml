@@ -285,13 +285,18 @@ endpoints:
       titleModel: 'mistral-tiny'
       modelDisplayLabel: 'Mistral'
       dropParams: ['stop', 'user', 'frequency_penalty', 'presence_penalty']
-
+      
     - name: 'OpenRouter'
       apiKey: '${OPENROUTER_KEY}'
       baseURL: 'https://openrouter.ai/api/v1'
       models:
-        default: ['meta-llama/llama-3-70b-instruct']
-        fetch: true
+        default: [
+          'meta-llama/llama-3-70b-instruct',
+          'perplexity/llama-3.1-sonar-small-128k-online',
+          'perplexity/llama-3.1-sonar-large-128k-online',
+          'perplexity/llama-3.1-sonar-huge-128k-online'
+        ]
+        fetch: false  # Change to false since we're explicitly listing models
       titleConvo: true
       titleModel: 'meta-llama/llama-3-70b-instruct'
       dropParams: ['stop']
