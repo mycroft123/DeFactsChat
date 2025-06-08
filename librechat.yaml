@@ -95,7 +95,7 @@ modelSpecs:
       preset:
         endpoint: "custom"
         endpointName: "Perplexity"
-        model: "sonar-medium-online"
+        model: "llama-3.1-sonar-small-128k-online"
         modelLabel: "DeNews AI"
         chatGptLabel: "DeNews AI"
         temperature: 0.5
@@ -474,17 +474,19 @@ endpoints:
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
       
-    # Perplexity configuration (used by DeNews mode)
+    # Perplexity configuration (used by DeNews mode) - FIXED WITH CORRECT MODEL NAMES
     - name: 'Perplexity'
       apiKey: '${PERPLEXITY_API_KEY}'
       baseURL: 'https://api.perplexity.ai'
       models:
-        default: ['sonar-small-online', 'sonar-medium-online', 'sonar-small-chat', 'sonar-medium-chat']
+        default: ['llama-3.1-sonar-small-128k-online', 'llama-3.1-sonar-large-128k-online', 'llama-3.1-sonar-huge-128k-online']
         fetch: false
       titleConvo: true
-      titleModel: 'sonar-small-chat'
+      titleModel: 'llama-3.1-sonar-small-128k-online'
       titleMethod: 'completion'
       modelDisplayLabel: 'Perplexity'
+      # Drop parameters that Perplexity doesn't support
+      dropParams: ['stop', 'user', 'frequency_penalty', 'presence_penalty', 'functions', 'function_call', 'tools', 'tool_choice']
       # Very low per-token costs
       inputTokenCost: 0.0000025
       outputTokenCost: 0.0000025

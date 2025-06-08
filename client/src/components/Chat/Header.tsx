@@ -144,14 +144,14 @@ const handleCompareModels = () => {
   let comparisonConvo;
   
   if (selectedCompareModel === 'perplexity') {
-    // Perplexity configuration - using the exact model names from your config
-    const perplexityModel = 'sonar-medium-online'; // or 'sonar-small-online'
+    // Perplexity configuration - using the CORRECT model name from librechat.yaml
+    const perplexityModel = 'llama-3.1-sonar-small-128k-online'; // This MUST match your librechat.yaml
     
     console.log('Setting up Perplexity comparison:', {
       model: perplexityModel,
       endpoint: 'custom',
-      endpointName: 'Perplexity',
-      note: 'Using custom endpoint with Perplexity configuration'
+      spec: 'Perplexity',
+      note: 'Using custom endpoint with correct Perplexity model'
     });
     
     // Create comparison conversation for Perplexity
