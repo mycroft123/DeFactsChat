@@ -28,6 +28,9 @@ export default function Header() {
   // State to prevent multiple clicks
   const [isComparing, setIsComparing] = useState(false);
   
+  // State for selected comparison model
+  const [selectedCompareModel, setSelectedCompareModel] = useState('gpt-4');
+  
   // Force DeFacts as default on mount
   useEffect(() => {
     if (conversation && conversation.endpoint !== 'gptPlugins') {
@@ -122,37 +125,56 @@ export default function Header() {
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
-  // Modified compare handler with proper comparison marking - force GPT-4
+  // Modified compare handler with radio selection
   const handleCompareModels = () => {
-    if (!conversation) return;
+    if (!conversation || isComparing) return;
+    
+    setIsComparing(true);
     
     const { title: _t, ...convo } = conversation;
     
+    // Determine model and endpoint based on selection
+    let comparisonModel, comparisonEndpoint;
+    
+    if (selectedCompareModel === 'perplexity') {
+      comparisonModel = 'llama-3.1-sonar-small-128k-online';
+      comparisonEndpoint = 'gptPlugins';
+    } else {
+      // Default to GPT-4
+      comparisonModel = 'gpt-4';
+      comparisonEndpoint = 'openAI';
+    }
+    
     console.log('Compare button clicked:', {
       mainModel: 'DeFacts',
-      comparisonModel: 'gpt-4',
-      comparisonEndpoint: 'openAI'
+      comparisonModel,
+      comparisonEndpoint,
+      selectedCompareModel
     });
     
-    // Create comparison conversation with special flag - force GPT-4
+    // Create comparison conversation with special flag
     const comparisonConvo = {
       ...convo,
       title: '',
-      model: 'gpt-4', // Force GPT-4 here
-      endpoint: 'openAI', // Force OpenAI endpoint
+      model: comparisonModel,
+      endpoint: comparisonEndpoint,
       // Add a flag to identify this as a comparison
       isComparison: true,
       // This ensures the comparison is properly marked when it goes through SSE
       _isAddedRequest: true
     };
     
-    // Use GPT-4 for comparison
     setAddedConvo(comparisonConvo);
 
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
       textarea.focus();
     }
+    
+    // Reset the comparing state after a short delay
+    setTimeout(() => {
+      setIsComparing(false);
+    }, 1000);
   };
   
   return (
@@ -194,12 +216,44 @@ export default function Header() {
           {!isSmallScreen && (
             <>
               {hasAccessToMultiConvo === true && conversation && (
-                <button 
-                  onClick={handleCompareModels}
-                  className="flex h-10 items-center gap-2 rounded-md bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
-                >
-                  Compare GPT 4.0
-                </button>
+                <div className="flex items-center gap-3 rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Compare with:</span>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="compareModel"
+                        value="gpt-4"
+                        checked={selectedCompareModel === 'gpt-4'}
+                        onChange={(e) => setSelectedCompareModel(e.target.value)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 dark:text-blue-400"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">GPT-4</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="compareModel"
+                        value="perplexity"
+                        checked={selectedCompareModel === 'perplexity'}
+                        onChange={(e) => setSelectedCompareModel(e.target.value)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 dark:text-blue-400"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Perplexity</span>
+                    </label>
+                  </div>
+                  <button 
+                    onClick={handleCompareModels}
+                    disabled={isComparing}
+                    className={`ml-2 flex h-8 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                      isComparing 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
+                        : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50'
+                    }`}
+                  >
+                    {isComparing ? 'Comparing...' : 'Compare'}
+                  </button>
+                </div>
               )}
               <div className="ml-2">
                 <TemporaryChat />
@@ -210,22 +264,47 @@ export default function Header() {
           {/* Mobile - stacked layout */}
           {isSmallScreen && (
             <>
-              <div className="flex items-center gap-2 justify-between w-full">
-                {hasAccessToMultiConvo === true && conversation && (
+              {hasAccessToMultiConvo === true && conversation && (
+                <div className="flex flex-col gap-2 rounded-md bg-gray-50 p-3 dark:bg-gray-700/50">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Compare with:</span>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="compareModelMobile"
+                        value="gpt-4"
+                        checked={selectedCompareModel === 'gpt-4'}
+                        onChange={(e) => setSelectedCompareModel(e.target.value)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 dark:text-blue-400"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">GPT-4</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="compareModelMobile"
+                        value="perplexity"
+                        checked={selectedCompareModel === 'perplexity'}
+                        onChange={(e) => setSelectedCompareModel(e.target.value)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 dark:text-blue-400"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Perplexity</span>
+                    </label>
+                  </div>
                   <button 
                     onClick={handleCompareModels}
                     disabled={isComparing}
-                    className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                    className={`flex h-10 w-full items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
                       isComparing 
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
                         : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50'
                     }`}
                   >
-                    {isComparing ? 'Comparing...' : 'Compare GPT 4.0'}
+                    {isComparing ? 'Comparing...' : 'Compare'}
                   </button>
-                )}
-                <TemporaryChat />
-              </div>
+                </div>
+              )}
+              <TemporaryChat />
               <div className="flex gap-2 justify-between w-full">
                 {hasAccessToBookmarks === true && <BookmarkMenu />}
                 <ExportAndShareMenu
