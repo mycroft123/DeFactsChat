@@ -184,7 +184,7 @@ modelSpecs:
 
 # Custom interface configuration
 interface:
-  customWelcome: "Welcome to DeFacts! Select a mode above: DeFacts (fact-checking), DeNews (current events), or DeResearch (deep analysis). Let's Get Smarter Together!"
+  customWelcome: "Welcome to DeFacts! Let's Get Smarter Together!"
   # Privacy policy settings
   privacyPolicy:
     externalUrl: 'https://defacts.ai/privacy-policy'
@@ -194,7 +194,7 @@ interface:
   termsOfService:
     externalUrl: 'https://defacts.ai/tos'
     openNewTab: true
-    modalAcceptance: true
+    modalAcceptance: false
     modalTitle: "Terms of Service for DeFacts"
     modalContent: |
       # Terms and Conditions for DeFacts
