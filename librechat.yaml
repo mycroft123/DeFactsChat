@@ -17,7 +17,7 @@ modelSpecs:
       label: "DeFacts AI ✓"
       default: true
       description: "Fact-checking and verification mode"
-      iconURL: "https://your-domain.com/defacts-icon.png"
+      iconURL: "https://imauscty4e4ddllrj32jcna2gei5xpgigjxgplkbugqoceyo2j2q.arweave.net/QwFJCnjhODGtcU70kTQaMRHbvMgybmetQaGg4RMO0nU"
       showIconInHeader: true
       showIconInMenu: true
       preset:
@@ -86,7 +86,7 @@ modelSpecs:
     - name: "denews-mode"
       label: "DeNews AI 📰"
       description: "Current events and news analysis with real-time data"
-      iconURL: "https://your-domain.com/denews-icon.png"
+      iconURL: "https://imauscty4e4ddllrj32jcna2gei5xpgigjxgplkbugqoceyo2j2q.arweave.net/QwFJCnjhODGtcU70kTQaMRHbvMgybmetQaGg4RMO0nU"
       showIconInHeader: true
       showIconInMenu: true
       preset:
@@ -128,7 +128,7 @@ modelSpecs:
     - name: "deresearch-mode"
       label: "DeResearch AI 🔬"
       description: "Deep research and comprehensive analysis"
-      iconURL: "https://your-domain.com/deresearch-icon.png"
+      iconURL: "https://imauscty4e4ddllrj32jcna2gei5xpgigjxgplkbugqoceyo2j2q.arweave.net/QwFJCnjhODGtcU70kTQaMRHbvMgybmetQaGg4RMO0nU"
       showIconInHeader: true
       showIconInMenu: true
       preset:
@@ -195,43 +195,6 @@ interface:
     externalUrl: 'https://defacts.ai/tos'
     openNewTab: true
     modalAcceptance: false
-    modalTitle: "Terms of Service for DeFacts"
-    modalContent: |
-      # Terms and Conditions for DeFacts
-
-      *Effective Date: February 18, 2024*
-
-      Welcome to DeFacts, the informational website for the open-source AI chat platform, available at https://DeFacts.ai. These Terms of Service ("Terms") govern your use of our website and the services we offer. By accessing or using the Website, you agree to be bound by these Terms and our Privacy Policy, accessible at https://DeFacts.ai/privacy.
-
-      ## 1. Ownership
-
-      Upon purchasing a package from DeFacts, you are granted the right to download and use the code for accessing an admin panel for DeFacts. While you own the downloaded code, you are expressly prohibited from reselling, redistributing, or otherwise transferring the code to third parties without explicit permission from LibreChat.
-
-      ## 2. User Data
-
-      We collect personal data, such as your name, email address, and payment information, as described in our Privacy Policy. This information is collected to provide and improve our services, process transactions, and communicate with you.
-
-      ## 3. Non-Personal Data Collection
-
-      The Website uses cookies to enhance user experience, analyze site usage, and facilitate certain functionalities. By using the Website, you consent to the use of cookies in accordance with our Privacy Policy.
-
-      ## 4. Use of the Website
-
-      You agree to use the Website only for lawful purposes and in a manner that does not infringe the rights of, restrict, or inhibit anyone else's use and enjoyment of the Website. Prohibited behavior includes harassing or causing distress or inconvenience to any person, transmitting obscene or offensive content, or disrupting the normal flow of dialogue within the Website.
-
-      ## 5. Governing Law
-
-      These Terms shall be governed by and construed in accordance with the laws of the United States, without giving effect to any principles of conflicts of law.
-
-      ## 6. Changes to the Terms
-
-      We reserve the right to modify these Terms at any time. We will notify users of any changes by email. Your continued use of the Website after such changes have been notified will constitute your consent to such changes.
-
-      ## 7. Contact Information
-
-      If you have any questions about these Terms, please contact us at contact@defacts.ai.
-
-      By using the Website, you acknowledge that you have read these Terms of Service and agree to be bound by them.
 
   endpointsMenu: true
   modelSelect: true
@@ -266,8 +229,6 @@ actions:
 
 # Definition of custom endpoints
 endpoints:
-  # REMOVED titleModel and titleMethod from here - they don't belong at root level
-  
   # OpenAI Configuration (used by DeFacts and DeResearch modes)
   openAI:
     models:
