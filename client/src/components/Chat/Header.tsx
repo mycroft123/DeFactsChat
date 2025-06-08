@@ -131,8 +131,6 @@ export default function Header() {
   // Modified compare handler with radio selection
 // Updated handleCompareModels function with corrected Perplexity configuration
 
-
-
 const handleCompareModels = () => {
   if (!conversation || comparisonInProgress.current) return;
   
@@ -173,15 +171,15 @@ const handleCompareModels = () => {
       // Add comparison flags
       isComparison: true,
       _isAddedRequest: true,
-      // Include standard fields
+      // Include standard fields with correct types
       temperature: 0.7,
       maxOutputTokens: 2048,
       tools: [],
       agentOptions: null,
       resendFiles: false,
-      imageDetail: null,
+      imageDetail: 'auto', // Changed from null to 'auto' (valid values: 'low', 'auto', 'high')
       iconURL: null,
-      greeting: null,
+      greeting: '', // Changed from null to empty string
       promptPrefix: null,
       examples: [],
       files: []
