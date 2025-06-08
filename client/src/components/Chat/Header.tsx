@@ -131,6 +131,8 @@ export default function Header() {
   // Modified compare handler with radio selection
 // Updated handleCompareModels function with corrected Perplexity configuration
 
+
+
 const handleCompareModels = () => {
   if (!conversation || comparisonInProgress.current) return;
   
@@ -144,34 +146,34 @@ const handleCompareModels = () => {
   let comparisonConvo;
   
   if (selectedCompareModel === 'perplexity') {
-    // Perplexity configuration
-    const perplexityModel = 'llama-3.1-sonar-small-128k-online';
+    // Use Perplexity through OpenRouter (more reliable)
+    const perplexityModel = 'perplexity/llama-3.1-sonar-small-128k-online';
     
-    console.log('Setting up Perplexity comparison:', {
+    console.log('Setting up Perplexity via OpenRouter:', {
       model: perplexityModel,
       endpoint: 'custom',
-      spec: 'Perplexity',
-      note: 'Using custom endpoint with all required fields'
+      spec: 'OpenRouter',
+      note: 'Using Perplexity through OpenRouter proxy'
     });
     
-    // Create comparison conversation for Perplexity with ALL required fields
+    // Create comparison conversation using OpenRouter
     comparisonConvo = {
       ...convo,
       conversationId: convo.conversationId,
       title: '',
       model: perplexityModel,
       endpoint: 'custom',
-      spec: 'Perplexity', // CRITICAL: This tells the backend which custom endpoint to use
+      spec: 'OpenRouter', // Use OpenRouter instead of direct Perplexity
       endpointType: 'custom',
       modelLabel: 'Perplexity',
-      chatGptLabel: 'Perplexity',
-      // Include full endpoint configuration
-      customName: 'Perplexity',
-      customEndpoint: 'Perplexity',
+      chatGptLabel: 'Perplexity (via OpenRouter)',
+      // Include OpenRouter configuration
+      customName: 'OpenRouter',
+      customEndpoint: 'OpenRouter',
       // Add comparison flags
       isComparison: true,
       _isAddedRequest: true,
-      // Include any other fields that might be needed
+      // Include standard fields
       temperature: 0.7,
       maxOutputTokens: 2048,
       tools: [],
@@ -214,6 +216,8 @@ const handleCompareModels = () => {
     setIsComparing(false);
   }, 2000);
 };
+
+
   
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
