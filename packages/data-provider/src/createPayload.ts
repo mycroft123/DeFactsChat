@@ -21,7 +21,7 @@ export default function createPayload(submission: t.TSubmission) {
   // Handle custom endpoints by mapping custom_* to 'custom'
   let lookupEndpoint = endpoint;
   if (endpoint.startsWith('custom_')) {
-    lookupEndpoint = 'custom';
+    lookupEndpoint = s.EModelEndpoint.custom;  // Use the enum value instead of string
   }
   
   let server = EndpointURLs[endpointType ?? lookupEndpoint];
