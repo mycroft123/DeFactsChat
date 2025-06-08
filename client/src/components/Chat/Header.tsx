@@ -144,54 +144,56 @@ const handleCompareModels = () => {
   let comparisonConvo;
   
   if (selectedCompareModel === 'perplexity') {
-    // Perplexity configuration - using the CORRECT model name from librechat.yaml
-    const perplexityModel = 'llama-3.1-sonar-small-128k-online'; // This MUST match your librechat.yaml
+    // Perplexity configuration
+    const perplexityModel = 'llama-3.1-sonar-small-128k-online';
     
     console.log('Setting up Perplexity comparison:', {
       model: perplexityModel,
       endpoint: 'custom',
       spec: 'Perplexity',
-      note: 'Using custom endpoint with correct Perplexity model'
+      note: 'Using custom endpoint with all required fields'
     });
     
-    // Create comparison conversation for Perplexity
+    // Create comparison conversation for Perplexity with ALL required fields
     comparisonConvo = {
       ...convo,
+      conversationId: convo.conversationId,
       title: '',
       model: perplexityModel,
       endpoint: 'custom',
-      // Critical: This must match the 'name' in your librechat.yaml exactly
-      spec: 'Perplexity',
-      // These are required for custom endpoints
+      spec: 'Perplexity', // CRITICAL: This tells the backend which custom endpoint to use
       endpointType: 'custom',
       modelLabel: 'Perplexity',
       chatGptLabel: 'Perplexity',
-      // Add the endpoint option structure that LibreChat expects
-      endpointOption: {
-        endpoint: 'custom',
-        model: perplexityModel,
-        spec: 'Perplexity',
-        modelLabel: 'Perplexity',
-        endpointType: 'custom'
-      },
+      // Include full endpoint configuration
+      customName: 'Perplexity',
+      customEndpoint: 'Perplexity',
       // Add comparison flags
       isComparison: true,
-      _isAddedRequest: true
+      _isAddedRequest: true,
+      // Include any other fields that might be needed
+      temperature: 0.7,
+      maxOutputTokens: 2048,
+      tools: [],
+      agentOptions: null,
+      resendFiles: false,
+      imageDetail: null,
+      iconURL: null,
+      greeting: null,
+      promptPrefix: null,
+      examples: [],
+      files: []
     };
   } else {
     // Default to GPT-4
     comparisonConvo = {
       ...convo,
+      conversationId: convo.conversationId,
       title: '',
-      model: 'gpt-4o', // Using gpt-4o from your config
+      model: 'gpt-4o',
       endpoint: 'openAI',
       modelLabel: 'GPT-4',
       chatGptLabel: 'GPT-4',
-      endpointOption: {
-        endpoint: 'openAI',
-        model: 'gpt-4o',
-        modelLabel: 'GPT-4'
-      },
       isComparison: true,
       _isAddedRequest: true
     };
