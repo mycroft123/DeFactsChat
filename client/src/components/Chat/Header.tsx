@@ -142,9 +142,15 @@ export default function Header() {
     let comparisonModel, comparisonEndpoint;
     
     if (selectedCompareModel === 'perplexity') {
-      // Perplexity should be configured as a custom endpoint
-      comparisonModel = 'sonar'; // or 'sonar-pro' for better quality
-      comparisonEndpoint = 'custom_Perplexity'; // This assumes the custom endpoint is named "Perplexity"
+      // Perplexity is working as a custom endpoint with underscore
+      comparisonModel = 'sonar'; // Use the short model name
+      comparisonEndpoint = 'custom_Perplexity'; // Use exact endpoint name with underscore
+      
+      console.log('Setting up Perplexity comparison:', {
+        model: comparisonModel,
+        endpoint: comparisonEndpoint,
+        note: 'Using custom_Perplexity endpoint'
+      });
     } else {
       // Default to GPT-4
       comparisonModel = 'gpt-4';
@@ -166,6 +172,8 @@ export default function Header() {
       title: '',
       model: comparisonModel,
       endpoint: comparisonEndpoint,
+      // Add endpoint type for custom endpoints
+      endpointType: selectedCompareModel === 'perplexity' ? 'custom' : undefined,
       // Add model label for display
       modelLabel: selectedCompareModel === 'perplexity' ? 'Perplexity' : null,
       chatGptLabel: selectedCompareModel === 'perplexity' ? 'Perplexity' : null,
