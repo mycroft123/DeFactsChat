@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { getConfigDefaults, PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { ContextType } from '~/common';
@@ -30,6 +30,9 @@ export default function Header() {
   
   // State for selected comparison model
   const [selectedCompareModel, setSelectedCompareModel] = useState('gpt-4');
+  
+  // Add a ref to track if comparison is in progress
+  const comparisonInProgress = useRef(false);
   
   // Force DeFacts as default on mount
   useEffect(() => {
@@ -127,8 +130,10 @@ export default function Header() {
   
   // Modified compare handler with radio selection
   const handleCompareModels = () => {
-    if (!conversation || isComparing) return;
+    if (!conversation || comparisonInProgress.current) return;
     
+    // Set the flag immediately to prevent multiple clicks
+    comparisonInProgress.current = true;
     setIsComparing(true);
     
     const { title: _t, ...convo } = conversation;
@@ -137,6 +142,7 @@ export default function Header() {
     let comparisonModel, comparisonEndpoint;
     
     if (selectedCompareModel === 'perplexity') {
+      // TODO: Confirm the correct Perplexity model and endpoint
       comparisonModel = 'llama-3.1-sonar-small-128k-online';
       comparisonEndpoint = 'gptPlugins';
     } else {
@@ -171,10 +177,11 @@ export default function Header() {
       textarea.focus();
     }
     
-    // Reset the comparing state after a short delay
+    // Reset the flag after a delay
     setTimeout(() => {
+      comparisonInProgress.current = false;
       setIsComparing(false);
-    }, 1000);
+    }, 2000);
   };
   
   return (
