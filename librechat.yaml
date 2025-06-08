@@ -261,12 +261,12 @@ registration:
 
 # Example Balance settings
 balance:
-   enabled: true
-   startBalance: 20000
-   autoRefillEnabled: true
-   refillIntervalValue: 30
-   refillIntervalUnit: 'days'
-   refillAmount: 10000
+  enabled: true
+  startBalance: 20000
+  autoRefillEnabled: true
+  refillIntervalValue: 30
+  refillIntervalUnit: 'days'
+  refillAmount: 10000
 
 # speech:
 #   tts:
