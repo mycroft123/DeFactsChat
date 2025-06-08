@@ -54,6 +54,23 @@ const startServer = async () => {
   app.use(errorController);
   app.use(express.json({ limit: '3mb' }));
   app.use(express.urlencoded({ extended: true, limit: '3mb' }));
+
+
+// override any “key”: "never" with your Railway secret
+app.use((req, res, next) => {
+  if (req.body?.key === 'never') {
+    const secret = process.env.OPENROUTER_KEY;
+    if (!secret) {
+      console.error('🚨 Missing OPENROUTER_KEY in environment');
+      return res.status(500).json({ error: 'Server misconfiguration' });
+    }
+    req.body.key = secret;
+  }
+  next();
+});
+
+
+
   app.use(mongoSanitize());
   app.use(cors());
   app.use(cookieParser());
