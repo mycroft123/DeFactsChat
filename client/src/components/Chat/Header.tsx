@@ -142,20 +142,22 @@ export default function Header() {
     let comparisonModel, comparisonEndpoint;
     
     if (selectedCompareModel === 'perplexity') {
-      // TODO: Confirm the correct Perplexity model and endpoint
-      comparisonModel = 'llama-3.1-sonar-small-128k-online';
-      comparisonEndpoint = 'gptPlugins';
+      // Perplexity should be configured as a custom endpoint
+      comparisonModel = 'sonar'; // or 'sonar-pro' for better quality
+      comparisonEndpoint = 'custom_Perplexity'; // This assumes the custom endpoint is named "Perplexity"
     } else {
       // Default to GPT-4
       comparisonModel = 'gpt-4';
       comparisonEndpoint = 'openAI';
     }
     
-    console.log('Compare button clicked:', {
+    console.log('Compare configuration:', {
       mainModel: 'DeFacts',
+      mainEndpoint: 'gptPlugins',
       comparisonModel,
       comparisonEndpoint,
-      selectedCompareModel
+      selectedCompareModel,
+      conversationId: convo.conversationId
     });
     
     // Create comparison conversation with special flag
