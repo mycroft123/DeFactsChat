@@ -83,6 +83,90 @@ export default function Header() {
     }
   }, []);
   
+  // Add comprehensive debugging
+  useEffect(() => {
+    console.log('=== LIBRECHAT DEBUG START ===');
+    
+    // 1. Check available endpoints
+    fetch('/api/endpoints')
+      .then(res => res.json())
+      .then(endpoints => {
+        console.log('📌 Available Endpoints:', endpoints);
+        
+        // Check each endpoint type
+        Object.entries(endpoints).forEach(([name, config]) => {
+          console.log(`📍 Endpoint ${name}:`, config);
+        });
+      })
+      .catch(err => console.error('❌ Error fetching endpoints:', err));
+    
+    // 2. Check startup config
+    if (startupConfig) {
+      console.log('📋 Startup Config:', startupConfig);
+      console.log('📋 Model Specs:', startupConfig.modelSpecs);
+    }
+    
+    // 3. Try to get conversation structure
+    if (conversation) {
+      console.log('💬 Current Conversation Structure:', conversation);
+      console.log('💬 Conversation Keys:', Object.keys(conversation));
+    }
+    
+    // 4. Monitor for custom endpoint errors
+    const originalConsoleError = console.error;
+    console.error = function(...args) {
+      if (args[0]?.includes?.('Endpoint') || args[0]?.includes?.('models')) {
+        console.log('🚨 ENDPOINT ERROR CAUGHT:', ...args);
+      }
+      originalConsoleError.apply(console, args);
+    };
+    
+    // 5. Intercept fetch to see API calls
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+      const url = args[0];
+      if (url.includes('/api/ask/') || url.includes('/api/chat/')) {
+        console.log('🔄 API Request:', {
+          url: url,
+          method: args[1]?.method || 'GET',
+          body: args[1]?.body ? JSON.parse(args[1].body) : null
+        });
+      }
+      
+      return originalFetch.apply(this, args).then(response => {
+        if (!response.ok && (url.includes('/api/ask/') || url.includes('/api/chat/'))) {
+          console.error('❌ API Error Response:', {
+            url: url,
+            status: response.status,
+            statusText: response.statusText
+          });
+        }
+        return response;
+      });
+    };
+    
+    // 6. Check for conversation presets
+    fetch('/api/presets')
+      .then(res => res.json())
+      .then(presets => console.log('🎨 Available Presets:', presets))
+      .catch(err => console.error('❌ Error fetching presets:', err));
+    
+    // 7. Listen for SSE errors
+    window.addEventListener('error', (event) => {
+      if (event.message?.includes?.('EventSource') || event.message?.includes?.('stream')) {
+        console.error('🌊 SSE Error:', event);
+      }
+    }, true);
+    
+    console.log('=== LIBRECHAT DEBUG END ===');
+    
+    // Cleanup
+    return () => {
+      console.error = originalConsoleError;
+      window.fetch = originalFetch;
+    };
+  }, [conversation, startupConfig]);
+  
   const interfaceConfig = useMemo(
     () => startupConfig?.interface ?? defaultInterface,
     [startupConfig],
@@ -128,95 +212,83 @@ export default function Header() {
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
-  // Modified compare handler with radio selection
-// Updated handleCompareModels function with corrected Perplexity configuration
-
-const handleCompareModels = () => {
-  if (!conversation || comparisonInProgress.current) return;
-  
-  // Set the flag immediately to prevent multiple clicks
-  comparisonInProgress.current = true;
-  setIsComparing(true);
-  
-  const { title: _t, ...convo } = conversation;
-  
-  // Determine model and endpoint based on selection
-  let comparisonConvo;
-  
-  if (selectedCompareModel === 'perplexity') {
-    // Use Perplexity through OpenRouter (more reliable)
-    const perplexityModel = 'perplexity/llama-3.1-sonar-small-128k-online';
+  // Modified compare handler with radio selection and enhanced debugging
+  const handleCompareModels = () => {
+    if (!conversation || comparisonInProgress.current) return;
     
-    console.log('Setting up Perplexity via OpenRouter:', {
-      model: perplexityModel,
-      endpoint: 'custom',
-      spec: 'OpenRouter',
-      note: 'Using Perplexity through OpenRouter proxy'
-    });
+    console.log('🎯 === COMPARISON DEBUG ===');
+    console.log('📝 Current conversation:', conversation);
+    console.log('🎯 Selected model:', selectedCompareModel);
     
-    // Create comparison conversation using OpenRouter
-// Create comparison conversation using OpenRouter
-comparisonConvo = {
-  ...convo,
-  conversationId: convo.conversationId,
-  title: '',
-  model: perplexityModel,
-  endpoint: 'custom',
-  endpointType: 'custom',  // ← Keep this as 'custom'
-  spec: 'OpenRouter',      // ← This identifies which custom endpoint
-  modelLabel: 'Perplexity',
-  chatGptLabel: 'Perplexity (via OpenRouter)',
-  // Remove these redundant fields
-  // customName: 'OpenRouter',
-  // customEndpoint: 'OpenRouter',
-  // Add comparison flags
-  isComparison: true,
-  _isAddedRequest: true,
-  // Include standard fields with correct types
-  temperature: 0.7,
-  maxOutputTokens: 2048,
-  tools: [],
-  agentOptions: null,
-  resendFiles: false,
-  imageDetail: 'auto',
-  iconURL: null,
-  greeting: '',
-  promptPrefix: null,
-  examples: [],
-  files: []
-};
-  } else {
-    // Default to GPT-4
-    comparisonConvo = {
-      ...convo,
-      conversationId: convo.conversationId,
-      title: '',
-      model: 'gpt-4o',
-      endpoint: 'openAI',
-      modelLabel: 'GPT-4',
-      chatGptLabel: 'GPT-4',
-      isComparison: true,
-      _isAddedRequest: true
-    };
-  }
-  
-  console.log('Final comparison conversation:', comparisonConvo);
-  
-  setAddedConvo(comparisonConvo);
+    comparisonInProgress.current = true;
+    setIsComparing(true);
+    
+    const { title: _t, ...convo } = conversation;
+    
+    let comparisonConvo;
+    
+    if (selectedCompareModel === 'perplexity') {
+      const perplexityModel = 'perplexity/llama-3.1-sonar-small-128k-online';
+      
+      console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
+      console.log('📋 Base conversation object:', convo);
+      
+      comparisonConvo = {
+        ...convo,
+        conversationId: convo.conversationId,
+        title: '',
+        model: perplexityModel,
+        endpoint: 'custom',
+        endpointType: 'custom',
+        spec: 'OpenRouter',
+        modelLabel: 'Perplexity',
+        chatGptLabel: 'Perplexity (via OpenRouter)',
+        isComparison: true,
+        _isAddedRequest: true,
+        temperature: 0.7,
+        maxOutputTokens: 2048,
+        tools: [],
+        agentOptions: null,
+        resendFiles: false,
+        imageDetail: 'auto',
+        iconURL: null,
+        greeting: '',
+        promptPrefix: null,
+        examples: [],
+        files: []
+      };
+      
+      console.log('📤 Perplexity comparison object:', JSON.stringify(comparisonConvo, null, 2));
+    } else {
+      comparisonConvo = {
+        ...convo,
+        conversationId: convo.conversationId,
+        title: '',
+        model: 'gpt-4o',
+        endpoint: 'openAI',
+        modelLabel: 'GPT-4',
+        chatGptLabel: 'GPT-4',
+        isComparison: true,
+        _isAddedRequest: true
+      };
+      
+      console.log('📤 GPT-4 comparison object:', JSON.stringify(comparisonConvo, null, 2));
+    }
+    
+    console.log('🎯 === END COMPARISON DEBUG ===');
+    
+    setAddedConvo(comparisonConvo);
 
-  const textarea = document.getElementById(mainTextareaId);
-  if (textarea) {
-    textarea.focus();
-  }
-  
-  // Reset the flag after a delay
-  setTimeout(() => {
-    comparisonInProgress.current = false;
-    setIsComparing(false);
-  }, 2000);
-};
-
-
+    const textarea = document.getElementById(mainTextareaId);
+    if (textarea) {
+      textarea.focus();
+    }
+    
+    setTimeout(() => {
+      comparisonInProgress.current = false;
+      setIsComparing(false);
+    }, 2000);
+  };
   
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
