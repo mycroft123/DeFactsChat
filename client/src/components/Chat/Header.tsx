@@ -129,75 +129,89 @@ export default function Header() {
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
   // Modified compare handler with radio selection
-  const handleCompareModels = () => {
-    if (!conversation || comparisonInProgress.current) return;
+// Updated handleCompareModels function with corrected Perplexity configuration
+
+const handleCompareModels = () => {
+  if (!conversation || comparisonInProgress.current) return;
+  
+  // Set the flag immediately to prevent multiple clicks
+  comparisonInProgress.current = true;
+  setIsComparing(true);
+  
+  const { title: _t, ...convo } = conversation;
+  
+  // Determine model and endpoint based on selection
+  let comparisonConvo;
+  
+  if (selectedCompareModel === 'perplexity') {
+    // Perplexity configuration - using the exact model names from your config
+    const perplexityModel = 'sonar-medium-online'; // or 'sonar-small-online'
     
-    // Set the flag immediately to prevent multiple clicks
-    comparisonInProgress.current = true;
-    setIsComparing(true);
-    
-    const { title: _t, ...convo } = conversation;
-    
-    // Determine model and endpoint based on selection
-    let comparisonModel, comparisonEndpoint;
-    
-    if (selectedCompareModel === 'perplexity') {
-      // Perplexity is working as a custom endpoint with underscore
-      comparisonModel = 'sonar'; // Use the short model name
-      comparisonEndpoint = 'custom_Perplexity'; // Use exact endpoint name with underscore
-      
-      console.log('Setting up Perplexity comparison:', {
-        model: comparisonModel,
-        endpoint: comparisonEndpoint,
-        note: 'Using custom_Perplexity endpoint'
-      });
-    } else {
-      // Default to GPT-4
-      comparisonModel = 'gpt-4';
-      comparisonEndpoint = 'openAI';
-    }
-    
-    console.log('Compare configuration:', {
-      mainModel: 'DeFacts',
-      mainEndpoint: 'gptPlugins',
-      comparisonModel,
-      comparisonEndpoint,
-      selectedCompareModel,
-      conversationId: convo.conversationId
+    console.log('Setting up Perplexity comparison:', {
+      model: perplexityModel,
+      endpoint: 'custom',
+      endpointName: 'Perplexity',
+      note: 'Using custom endpoint with Perplexity configuration'
     });
     
-    // Create comparison conversation with special flag
-    const comparisonConvo = {
+    // Create comparison conversation for Perplexity
+    comparisonConvo = {
       ...convo,
       title: '',
-      model: comparisonModel,
-      endpoint: comparisonEndpoint,
-      // Add endpoint type for custom endpoints
-      endpointType: selectedCompareModel === 'perplexity' ? 'custom' : undefined,
-      // Add model label for display
-      modelLabel: selectedCompareModel === 'perplexity' ? 'Perplexity' : null,
-      chatGptLabel: selectedCompareModel === 'perplexity' ? 'Perplexity' : null,
-      // Add a flag to identify this as a comparison
+      model: perplexityModel,
+      endpoint: 'custom',
+      // Critical: This must match the 'name' in your librechat.yaml exactly
+      spec: 'Perplexity',
+      // These are required for custom endpoints
+      endpointType: 'custom',
+      modelLabel: 'Perplexity',
+      chatGptLabel: 'Perplexity',
+      // Add the endpoint option structure that LibreChat expects
+      endpointOption: {
+        endpoint: 'custom',
+        model: perplexityModel,
+        spec: 'Perplexity',
+        modelLabel: 'Perplexity',
+        endpointType: 'custom'
+      },
+      // Add comparison flags
       isComparison: true,
-      // This ensures the comparison is properly marked when it goes through SSE
       _isAddedRequest: true
     };
-    
-    console.log('Final comparison conversation:', comparisonConvo);
-    
-    setAddedConvo(comparisonConvo);
+  } else {
+    // Default to GPT-4
+    comparisonConvo = {
+      ...convo,
+      title: '',
+      model: 'gpt-4o', // Using gpt-4o from your config
+      endpoint: 'openAI',
+      modelLabel: 'GPT-4',
+      chatGptLabel: 'GPT-4',
+      endpointOption: {
+        endpoint: 'openAI',
+        model: 'gpt-4o',
+        modelLabel: 'GPT-4'
+      },
+      isComparison: true,
+      _isAddedRequest: true
+    };
+  }
+  
+  console.log('Final comparison conversation:', comparisonConvo);
+  
+  setAddedConvo(comparisonConvo);
 
-    const textarea = document.getElementById(mainTextareaId);
-    if (textarea) {
-      textarea.focus();
-    }
-    
-    // Reset the flag after a delay
-    setTimeout(() => {
-      comparisonInProgress.current = false;
-      setIsComparing(false);
-    }, 2000);
-  };
+  const textarea = document.getElementById(mainTextareaId);
+  if (textarea) {
+    textarea.focus();
+  }
+  
+  // Reset the flag after a delay
+  setTimeout(() => {
+    comparisonInProgress.current = false;
+    setIsComparing(false);
+  }, 2000);
+};
   
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
