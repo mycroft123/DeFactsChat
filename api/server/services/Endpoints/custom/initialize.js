@@ -44,7 +44,7 @@ const initializeClient = async ({ req, res, endpointOption, optionsOnly, overrid
     throw new Error(`Missing Base URL for ${endpoint}.`);
   }
 
-  const userProvidesKey = isUserProvided(CUSTOM_API_KEY);
+  let userProvidesKey = isUserProvided(CUSTOM_API_KEY);
   const userProvidesURL = isUserProvided(CUSTOM_BASE_URL);
 
   let userValues = null;
@@ -56,7 +56,17 @@ const initializeClient = async ({ req, res, endpointOption, optionsOnly, overrid
   let apiKey = userProvidesKey ? userValues?.apiKey : CUSTOM_API_KEY;
   let baseURL = userProvidesURL ? userValues?.baseURL : CUSTOM_BASE_URL;
 
-  if (userProvidesKey & !apiKey) {
+  // Force OpenRouter to use environment key
+  if (endpointConfig.name === 'OpenRouter' && process.env.OPENROUTER_KEY) {
+    apiKey = process.env.OPENROUTER_KEY;
+    const logger = req.app.locals.logger || console;
+    logger.info(`[Custom Initialize] Forcing OpenRouter to use environment key: ${apiKey.substring(0, 20)}...`);
+    // Override the userProvidesKey flag so it doesn't check for user key
+    userProvidesKey = false;
+  }
+
+  // Skip user key check for OpenRouter when using env key
+  if (userProvidesKey && !apiKey && !(endpointConfig.name === 'OpenRouter' && process.env.OPENROUTER_KEY)) {
     throw new Error(
       JSON.stringify({
         type: ErrorTypes.NO_USER_KEY,
