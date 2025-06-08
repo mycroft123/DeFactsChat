@@ -17,10 +17,17 @@ export default function createPayload(submission: t.TSubmission) {
     endpoint: s.EModelEndpoint;
     endpointType?: s.EModelEndpoint;
   };
-
-  let server = EndpointURLs[endpointType ?? endpoint];
+  
+  // Handle custom endpoints by mapping custom_* to 'custom'
+  let lookupEndpoint = endpoint;
+  if (endpoint.startsWith('custom_')) {
+    lookupEndpoint = 'custom';
+  }
+  
+  let server = EndpointURLs[endpointType ?? lookupEndpoint];
+  
   const isEphemeral = s.isEphemeralAgent(endpoint, ephemeralAgent);
-
+  
   if (isEdited && s.isAssistantsEndpoint(endpoint)) {
     server += '/modify';
   } else if (isEdited) {
@@ -28,7 +35,7 @@ export default function createPayload(submission: t.TSubmission) {
   } else if (isEphemeral) {
     server = `${EndpointURLs[s.EModelEndpoint.agents]}/${endpoint}`;
   }
-
+  
   const payload: t.TPayload = {
     ...userMessage,
     ...endpointOption,
@@ -37,6 +44,6 @@ export default function createPayload(submission: t.TSubmission) {
     conversationId,
     isTemporary,
   };
-
+  
   return { server, payload };
 }
