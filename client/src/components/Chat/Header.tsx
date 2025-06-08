@@ -161,14 +161,14 @@ comparisonConvo = {
   conversationId: convo.conversationId,
   title: '',
   model: perplexityModel,
-  endpoint: 'custom',  // ← Keep this as 'custom'
-  spec: 'OpenRouter',
-  endpointType: 'OpenRouter',  // ← This should be 'OpenRouter'
+  endpoint: 'custom',
+  endpointType: 'custom',  // ← Keep this as 'custom'
+  spec: 'OpenRouter',      // ← This identifies which custom endpoint
   modelLabel: 'Perplexity',
   chatGptLabel: 'Perplexity (via OpenRouter)',
-  // Include OpenRouter configuration
-  customName: 'OpenRouter',
-  customEndpoint: 'OpenRouter',
+  // Remove these redundant fields
+  // customName: 'OpenRouter',
+  // customEndpoint: 'OpenRouter',
   // Add comparison flags
   isComparison: true,
   _isAddedRequest: true,
