@@ -16,67 +16,32 @@ router.post(
   // Middleware to inject OpenRouter key
   async (req, res, next) => {
     try {
-      console.log('🎯 [CUSTOM ROUTE DEBUG] ==================');
-      console.log('📋 [Custom Route] Full request body:', JSON.stringify(req.body, null, 2));
-      console.log('🔑 [Custom Route] Headers:', req.headers);
-      console.log('🎯 =====================================');
+      console.log('🎯 [CUSTOM ROUTE] Request for model:', req.body.model);
+      console.log('📋 [CUSTOM ROUTE] Endpoint:', req.body.endpoint);
+      console.log('🔑 [CUSTOM ROUTE] Key status:', req.body.key === 'never' ? 'never' : 'has value');
       
-      // Check what endpoint/spec we're dealing with
-      const { endpoint, spec, model, key } = req.body;
-      console.log('🔍 [Custom Route] Extracted values:', {
-        endpoint,
-        spec,
-        model,
-        keyStatus: key ? `exists (${key === 'never' ? 'never' : 'some value'})` : 'missing'
-      });
-      
-      // Check if this is an OpenRouter request
-      const isOpenRouter = spec === 'OpenRouter' || 
-                          endpoint === 'OpenRouter' || 
-                          endpoint === 'custom' || 
-                          model?.includes('perplexity') ||
-                          req.body.chatGptLabel?.includes('OpenRouter') ||
-                          req.body.modelLabel?.includes('Perplexity');
-      
-      console.log('🤔 [Custom Route] Is OpenRouter request?', isOpenRouter);
-      
-      // Load your Railway secret (uppercase)
-      const openRouterKey = process.env.OPENROUTER_KEY;
-      if (!openRouterKey) {
-        console.error('❌ [Custom Route] Missing OPENROUTER_KEY in environment');
-        // Don't throw error here, let initializeClient handle it
-      }
-      
-      if (openRouterKey) {
-        console.log('✅ [Custom Route] OpenRouter key found in env:', openRouterKey.substring(0, 20) + '...');
-      }
-      
-      // Override any user-supplied key for OpenRouter requests
-      if (isOpenRouter) {
-        console.log('🔄 [Custom Route] Setting up OpenRouter request');
-        // Set the key to 'never' to bypass user key check
-        req.body.key = 'never';
+      // Check if this is an OpenRouter/Perplexity request
+      if (req.body.model?.includes('perplexity') || 
+          req.body.spec === 'OpenRouter' ||
+          req.body.chatGptLabel?.includes('OpenRouter') ||
+          req.body.modelLabel?.includes('Perplexity')) {
         
-        // CRITICAL: Override the endpoint name to 'OpenRouter' so it finds the right config
-        if (endpoint === 'custom') {
-          req.body.endpoint = 'OpenRouter';
-          console.log('🔄 [Custom Route] Changed endpoint from "custom" to "OpenRouter"');
-        }
+        // Get the OpenRouter key from environment
+        const openRouterKey = process.env.OPENROUTER_KEY;
         
-        // Store the actual API key in a different property
-        if (openRouterKey) {
-          req.openRouterApiKey = openRouterKey;
+        if (!openRouterKey) {
+          console.error('❌ [CUSTOM ROUTE] OPENROUTER_KEY not found in environment');
+        } else if (req.body.key === 'never') {
+          console.log('🔄 [CUSTOM ROUTE] Injecting OpenRouter API key');
+          // Simply replace the key
+          req.body.key = openRouterKey;
         }
       }
-      
-      // Log before passing to next handler
-      console.log('📤 [Custom Route] Passing to next handler with key:', 
-        req.body.key ? req.body.key.substring(0, 20) + '...' : 'NO KEY');
       
       next();
     } catch (error) {
-      console.error('❌ [Custom Route] Error:', error);
-      res.status(500).json({ error: error.message });
+      console.error('❌ [CUSTOM ROUTE] Error:', error);
+      next(error);
     }
   },
   async (req, res) => {
@@ -115,9 +80,7 @@ router.post(
             max_tokens: req.body.max_tokens || 2048,
           },
           ...rest
-        },
-        // Pass the potentially overridden endpoint
-        overrideEndpoint: req.body.endpoint
+        }
       });
       
       console.log('✅ [Custom Controller] Client initialized successfully');
