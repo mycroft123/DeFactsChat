@@ -18,24 +18,44 @@ router.post(
     try {
       console.log('🎯 [CUSTOM ROUTE] Request for model:', req.body.model);
       console.log('📋 [CUSTOM ROUTE] Endpoint:', req.body.endpoint);
-      console.log('🔑 [CUSTOM ROUTE] Key status:', req.body.key === 'never' ? 'never' : 'has value');
+      console.log('🔑 [CUSTOM ROUTE] Spec:', req.body.spec);
       
-      // Check if this is an OpenRouter/Perplexity request
-      if (req.body.model?.includes('perplexity') || 
-          req.body.spec === 'OpenRouter' ||
+      // More precise check - ONLY for OpenRouter
+      const isOpenRouter = 
+        req.body.spec === 'OpenRouter' ||  // Direct OpenRouter spec
+        (req.body.endpoint === 'custom' && (
+          req.body.model?.includes('perplexity') ||
           req.body.chatGptLabel?.includes('OpenRouter') ||
-          req.body.modelLabel?.includes('Perplexity')) {
-        
-        // Get the OpenRouter key from environment
+          req.body.modelLabel?.includes('OpenRouter') ||
+          req.body.modelLabel?.includes('DeNews')
+        ));
+      
+      if (isOpenRouter) {
         const openRouterKey = process.env.OPENROUTER_KEY;
         
         if (!openRouterKey) {
           console.error('❌ [CUSTOM ROUTE] OPENROUTER_KEY not found in environment');
-        } else if (req.body.key === 'never') {
-          console.log('🔄 [CUSTOM ROUTE] Injecting OpenRouter API key');
-          // Simply replace the key
-          req.body.key = openRouterKey;
+          return res.status(500).json({ error: 'OpenRouter API key not configured' });
         }
+        
+        console.log('🔄 [CUSTOM ROUTE] Injecting OpenRouter API key');
+        
+        // ALWAYS override with your API key
+        req.body.key = openRouterKey;
+        req.body.apiKey = openRouterKey;
+        
+        if (!req.body.endpointOption) {
+          req.body.endpointOption = {};
+        }
+        req.body.endpointOption.apiKey = openRouterKey;
+        
+        if (req.body.endpoint_config) {
+          req.body.endpoint_config.apiKey = openRouterKey;
+        }
+        
+        console.log('✅ [CUSTOM ROUTE] OpenRouter key injected successfully');
+      } else {
+        console.log('⏭️  [CUSTOM ROUTE] Not OpenRouter, skipping key injection');
       }
       
       next();
