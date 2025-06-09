@@ -30,7 +30,7 @@ const clearDraft = (conversationId?: string | null) => {
   }
 };
 
-type ChatHelpers = Pick<
+type ChatHelpers = Pick
   EventHandlerParams,
   | 'setMessages'
   | 'getMessages'
@@ -104,7 +104,7 @@ export default function useSSE(
       payload = removeNullishValues(payload) as TPayload;
     }
 
-    // Simple debug logging that won't break anything
+    // Enhanced debugging
     console.log('🚀 [useSSE] Sending request:', {
       model: payload?.model,
       endpoint: payload?.endpoint,
@@ -112,6 +112,9 @@ export default function useSSE(
       conversationId: submission?.conversation?.conversationId,
       userMessage: userMessage?.text?.substring(0, 50) + '...',
     });
+    
+    console.log('📦 [useSSE] Full payload:', JSON.stringify(payload, null, 2));
+    console.log('🔗 [useSSE] Server URL:', payloadData.server);
 
     let textIndex = null;
 
@@ -120,19 +123,41 @@ export default function useSSE(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     });
 
+    // Add debugging for all SSE events
+    sse.addEventListener('open', () => {
+      setAbortScroll(false);
+      console.log('✅ [useSSE] Connection opened successfully');
+      console.log('📡 [useSSE] Connection details:', {
+        url: payloadData.server,
+        readyState: sse.readyState,
+        withCredentials: sse.withCredentials,
+      });
+    });
+
     sse.addEventListener('attachment', (e: MessageEvent) => {
+      console.log('📎 [useSSE] Attachment event received:', e.data);
       try {
         const data = JSON.parse(e.data);
         attachmentHandler({ data, submission: submission as EventSubmission });
       } catch (error) {
-        console.error(error);
+        console.error('❌ [useSSE] Error parsing attachment:', error);
       }
     });
 
     sse.addEventListener('message', (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      console.log('💬 [useSSE] Message event received:', e.data?.substring(0, 100) + '...');
+      
+      let data;
+      try {
+        data = JSON.parse(e.data);
+      } catch (error) {
+        console.error('❌ [useSSE] Error parsing message:', error);
+        console.error('Raw message data:', e.data);
+        return;
+      }
 
       if (data.final != null) {
+        console.log('✅ [useSSE] Final message received:', data);
         clearDraft(submission.conversation?.conversationId);
         const { plugins } = data;
         finalHandler(data, { ...submission, plugins } as EventSubmission);
@@ -140,6 +165,7 @@ export default function useSSE(
         console.log('final', data);
         return;
       } else if (data.created != null) {
+        console.log('🆕 [useSSE] Created event:', data);
         const runId = v4();
         setActiveRunId(runId);
         userMessage = {
@@ -150,13 +176,16 @@ export default function useSSE(
 
         createdHandler(data, { ...submission, userMessage } as EventSubmission);
       } else if (data.event != null) {
+        console.log('📊 [useSSE] Step event:', data);
         stepHandler(data, { ...submission, userMessage } as EventSubmission);
       } else if (data.sync != null) {
+        console.log('🔄 [useSSE] Sync event:', data);
         const runId = v4();
         setActiveRunId(runId);
         /* synchronize messages to Assistants API as well as with real DB ID's */
         syncHandler(data, { ...submission, userMessage } as EventSubmission);
       } else if (data.type != null) {
+        console.log('📝 [useSSE] Content event:', { type: data.type, index: data.index });
         const { text, index } = data;
         if (text != null && index !== textIndex) {
           textIndex = index;
@@ -164,6 +193,7 @@ export default function useSSE(
 
         contentHandler({ data, submission: submission as EventSubmission });
       } else {
+        console.log('📨 [useSSE] Standard message:', data);
         const text = data.text ?? data.response;
         const { plugin, plugins } = data;
 
@@ -179,12 +209,8 @@ export default function useSSE(
       }
     });
 
-    sse.addEventListener('open', () => {
-      setAbortScroll(false);
-      console.log('connection is opened');
-    });
-
     sse.addEventListener('cancel', async () => {
+      console.log('🚫 [useSSE] Cancel event received');
       const streamKey = (submission as TSubmission | null)?.['initialResponse']?.messageId;
       if (completed.has(streamKey)) {
         setIsSubmitting(false);
@@ -209,8 +235,41 @@ export default function useSSE(
     });
 
     sse.addEventListener('error', async (e: MessageEvent) => {
+      console.error('❌ [useSSE] Error in server stream');
+      console.error('🔍 [useSSE] Error event details:', {
+        data: e.data,
+        type: e.type,
+        lastEventId: e.lastEventId,
+        origin: e.origin,
+        /* @ts-ignore */
+        responseCode: e.responseCode,
+        /* @ts-ignore */
+        statusCode: e.statusCode,
+        /* @ts-ignore */
+        status: e.status,
+      });
+      
+      // Log the full error event
+      console.error('🔍 [useSSE] Full error event:', e);
+      
+      // Try to get more error details
+      /* @ts-ignore */
+      if (e.target) {
+        console.error('🔍 [useSSE] Error target details:', {
+          /* @ts-ignore */
+          readyState: e.target.readyState,
+          /* @ts-ignore */
+          url: e.target.url,
+          /* @ts-ignore */
+          status: e.target.status,
+          /* @ts-ignore */
+          statusText: e.target.statusText,
+        });
+      }
+
       /* @ts-ignore */
       if (e.responseCode === 401) {
+        console.log('🔑 [useSSE] 401 error - attempting token refresh');
         /* token expired, refresh and retry */
         try {
           const refreshResponse = await request.refreshToken();
@@ -228,18 +287,19 @@ export default function useSSE(
           return;
         } catch (error) {
           /* token refresh failed, continue handling the original 401 */
-          console.log(error);
+          console.error('❌ [useSSE] Token refresh failed:', error);
         }
       }
 
-      console.log('error in server stream.');
       (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
 
       let data: TResData | undefined = undefined;
       try {
         data = JSON.parse(e.data) as TResData;
+        console.error('🔍 [useSSE] Parsed error data:', data);
       } catch (error) {
-        console.error(error);
+        console.error('❌ [useSSE] Could not parse error data:', error);
+        console.error('Raw error data:', e.data);
         console.log(e);
         setIsSubmitting(false);
       }
@@ -247,11 +307,25 @@ export default function useSSE(
       errorHandler({ data, submission: { ...submission, userMessage } as EventSubmission });
     });
 
+    // Add state change listener for debugging
+    /* @ts-ignore */
+    if (sse.addEventListener) {
+      sse.addEventListener('readystatechange', () => {
+        /* @ts-ignore */
+        console.log('🔄 [useSSE] ReadyState changed:', sse.readyState);
+      });
+    }
+
     setIsSubmitting(true);
+    console.log('🚀 [useSSE] Starting stream...');
     sse.stream();
 
     return () => {
       const isCancelled = sse.readyState <= 1;
+      console.log('🛑 [useSSE] Cleanup - closing connection', { 
+        readyState: sse.readyState, 
+        isCancelled 
+      });
       sse.close();
       if (isCancelled) {
         const e = new Event('cancel');

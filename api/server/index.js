@@ -54,26 +54,33 @@ const startServer = async () => {
   app.use(errorController);
   app.use(express.json({ limit: '3mb' }));
   app.use(express.urlencoded({ extended: true, limit: '3mb' }));
-
-
-// override any “key”: "never" with your Railway secret
-app.use((req, res, next) => {
-  if (req.body?.key === 'never') {
-    const secret = process.env.OPENROUTER_KEY;
-    if (!secret) {
-      console.error('🚨 Missing OPENROUTER_KEY in environment');
-      return res.status(500).json({ error: 'Server misconfiguration' });
-    }
-    req.body.key = secret;
-  }
-  next();
-});
-
-
-
   app.use(mongoSanitize());
   app.use(cors());
   app.use(cookieParser());
+
+  // MOVE THE MIDDLEWARE HERE - AFTER BODY PARSING!
+  // Override any "key": "never" with your Railway secret
+  app.use((req, res, next) => {
+    // Only process if we have a body and the key is "never"
+    if (req.body && req.body.key === 'never') {
+      console.log('🔑 [Index Middleware] Found key:"never" in request to:', req.path);
+      console.log('📋 [Index Middleware] Request details:', {
+        endpoint: req.body.endpoint,
+        spec: req.body.spec,
+        model: req.body.model,
+      });
+      
+      const secret = process.env.OPENROUTER_KEY;
+      if (!secret) {
+        console.error('🚨 [Index Middleware] Missing OPENROUTER_KEY in environment');
+        return res.status(500).json({ error: 'Server misconfiguration' });
+      }
+      
+      req.body.key = secret;
+      console.log('✅ [Index Middleware] Replaced key with:', secret.substring(0, 20) + '...');
+    }
+    next();
+  });
 
   if (!isEnabled(DISABLE_COMPRESSION)) {
     app.use(compression());
@@ -207,6 +214,17 @@ console.log('=== DeFactsChat Environment Check ===');
 console.log('OPENROUTER_KEY:', process.env.OPENROUTER_KEY ? `Set (${process.env.OPENROUTER_KEY.substring(0, 10)}...)` : 'NOT SET');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('====================================');
+
+// Test OpenRouter key availability
+console.log('🧪 Testing OpenRouter key access...');
+const testKey = process.env.OPENROUTER_KEY;
+if (testKey) {
+  console.log('✅ OpenRouter key accessible:', testKey.substring(0, 30) + '...');
+  console.log('🔍 Key starts with:', testKey.substring(0, 10));
+  console.log('📏 Key length:', testKey.length);
+} else {
+  console.error('❌ OpenRouter key NOT accessible!');
+}
 
 // export app for easier testing purposes
 module.exports = app;
