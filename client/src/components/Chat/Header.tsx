@@ -298,6 +298,7 @@ export default function Header() {
         files: convo.files || [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
+        key: 'never', // <-- Add this instead of deleting it
       };
       
       // Clean up any key fields
