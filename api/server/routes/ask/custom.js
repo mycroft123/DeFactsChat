@@ -1,5 +1,4 @@
 const express = require('express');
-const { Controller } = require('librechat-data-provider');
 const { initializeClient } = require('~/server/services/Endpoints/custom');
 const { saveMessage, getConvoTitle, getConvo } = require('~/models');
 const { sendMessage, createOnProgress } = require('~/server/utils');
@@ -123,7 +122,11 @@ router.post(
       
       console.log('✅ [Custom Controller] Client initialized successfully');
       
-      const controller = new Controller();
+      // Set up SSE headers
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
       
       // Create the onProgress handler
       const onProgress = (token) => {
@@ -158,7 +161,6 @@ router.post(
         conversationId,
         parentMessageId,
         onProgress,
-        abortController: controller,
       });
       
       // Save the conversation and messages
