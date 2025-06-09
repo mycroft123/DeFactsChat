@@ -133,6 +133,18 @@ export default function Header() {
         });
       }
       
+      // Add specific logging for Perplexity
+      if (url.includes('/api/ask/custom') && args[1]?.body) {
+        try {
+          const body = JSON.parse(args[1].body);
+          if (body.endpoint === 'custom' && body.spec === 'Perplexity') {
+            console.log('🌐 Perplexity API Call:', body);
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
       return originalFetch.apply(this, args).then(response => {
         if (!response.ok && (url.includes('/api/ask/') || url.includes('/api/chat/'))) {
           console.error('❌ API Error Response:', {
@@ -157,6 +169,16 @@ export default function Header() {
         console.error('🌊 SSE Error:', event);
       }
     }, true);
+    
+    // 8. Check custom endpoints specifically
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(config => {
+        console.log('🔧 Custom Endpoints:', config.endpoints?.custom);
+        const perplexityEndpoint = config.endpoints?.custom?.find(e => e.name === 'Perplexity');
+        console.log('🎯 Perplexity Config:', perplexityEndpoint);
+      })
+      .catch(err => console.error('❌ Error fetching config:', err));
     
     console.log('=== LIBRECHAT DEBUG END ===');
     
@@ -227,56 +249,53 @@ export default function Header() {
     
     let comparisonConvo;
     
-// In your Header component, update the handleCompareModels function
-// Find this section around line 180-220:
-
-if (selectedCompareModel === 'perplexity') {
-  const perplexityModel = 'llama-3.1-sonar-small-128k-online';
-  
-  console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
-  console.log('📋 Base conversation object:', convo);
-  
-  // Create a clean conversation object without any API key fields
-  comparisonConvo = {
-    conversationId: convo.conversationId,
-    endpoint: 'custom',
-    endpointType: 'custom',
-    model: perplexityModel,
-    title: '',
-    spec: 'Perplexity',  // ← CHANGE THIS FROM 'OpenRouter' TO 'Perplexity'
-    modelLabel: 'Perplexity',
-    chatGptLabel: 'Perplexity',  // ← Also update this to remove "(via OpenRouter)"
-    isComparison: true,
-    _isAddedRequest: true,
-    temperature: 0.7,
-    maxOutputTokens: 2048,
-    maxContextTokens: 128000,
-    max_tokens: 2048,
-    tools: [],
-    agentOptions: null,
-    resendFiles: false,
-    imageDetail: 'auto',
-    iconURL: null,
-    greeting: '',
-    promptPrefix: null,
-    examples: [],
-    files: [],
-    // Don't include any fields from the original conversation that might have 'key'
-    createdAt: convo.createdAt,
-    updatedAt: convo.updatedAt,
-  };
-  
-  // Make absolutely sure no key field exists
-  if ('key' in comparisonConvo) {
-    delete (comparisonConvo as any).key;
-  }
-  if ('apiKey' in comparisonConvo) {
-    delete (comparisonConvo as any).apiKey;
-  }
-  
-  console.log('📤 Perplexity comparison object:', JSON.stringify(comparisonConvo, null, 2));
-}else {
-      // Clean the GPT-4 comparison object as well
+    if (selectedCompareModel === 'perplexity') {
+      // Use the correct model name from librechat.yaml
+      const perplexityModel = 'llama-3.1-sonar-small-128k-online';
+      
+      console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
+      console.log('📋 Base conversation object:', convo);
+      
+      // Create a clean conversation object for Perplexity
+      comparisonConvo = {
+        conversationId: convo.conversationId,
+        endpoint: 'custom',
+        endpointType: 'custom',
+        model: perplexityModel,
+        title: '',
+        spec: 'Perplexity',
+        modelLabel: 'Perplexity',
+        chatGptLabel: 'Perplexity',
+        isComparison: true,
+        _isAddedRequest: true,
+        temperature: 0.7,
+        maxOutputTokens: 2048,
+        maxContextTokens: 128000,
+        max_tokens: 2048,
+        tools: [],
+        agentOptions: null,
+        resendFiles: false,
+        imageDetail: 'auto',
+        iconURL: null,
+        greeting: '',
+        promptPrefix: null,
+        examples: [],
+        files: [],
+        createdAt: convo.createdAt,
+        updatedAt: convo.updatedAt,
+      };
+      
+      // Make absolutely sure no key field exists
+      if ('key' in comparisonConvo) {
+        delete (comparisonConvo as any).key;
+      }
+      if ('apiKey' in comparisonConvo) {
+        delete (comparisonConvo as any).apiKey;
+      }
+      
+      console.log('📤 Perplexity comparison object:', JSON.stringify(comparisonConvo, null, 2));
+    } else {
+      // Clean the GPT-4 comparison object
       comparisonConvo = {
         conversationId: convo.conversationId,
         endpoint: 'openAI',
@@ -301,7 +320,6 @@ if (selectedCompareModel === 'perplexity') {
         files: convo.files || [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
-        key: 'never', // <-- Add this instead of deleting it
       };
       
       // Clean up any key fields
