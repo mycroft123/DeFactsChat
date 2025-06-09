@@ -19,6 +19,10 @@ export default function useAddedHelpers({
   const clearAllSubmissions = store.useClearSubmissionState();
   const [files, setFiles] = useRecoilState(store.filesByIndex(rootIndex));
   
+  const setLatestMultiMessage = useSetRecoilState(store.latestMessageFamily(currentIndex));
+  const { useCreateConversationAtom } = store;
+  const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
+  
   // CRITICAL FIX: Use root messages to get the correct latest message
   const rootMessages = queryClient.getQueryData<TMessage[]>([
     QueryKeys.messages, 
@@ -27,10 +31,6 @@ export default function useAddedHelpers({
   
   // Get the actual latest message from root context for correct parentMessageId
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
-  
-  const setLatestMultiMessage = useSetRecoilState(store.latestMessageFamily(currentIndex));
-  const { useCreateConversationAtom } = store;
-  const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
   const setSiblingIdx = useSetRecoilState(
     store.messagesSiblingIdxFamily(actualLatestMessage?.parentMessageId ?? null),
