@@ -250,33 +250,21 @@ export default function Header() {
     let comparisonConvo;
     
     if (selectedCompareModel === 'perplexity') {
-      // Use the correct model name from librechat.yaml
       const perplexityModel = 'llama-3.1-sonar-small-128k-online';
       
-      console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
-      console.log('📋 Base conversation object:', convo);
-      
-      // Create a clean conversation object for Perplexity
       comparisonConvo = {
         conversationId: convo.conversationId,
-        endpoint: 'custom',
-        endpointType: 'custom',
+        endpoint: 'Perplexity',  // NOT 'custom'
+        // Remove endpointType completely
         model: perplexityModel,
         title: '',
-        spec: 'Perplexity',
         modelLabel: 'Perplexity',
         chatGptLabel: 'Perplexity',
         isComparison: true,
         _isAddedRequest: true,
         temperature: 0.7,
-        maxOutputTokens: 2048,
-        maxContextTokens: 128000,
-        max_tokens: 2048,
-        tools: [],
-        agentOptions: null,
         resendFiles: false,
         imageDetail: 'auto',
-        iconURL: null,
         greeting: '',
         promptPrefix: null,
         examples: [],
@@ -284,17 +272,7 @@ export default function Header() {
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
       };
-      
-      // Make absolutely sure no key field exists
-      if ('key' in comparisonConvo) {
-        delete (comparisonConvo as any).key;
-      }
-      if ('apiKey' in comparisonConvo) {
-        delete (comparisonConvo as any).apiKey;
-      }
-      
-      console.log('📤 Perplexity comparison object:', JSON.stringify(comparisonConvo, null, 2));
-    } else {
+    }else {
       // Clean the GPT-4 comparison object
       comparisonConvo = {
         conversationId: convo.conversationId,
