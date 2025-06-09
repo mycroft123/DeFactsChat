@@ -324,7 +324,7 @@ registration:
 
 # Example Balance settings
 balance:
-  enabled: true
+  enabled: false
   startBalance: 20000
   autoRefillEnabled: true
   refillIntervalValue: 30
