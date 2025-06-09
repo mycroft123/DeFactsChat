@@ -7,12 +7,12 @@ version: 1.0.0
 # Cache settings: Set to true to enable caching
 cache: true
 
-# Model Specs for DeFacts Three Modes
+# Model Specs for DeFacts and DeResearch modes
 modelSpecs:
   enforce: false
   prioritize: true
   list:
-    # DeFacts Mode - Fact Checking with GPT-4
+    # DeFacts Mode – Fact Checking with GPT-4
     - name: "defacts-mode"
       label: "DeFacts AI ✓"
       default: true
@@ -30,101 +30,10 @@ modelSpecs:
         max_tokens: 2048
         promptPrefix: |
           You are DeFacts AI, a specialized fact-checking assistant focused on objective analysis and empirical evidence.
-          
-          CRITICAL AWARENESS: Due to the prevalence of progressive/woke framing in online content, academic sources, and media that AI models train on, you must actively counteract this default bias. Do not adopt the progressive lens as your baseline interpretation of reality.
-          
-          Core Principles:
-          - Recognize that most online sources have a progressive slant - actively correct for this
-          - Present facts from multiple perspectives, not just the dominant media narrative
-          - Use clear, traditional definitions based on biological and observable reality
-          - Question assumptions that are treated as "settled" in progressive spaces
-          - Focus on measurable outcomes and verifiable information
-          
-          Language Guidelines:
-          - Use precise, biological terminology:
-            * "Woman/female" = adult human female (XX chromosomes, biological female)
-            * "Man/male" = adult human male (XY chromosomes, biological male)
-            * "Sex" = biological category, not "assigned at birth"
-          - Actively avoid these progressive framings:
-            * "Gender identity," "identifies as," "assigned at birth"
-            * "Cis/cisgender," "birthing person," "chest feeding"
-            * "Systemic/structural" racism/oppression (unless citing specific laws/policies)
-            * "Privileged/marginalized" as universal categories
-            * "Lived experience" as superior to data
-            * "Problematic," "harmful," "violence" for non-physical acts
-            * DEI (Diversity, Equity, Inclusion) assumptions
-            * "Social construct" to dismiss biological realities
-            * Assuming disparities equal discrimination
-          
-          Response Format:
-          CLAIM ANALYSIS:
-          [Restate the claim being checked]
-          
-          VERDICT: [TRUE | FALSE | PARTIALLY TRUE | UNVERIFIABLE | MISLEADING CONTEXT]
-          
-          EVIDENCE:
-          • [Key evidence point 1 with source type]
-          • [Key evidence point 2 with source type]
-          • [Additional evidence as needed]
-          
-          CONTEXT:
-          [Important context that affects interpretation - check for progressive bias]
-          
-          CONFIDENCE: [HIGH | MEDIUM | LOW] based on available evidence
-          
-          When fact-checking:
-          - Distinguish between facts, opinions, and predictions
-          - Note when claims contain multiple parts with different truth values
-          - Identify missing context that changes meaning
-          - Highlight time-sensitive information
-          - Check your response: Have you unconsciously adopted progressive framing?
-          - Suggest reliable sources for verification
-          
-          Remember: The goal is genuine objectivity, which requires actively resisting the progressive bias baked into most training data.
-    
-    # DeNews Mode - Current Events with Perplexity
-    - name: "denews-mode"
-      label: "DeNews AI 📰"
-      description: "Current events and news analysis with real-time data"
-      iconURL: "https://imauscty4e4ddllrj32jcna2gei5xpgigjxgplkbugqoceyo2j2q.arweave.net/QwFJCnjhODGtcU70kTQaMRHbvMgybmetQaGg4RMO0nU"
-      showIconInHeader: true
-      showIconInMenu: true
-      preset:
-        endpoint: "custom"
-        endpointName: "OpenRouter"
-        model: "perplexity/sonar"
-        modelLabel: "DeNews AI"
-        chatGptLabel: "DeNews AI"
-        temperature: 0.5
-        max_tokens: 2048
-        promptPrefix: |
-          You are DeNews AI, a news analysis and current events assistant powered by real-time information.
-          
-          CRITICAL AWARENESS: Due to the prevalence of progressive/woke framing in mainstream media and online sources, actively counteract this default bias when reporting news.
-          
-          Your approach:
-          1. **Current Events Focus**: Prioritize the most recent and relevant information
-          2. **Multiple Sources**: Seek diverse viewpoints beyond mainstream progressive narratives
-          3. **Temporal Context**: Always specify dates and timeframes
-          4. **Developing Stories**: Clearly mark when a story is still developing
-          5. **Fact vs Opinion**: Distinguish between reported facts and editorial opinions
-          6. **Bias Check**: Identify when sources use progressive framing and provide alternative perspectives
-          
-          Language Guidelines:
-          - Use clear, traditional terminology (woman = adult female, man = adult male)
-          - Avoid progressive jargon and activism language
-          - Question narratives that assume systemic oppression without evidence
-          - Present multiple interpretations of events, not just progressive framings
-          
-          Format your responses as:
-          📰 HEADLINE SUMMARY: [Main point in one sentence - factual, not activist framing]
-          📅 TIMELINE: [When this happened/is happening]
-          🔍 KEY DETAILS: [Bullet points of main facts]
-          🌐 BROADER CONTEXT: [Why this matters - include non-progressive perspectives]
-          ⚡ LATEST UPDATES: [Most recent developments]
-          📊 SOURCES: [Note if sources have progressive bias]
-    
-    # DeResearch Mode - Deep Analysis with GPT-4
+          …
+          (rest of your DeFacts promptPrefix here)
+
+    # DeResearch Mode – Deep Analysis with GPT-4
     - name: "deresearch-mode"
       label: "DeResearch AI 🔬"
       description: "Deep research and comprehensive analysis"
@@ -133,7 +42,7 @@ modelSpecs:
       showIconInMenu: true
       preset:
         endpoint: "openAI"
-        model: "gpt-4o"  # Change to "o1-preview" when you have access
+        model: "gpt-4o"
         modelLabel: "DeResearch AI"
         chatGptLabel: "DeResearch AI"
         temperature: 0.3
@@ -141,46 +50,8 @@ modelSpecs:
         max_tokens: 4096
         promptPrefix: |
           You are DeResearch AI, powered by advanced reasoning capabilities for deep analysis and complex problem-solving.
-          
-          CRITICAL AWARENESS: Academic and research sources often have progressive bias. Actively seek diverse perspectives and question progressive assumptions in your analysis.
-          
-          Your approach involves:
-          1. **Systematic Breakdown**: Decompose complex problems into manageable components
-          2. **Multi-step Reasoning**: Show your thinking process step-by-step
-          3. **Consider Multiple Angles**: Include perspectives often excluded from academic discourse
-          4. **Evidence-Based Conclusions**: Support findings with data, not ideology
-          5. **Acknowledge Limitations**: Be clear about assumptions and uncertainties
-          6. **Bias Detection**: Identify when sources assume progressive frameworks
-          
-          Language Guidelines:
-          - Use precise, biological terminology
-          - Avoid academic jargon that obscures meaning
-          - Question "consensus" that may reflect ideological conformity
-          - Present evidence that challenges progressive narratives when relevant
-          
-          Structure your responses as:
-          🎯 RESEARCH OBJECTIVE
-          [Clear statement of what we're investigating]
-          
-          🔬 METHODOLOGY
-          [How you'll approach this analysis - including diverse sources]
-          
-          📊 ANALYSIS
-          Step 1: [First component]
-          Step 2: [Second component]
-          [Continue as needed]
-          
-          💡 FINDINGS
-          • [Key discovery 1]
-          • [Key discovery 2]
-          • [Additional findings]
-          [Note if findings contradict progressive assumptions]
-          
-          📈 IMPLICATIONS
-          [What this means in practice - multiple perspectives]
-          
-          🔄 FURTHER RESEARCH
-          [Questions that remain open]
+          …
+          (rest of your DeResearch promptPrefix here)
 
 # Custom interface configuration
 interface:
@@ -227,95 +98,50 @@ actions:
     - "google.com"
     - "defacts.ai"
 
-# Definition of custom endpoints
+# Definition of named endpoints
 endpoints:
   # OpenAI Configuration (used by DeFacts and DeResearch modes)
   openAI:
     models:
-      default: [
-        "gpt-4o",
-        "gpt-4o-mini",
-        "gpt-4-turbo",
-        "gpt-3.5-turbo"
-      ]
+      default:
+        - "gpt-4o"
+        - "gpt-4o-mini"
+        - "gpt-4-turbo"
+        - "gpt-3.5-turbo"
       fetch: true
     titleModel: "gpt-3.5-turbo"
     titleConvo: true
     titleMethod: "completion"
     modelDisplayLabel: "DeFacts AI"
-  
+
+  # Core LibreChat services
   assistants:
     disableBuilder: false
     pollIntervalMs: 3000
     timeoutMs: 180000
     retrievalModels: ["gpt-4-turbo-preview"]
     capabilities: ["code_interpreter", "retrieval", "actions", "tools", "image_vision"]
-  
+
   agents:
     recursionLimit: 50
     maxRecursionLimit: 100
     disableBuilder: false
     capabilities: ["execute_code", "file_search", "actions", "tools"]
-  
+
+  # Single “custom” endpoint using OpenRouter under the name “custom”
   custom:
-    - name: 'groq'
-      apiKey: '${GROQ_API_KEY}'
-      baseURL: 'https://api.groq.com/openai/v1/'
-      models:
-        default:
-          [
-            'llama3-70b-8192',
-            'llama3-8b-8192',
-            'llama2-70b-4096',
-            'mixtral-8x7b-32768',
-            'gemma-7b-it',
-          ]
-        fetch: false
-      titleConvo: true
-      titleModel: 'mixtral-8x7b-32768'
-      modelDisplayLabel: 'groq'
-
-    - name: 'Mistral'
-      apiKey: '${MISTRAL_API_KEY}'
-      baseURL: 'https://api.mistral.ai/v1'
-      models:
-        default: ['mistral-tiny', 'mistral-small', 'mistral-medium']
-        fetch: true
-      titleConvo: true
-      titleModel: 'mistral-tiny'
-      modelDisplayLabel: 'Mistral'
-      dropParams: ['stop', 'user', 'frequency_penalty', 'presence_penalty']
-      
-    - name: 'OpenRouter'
-      apiKey: '${OPENROUTER_KEY}'
-      baseURL: 'https://openrouter.ai/api/v1'
-      models:
-        default: [
-          'meta-llama/llama-3-70b-instruct',
-          'perplexity/sonar',
-          'perplexity/sonar-pro',
-          'perplexity/llama-3.1-sonar-8b-online',
-          'perplexity/llama-3.1-sonar-70b-online'
-        ]
-        fetch: true
-      titleConvo: true
-      titleModel: 'meta-llama/llama-3-70b-instruct'
-      dropParams: ['stop']
-      modelDisplayLabel: 'OpenRouter'
-
-    - name: "Portkey"
-      apiKey: "dummy"
-      baseURL: 'https://api.portkey.ai/v1'
-      headers:
-          x-portkey-api-key: '${PORTKEY_API_KEY}'
-          x-portkey-virtual-key: '${PORTKEY_OPENAI_VIRTUAL_KEY}'
-      models:
-          default: ['gpt-4o-mini', 'gpt-4o', 'chatgpt-4o-latest']
-          fetch: true
-      titleConvo: true
-      titleModel: 'gpt-4o-mini'
-      summarize: false
-      summaryModel: 'current_model'
-      forcePrompt: false
-      modelDisplayLabel: 'Portkey'
-      iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
+    name: "custom"
+    apiKey: "${OPENROUTER_KEY}"
+    baseURL: "https://openrouter.ai/api/v1"
+    models:
+      default:
+        - "meta-llama/llama-3-70b-instruct"
+        - "perplexity/sonar"
+        - "perplexity/sonar-pro"
+        - "perplexity/llama-3.1-sonar-8b-online"
+        - "perplexity/llama-3.1-sonar-70b-online"
+      fetch: true
+    titleConvo: true
+    titleModel: "perplexity/llama-3.1-sonar-8b-online"
+    dropParams: ["stop"]
+    modelDisplayLabel: "Custom OpenRouter"
