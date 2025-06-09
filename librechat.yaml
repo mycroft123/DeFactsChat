@@ -297,7 +297,7 @@ endpoints:
           'perplexity/llama-3.1-sonar-8b-online',
           'perplexity/llama-3.1-sonar-70b-online'
         ]
-        fetch: false
+        fetch: true
       titleConvo: true
       titleModel: 'meta-llama/llama-3-70b-instruct'
       dropParams: ['stop']
