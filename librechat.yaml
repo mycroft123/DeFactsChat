@@ -139,6 +139,7 @@ endpoints:
     titleConvo: true
     titleMethod: "completion"
     modelDisplayLabel: "DeFacts AI"
+    
 
   # Core LibreChat services
   assistants:
@@ -155,19 +156,18 @@ endpoints:
     capabilities: ["execute_code", "file_search", "actions", "tools"]
 
   # Custom endpoints (must be an array)
+
   custom:
-    - name: "OpenRouter"
-      apiKey: "${OPENROUTER_KEY}"
-      baseURL: "https://openrouter.ai/api/v1"
+    - name: "Perplexity"
+      apiKey: "${PERPLEXITY_API_KEY}"
+      baseURL: "https://api.perplexity.ai"
       models:
         default:
-          - "meta-llama/llama-3-70b-instruct"
-          - "perplexity/sonar"
-          - "perplexity/sonar-pro"
-          - "perplexity/llama-3.1-sonar-8b-online"
-          - "perplexity/llama-3.1-sonar-70b-online"
-        fetch: true
+          - "llama-3.1-sonar-small-128k-online"
+          - "llama-3.1-sonar-large-128k-online"
+          - "llama-3.1-sonar-small-128k-chat"
+          - "llama-3.1-sonar-large-128k-chat"
+        fetch: false
       titleConvo: true
-      titleModel: "perplexity/llama-3.1-sonar-8b-online"
-      dropParams: ["stop"]
-      modelDisplayLabel: "OpenRouter"
+      titleModel: "llama-3.1-sonar-small-128k-online"
+      modelDisplayLabel: "Perplexity"
