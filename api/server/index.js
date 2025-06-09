@@ -115,6 +115,18 @@ const startServer = async () => {
   /* API Endpoints */
   app.use('/api/auth', routes.auth);
   app.use('/api/actions', routes.actions);
+  
+  // Intercept API key requests for custom endpoint
+  app.get('/api/keys', (req, res, next) => {
+    if (req.query.name === 'custom' && process.env.OPENROUTER_KEY) {
+      console.log('🔑 [Keys Intercept] Returning OpenRouter key for custom endpoint');
+      return res.json({
+        apiKey: process.env.OPENROUTER_KEY
+      });
+    }
+    next();
+  });
+  
   app.use('/api/keys', routes.keys);
   app.use('/api/user', routes.user);
   app.use('/api/ask', routes.ask);
