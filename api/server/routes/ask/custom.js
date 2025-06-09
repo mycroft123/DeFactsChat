@@ -34,9 +34,10 @@ router.post(
       // Check if this is an OpenRouter request
       const isOpenRouter = spec === 'OpenRouter' || 
                           endpoint === 'OpenRouter' || 
-                          endpoint === 'custom' || // Add this check
+                          endpoint === 'custom' || 
                           model?.includes('perplexity') ||
-                          req.body.chatGptLabel?.includes('OpenRouter');
+                          req.body.chatGptLabel?.includes('OpenRouter') ||
+                          req.body.modelLabel?.includes('Perplexity');
       
       console.log('🤔 [Custom Route] Is OpenRouter request?', isOpenRouter);
       
@@ -52,12 +53,21 @@ router.post(
       }
       
       // Override any user-supplied key for OpenRouter requests
-      if (isOpenRouter && openRouterKey) {
-        console.log('🔄 [Custom Route] Overriding key for OpenRouter request');
+      if (isOpenRouter) {
+        console.log('🔄 [Custom Route] Setting up OpenRouter request');
         // Set the key to 'never' to bypass user key check
         req.body.key = 'never';
+        
+        // CRITICAL: Override the endpoint name to 'OpenRouter' so it finds the right config
+        if (endpoint === 'custom') {
+          req.body.endpoint = 'OpenRouter';
+          console.log('🔄 [Custom Route] Changed endpoint from "custom" to "OpenRouter"');
+        }
+        
         // Store the actual API key in a different property
-        req.openRouterApiKey = openRouterKey;
+        if (openRouterKey) {
+          req.openRouterApiKey = openRouterKey;
+        }
       }
       
       // Log before passing to next handler
@@ -93,6 +103,7 @@ router.post(
       };
       
       console.log('🏗️ [Custom Controller] Initializing client...');
+      console.log('📍 [Custom Controller] Using endpoint:', req.body.endpoint);
       
       // Initialize client with proper structure
       const { client, openAIApiKey } = await initializeClient({
@@ -106,6 +117,8 @@ router.post(
           },
           ...rest
         },
+        // Pass the potentially overridden endpoint
+        overrideEndpoint: req.body.endpoint
       });
       
       console.log('✅ [Custom Controller] Client initialized successfully');

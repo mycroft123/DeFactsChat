@@ -2,10 +2,117 @@
 # https://www.librechat.ai/docs/configuration/librechat_yaml
 
 # Configuration version (required)
-version: 1.0.0
+version: 1.0.9
 
 # Cache settings: Set to true to enable caching
 cache: true
+
+# Important: Add this to handle API keys properly
+endpoints:
+  # OpenAI Configuration (used by DeFacts and DeResearch modes)
+  openAI:
+    userProvide: false  # Don't require user to provide key
+    models:
+      default: [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4-turbo",
+        "gpt-3.5-turbo"
+      ]
+      fetch: true
+    titleModel: "gpt-3.5-turbo"
+    titleConvo: true
+    titleMethod: "completion"
+    modelDisplayLabel: "DeFacts AI"
+  
+  assistants:
+    disableBuilder: false
+    pollIntervalMs: 3000
+    timeoutMs: 180000
+    retrievalModels: ["gpt-4-turbo-preview"]
+    capabilities: ["code_interpreter", "retrieval", "actions", "tools", "image_vision"]
+  
+  agents:
+    recursionLimit: 50
+    maxRecursionLimit: 100
+    disableBuilder: false
+    capabilities: ["execute_code", "file_search", "actions", "tools"]
+  
+  gptPlugins:
+    userProvide: false
+    availableAgents: ["classic", "functions"]
+  
+  custom:
+    - name: 'OpenRouter'
+      apiKey: '${OPENROUTER_KEY}'
+      baseURL: 'https://openrouter.ai/api/v1'
+      models:
+        default: [
+          'perplexity/llama-3.1-sonar-8b-online',
+          'perplexity/llama-3.1-sonar-70b-online',
+          'perplexity/sonar',
+          'perplexity/sonar-pro',
+          'meta-llama/llama-3-70b-instruct',
+          'openai/gpt-4-turbo-preview',
+          'anthropic/claude-3-opus',
+          'google/gemini-pro-1.5'
+        ]
+        fetch: false
+      titleConvo: true
+      titleModel: 'perplexity/llama-3.1-sonar-8b-online'
+      dropParams: ['stop', 'user', 'frequency_penalty', 'presence_penalty']
+      modelDisplayLabel: 'OpenRouter'
+      userProvide: false  # This is crucial - don't require user API key
+      headers:
+        HTTP-Referer: '${SITE_URL}'
+        X-Title: 'LibreChat'
+    
+    - name: 'groq'
+      apiKey: '${GROQ_API_KEY}'
+      baseURL: 'https://api.groq.com/openai/v1/'
+      models:
+        default: [
+          'llama3-70b-8192',
+          'llama3-8b-8192',
+          'llama2-70b-4096',
+          'mixtral-8x7b-32768',
+          'gemma-7b-it'
+        ]
+        fetch: false
+      titleConvo: true
+      titleModel: 'mixtral-8x7b-32768'
+      modelDisplayLabel: 'groq'
+      userProvide: true  # Users need to provide their own groq key
+
+    - name: 'Mistral'
+      apiKey: '${MISTRAL_API_KEY}'
+      baseURL: 'https://api.mistral.ai/v1'
+      models:
+        default: ['mistral-tiny', 'mistral-small', 'mistral-medium']
+        fetch: true
+      titleConvo: true
+      titleModel: 'mistral-tiny'
+      modelDisplayLabel: 'Mistral'
+      dropParams: ['stop', 'user', 'frequency_penalty', 'presence_penalty']
+      userProvide: true  # Users need to provide their own Mistral key
+
+    - name: "Portkey"
+      apiKey: "dummy"
+      baseURL: 'https://api.portkey.ai/v1'
+      headers:
+          x-portkey-api-key: '${PORTKEY_API_KEY}'
+          x-portkey-virtual-key: '${PORTKEY_OPENAI_VIRTUAL_KEY}'
+      models:
+          default: ['gpt-4o-mini', 'gpt-4o', 'chatgpt-4o-latest']
+          fetch: true
+      titleConvo: true
+      titleModel: 'gpt-4o-mini'
+      summarize: false
+      summaryModel: 'current_model'
+      forcePrompt: false
+      modelDisplayLabel: 'Portkey'
+      iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
+      userProvide: true  # Users need to provide their own Portkey key
 
 # Model Specs for DeFacts Three Modes
 modelSpecs:
@@ -21,13 +128,14 @@ modelSpecs:
       showIconInHeader: true
       showIconInMenu: true
       preset:
-        endpoint: "openAI"
-        model: "gpt-4o"
+        endpoint: "gptPlugins"  # Use gptPlugins instead of openAI for better control
+        model: "DeFacts"  # This will be mapped to gpt-4o
         modelLabel: "DeFacts AI"
         chatGptLabel: "DeFacts AI"
         temperature: 0.7
         maxContextTokens: 128000
         max_tokens: 2048
+        spec: "defacts-mode"
         promptPrefix: |
           You are DeFacts AI, a specialized fact-checking assistant focused on objective analysis and empirical evidence.
           
@@ -91,12 +199,13 @@ modelSpecs:
       showIconInMenu: true
       preset:
         endpoint: "custom"
-        endpointName: "OpenRouter"
-        model: "perplexity/sonar"
+        spec: "OpenRouter"
+        model: "perplexity/llama-3.1-sonar-8b-online"
         modelLabel: "DeNews AI"
-        chatGptLabel: "DeNews AI"
+        chatGptLabel: "DeNews AI (via OpenRouter)"
         temperature: 0.5
         max_tokens: 2048
+        key: "never"  # This triggers the UserService override
         promptPrefix: |
           You are DeNews AI, a news analysis and current events assistant powered by real-time information.
           
@@ -132,13 +241,14 @@ modelSpecs:
       showIconInHeader: true
       showIconInMenu: true
       preset:
-        endpoint: "openAI"
-        model: "gpt-4o"  # Change to "o1-preview" when you have access
+        endpoint: "gptPlugins"
+        model: "DeResearch"  # This will be mapped to gpt-4o or o1-preview
         modelLabel: "DeResearch AI"
         chatGptLabel: "DeResearch AI"
         temperature: 0.3
         maxContextTokens: 128000
         max_tokens: 4096
+        spec: "deresearch-mode"
         promptPrefix: |
           You are DeResearch AI, powered by advanced reasoning capabilities for deep analysis and complex problem-solving.
           
@@ -184,7 +294,9 @@ modelSpecs:
 
 # Custom interface configuration
 interface:
+  appTitle: "DeFactsChat"
   customWelcome: "Welcome to DeFacts! Let's Get Smarter Together!"
+  
   # Privacy policy settings
   privacyPolicy:
     externalUrl: 'https://defacts.ai/privacy-policy'
@@ -226,96 +338,3 @@ actions:
     - "librechat.ai"
     - "google.com"
     - "defacts.ai"
-
-# Definition of custom endpoints
-endpoints:
-  # OpenAI Configuration (used by DeFacts and DeResearch modes)
-  openAI:
-    models:
-      default: [
-        "gpt-4o",
-        "gpt-4o-mini",
-        "gpt-4-turbo",
-        "gpt-3.5-turbo"
-      ]
-      fetch: true
-    titleModel: "gpt-3.5-turbo"
-    titleConvo: true
-    titleMethod: "completion"
-    modelDisplayLabel: "DeFacts AI"
-  
-  assistants:
-    disableBuilder: false
-    pollIntervalMs: 3000
-    timeoutMs: 180000
-    retrievalModels: ["gpt-4-turbo-preview"]
-    capabilities: ["code_interpreter", "retrieval", "actions", "tools", "image_vision"]
-  
-  agents:
-    recursionLimit: 50
-    maxRecursionLimit: 100
-    disableBuilder: false
-    capabilities: ["execute_code", "file_search", "actions", "tools"]
-  
-  custom:
-    - name: 'groq'
-      apiKey: '${GROQ_API_KEY}'
-      baseURL: 'https://api.groq.com/openai/v1/'
-      models:
-        default:
-          [
-            'llama3-70b-8192',
-            'llama3-8b-8192',
-            'llama2-70b-4096',
-            'mixtral-8x7b-32768',
-            'gemma-7b-it',
-          ]
-        fetch: false
-      titleConvo: true
-      titleModel: 'mixtral-8x7b-32768'
-      modelDisplayLabel: 'groq'
-
-    - name: 'Mistral'
-      apiKey: '${MISTRAL_API_KEY}'
-      baseURL: 'https://api.mistral.ai/v1'
-      models:
-        default: ['mistral-tiny', 'mistral-small', 'mistral-medium']
-        fetch: true
-      titleConvo: true
-      titleModel: 'mistral-tiny'
-      modelDisplayLabel: 'Mistral'
-      dropParams: ['stop', 'user', 'frequency_penalty', 'presence_penalty']
-      
-    - name: 'OpenRouter'
-      apiKey: '${OPENROUTER_KEY}'
-      baseURL: 'https://openrouter.ai/api/v1'
-      models:
-        default: [
-          'meta-llama/llama-3-70b-instruct',
-          'perplexity/sonar',
-          'perplexity/sonar-pro',
-          'perplexity/llama-3.1-sonar-8b-online',
-          'perplexity/llama-3.1-sonar-70b-online'
-        ]
-        fetch: false
-      titleConvo: true
-      titleModel: 'meta-llama/llama-3-70b-instruct'
-      dropParams: ['stop']
-      modelDisplayLabel: 'OpenRouter'
-
-    - name: "Portkey"
-      apiKey: "dummy"
-      baseURL: 'https://api.portkey.ai/v1'
-      headers:
-          x-portkey-api-key: '${PORTKEY_API_KEY}'
-          x-portkey-virtual-key: '${PORTKEY_OPENAI_VIRTUAL_KEY}'
-      models:
-          default: ['gpt-4o-mini', 'gpt-4o', 'chatgpt-4o-latest']
-          fetch: true
-      titleConvo: true
-      titleModel: 'gpt-4o-mini'
-      summarize: false
-      summaryModel: 'current_model'
-      forcePrompt: false
-      modelDisplayLabel: 'Portkey'
-      iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
