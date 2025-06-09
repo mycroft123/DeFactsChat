@@ -100,12 +100,9 @@ const initializeClient = async ({ req, res, endpointOption, optionsOnly, overrid
   const isOpenRouterRequest = 
     endpointConfig.name === 'OpenRouter' ||
     endpoint === 'OpenRouter' ||
-    endpoint === 'custom' ||
     req?.body?.spec === 'OpenRouter' ||
     req?.body?.model?.includes('perplexity') ||
-    req?.body?.model?.includes('openrouter') ||
-    req?.body?.chatGptLabel?.includes('OpenRouter') ||
-    req?.body?.modelLabel?.includes('Perplexity');
+    req?.body?.chatGptLabel?.includes('OpenRouter');
 
   console.log('🤔 [Custom Initialize] Is OpenRouter request?', {
     isOpenRouterRequest,
@@ -113,48 +110,24 @@ const initializeClient = async ({ req, res, endpointOption, optionsOnly, overrid
     endpoint,
     spec: req?.body?.spec,
     model: req?.body?.model,
-    modelLabel: req?.body?.modelLabel,
-    chatGptLabel: req?.body?.chatGptLabel,
     envKeyExists: !!process.env.OPENROUTER_KEY,
-    reqHasOpenRouterKey: !!req.openRouterApiKey,
   });
 
   // Force OpenRouter to use environment key
-  if (isOpenRouterRequest) {
-    // Check multiple sources for the key
-    const envKey = process.env.OPENROUTER_KEY || process.env.OPENROUTER_API_KEY;
-    const reqKey = req.openRouterApiKey;
-    
-    if (envKey || reqKey) {
-      apiKey = reqKey || envKey;
-      const logger = req.app.locals.logger || console;
-      logger.info(`[Custom Initialize] Forcing OpenRouter to use environment key: ${apiKey.substring(0, 20)}...`);
-      console.log('✅ [Custom Initialize] Forced OpenRouter key from environment/request');
-      // Override the userProvidesKey flag so it doesn't check for user key
-      userProvidesKey = false;
-      
-      // Ensure we're using OpenRouter's base URL
-      if (!baseURL || !baseURL.includes('openrouter')) {
-        baseURL = 'https://openrouter.ai/api/v1';
-        console.log('🔄 [Custom Initialize] Set OpenRouter base URL:', baseURL);
-      }
-      
-      // Add OpenRouter-specific headers
-      resolvedHeaders = {
-        ...resolvedHeaders,
-        'HTTP-Referer': process.env.SITE_URL || req.headers.referer || 'https://librechat.ai',
-        'X-Title': 'LibreChat',
-      };
-    } else {
-      console.error('❌ [Custom Initialize] OpenRouter request but no OPENROUTER_KEY available!');
-      throw new Error('OpenRouter API key not configured. Please set OPENROUTER_KEY environment variable.');
-    }
+  if (isOpenRouterRequest && process.env.OPENROUTER_KEY) {
+    apiKey = process.env.OPENROUTER_KEY;
+    const logger = req.app.locals.logger || console;
+    logger.info(`[Custom Initialize] Forcing OpenRouter to use environment key: ${apiKey.substring(0, 20)}...`);
+    console.log('✅ [Custom Initialize] Forced OpenRouter key from environment');
+    // Override the userProvidesKey flag so it doesn't check for user key
+    userProvidesKey = false;
+  } else if (isOpenRouterRequest && !process.env.OPENROUTER_KEY) {
+    console.error('❌ [Custom Initialize] OpenRouter request but no OPENROUTER_KEY in environment!');
   }
 
   console.log('🔑 [Custom Initialize] After OpenRouter check:', {
     apiKey: apiKey ? apiKey.substring(0, 20) + '...' : 'missing',
     userProvidesKey,
-    baseURL,
   });
 
   // Skip user key check for OpenRouter when using env key
@@ -245,14 +218,12 @@ const initializeClient = async ({ req, res, endpointOption, optionsOnly, overrid
   console.log('🔧 [Custom Initialize] Client options prepared:', {
     reverseProxyUrl: clientOptions.reverseProxyUrl,
     hasApiKey: !!apiKey,
-    model: clientOptions.model || req.body.model,
-    headers: clientOptions.headers,
+    model: clientOptions.model,
   });
 
   if (optionsOnly) {
     console.log('📦 [Custom Initialize] Returning options only (not full client)');
-    const modelOptions = endpointOption.model_parameters || {};
-    
+    const modelOptions = endpointOption.model_parameters;
     if (endpoint !== Providers.OLLAMA) {
       clientOptions = Object.assign(
         {
@@ -286,7 +257,6 @@ const initializeClient = async ({ req, res, endpointOption, optionsOnly, overrid
   console.log('🏗️ [Custom Initialize] Creating OpenAIClient with:', {
     apiKeyLength: apiKey?.length,
     apiKeyStart: apiKey?.substring(0, 10),
-    baseURL: clientOptions.reverseProxyUrl,
   });
 
   const client = new OpenAIClient(apiKey, clientOptions);
