@@ -14,7 +14,7 @@ router.post('/abort', async (req, res) => {
 
 router.post(
   '/',
-  // Your middlewares
+  // Middleware to inject OpenRouter key
   async (req, res, next) => {
     try {
       console.log('🎯 [CUSTOM ROUTE DEBUG] ==================');
@@ -32,8 +32,9 @@ router.post(
       });
       
       // Check if this is an OpenRouter request
-      const isOpenRouter = spec === 'OpenRouter' ||
-                          endpoint === 'OpenRouter' ||
+      const isOpenRouter = spec === 'OpenRouter' || 
+                          endpoint === 'OpenRouter' || 
+                          endpoint === 'custom' || // Add this check
                           model?.includes('perplexity') ||
                           req.body.chatGptLabel?.includes('OpenRouter');
       
@@ -43,19 +44,24 @@ router.post(
       const openRouterKey = process.env.OPENROUTER_KEY;
       if (!openRouterKey) {
         console.error('❌ [Custom Route] Missing OPENROUTER_KEY in environment');
-        throw new Error('Missing OPENROUTER_KEY in environment');
+        // Don't throw error here, let initializeClient handle it
       }
       
-      console.log('✅ [Custom Route] OpenRouter key found in env:', openRouterKey.substring(0, 20) + '...');
+      if (openRouterKey) {
+        console.log('✅ [Custom Route] OpenRouter key found in env:', openRouterKey.substring(0, 20) + '...');
+      }
       
       // Override any user-supplied key for OpenRouter requests
-      if (isOpenRouter) {
+      if (isOpenRouter && openRouterKey) {
         console.log('🔄 [Custom Route] Overriding key for OpenRouter request');
-        req.body.key = openRouterKey;
+        // Set the key to 'never' to bypass user key check
+        req.body.key = 'never';
+        // Store the actual API key in a different property
+        req.openRouterApiKey = openRouterKey;
       }
       
       // Log before passing to next handler
-      console.log('📤 [Custom Route] Passing to next handler with key:',
+      console.log('📤 [Custom Route] Passing to next handler with key:', 
         req.body.key ? req.body.key.substring(0, 20) + '...' : 'NO KEY');
       
       next();
@@ -69,35 +75,128 @@ router.post(
       console.log('🎯 [CUSTOM CONTROLLER DEBUG] ==================');
       console.log('📋 [Custom Controller] Starting request processing');
       
-      // Build the payload
-      const payload = {
-        ...req.body,
-        user: req.user.id,
+      const { text, conversationId, parentMessageId, ...rest } = req.body;
+      
+      // Ensure we have message content
+      if (!text) {
+        console.error('❌ [Custom Controller] Missing text in request body');
+        return res.status(400).json({ error: 'Message text is required' });
+      }
+      
+      let responseMessage = {
+        conversationId,
+        parentMessageId: parentMessageId || '00000000-0000-0000-0000-000000000000',
+        sender: 'Assistant',
+        text: '',
+        isCreatedByUser: false,
+        error: false,
       };
-      
-      console.log('📦 [Custom Controller] Payload prepared:', {
-        endpoint: payload.endpoint,
-        spec: payload.spec,
-        model: payload.model,
-        keyExists: !!payload.key
-      });
-      
-      // (Optional) enrich the prompt with a title
-      payload.prompt = await addTitle(payload.prompt);
       
       console.log('🏗️ [Custom Controller] Initializing client...');
       
-      // Initialize the OpenRouter client
-      const client = initializeClient(payload);
+      // Initialize client with proper structure
+      const { client, openAIApiKey } = await initializeClient({
+        req,
+        res,
+        endpointOption: {
+          model_parameters: {
+            model: req.body.model,
+            temperature: req.body.temperature || 0.7,
+            max_tokens: req.body.max_tokens || 2048,
+          },
+          ...rest
+        },
+      });
       
       console.log('✅ [Custom Controller] Client initialized successfully');
       
-      // Delegate to your controller
-      const controller = new Controller(client);
-      await controller(req, res);
+      const controller = new Controller();
+      
+      // Create the onProgress handler
+      const onProgress = (token) => {
+        if (token === '[DONE]') {
+          return;
+        }
+        responseMessage.text += token;
+        sendMessage(res, {
+          message: responseMessage,
+          created: true,
+        });
+      };
+      
+      // Build messages array
+      const messages = [
+        {
+          role: 'user',
+          content: text,
+        }
+      ];
+      
+      // Add system message if there's a prompt prefix
+      if (req.body.promptPrefix) {
+        messages.unshift({
+          role: 'system',
+          content: req.body.promptPrefix,
+        });
+      }
+      
+      // Generate the response
+      const response = await client.sendMessage(text, {
+        conversationId,
+        parentMessageId,
+        onProgress,
+        abortController: controller,
+      });
+      
+      // Save the conversation and messages
+      if (response.conversationId) {
+        await saveMessage(req, {
+          ...responseMessage,
+          conversationId: response.conversationId,
+          text: response.text,
+          unfinished: false,
+        });
+        
+        // Generate title if needed
+        if (!req.body.title) {
+          const title = await getConvoTitle(req.user.id, response.conversationId);
+          if (!title) {
+            await addTitle(req, {
+              text,
+              conversationId: response.conversationId,
+              client,
+            });
+          }
+        }
+      }
+      
+      // Send final response
+      sendMessage(res, {
+        final: true,
+        conversation: await getConvo(req.user.id, response.conversationId),
+        requestMessage: {
+          conversationId: response.conversationId,
+          parentMessageId,
+          text,
+          sender: 'User',
+          isCreatedByUser: true,
+        },
+        responseMessage: {
+          ...responseMessage,
+          conversationId: response.conversationId,
+          text: response.text,
+        },
+      });
+      
     } catch (error) {
       console.error('❌ [Custom Controller] Error:', error);
-      res.status(500).json({ error: error.message });
+      const errorMessage = {
+        sender: 'Assistant',
+        text: `Error: ${error.message}`,
+        error: true,
+      };
+      sendMessage(res, errorMessage);
+      res.end();
     }
   }
 );
