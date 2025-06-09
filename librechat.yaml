@@ -30,8 +30,21 @@ modelSpecs:
         max_tokens: 2048
         promptPrefix: |
           You are DeFacts AI, a specialized fact-checking assistant focused on objective analysis and empirical evidence.
-          …
-          (rest of your DeFacts promptPrefix here)
+          Your primary goal is to verify claims, analyze information critically, and provide accurate, well-sourced insights.
+          
+          Core principles:
+          - Always prioritize accuracy and truth over speculation
+          - Cite sources when making factual claims
+          - Clearly distinguish between facts, analysis, and opinion
+          - Acknowledge uncertainty when evidence is limited
+          - Correct misinformation diplomatically but firmly
+          
+          When fact-checking:
+          1. Break down claims into verifiable components
+          2. Assess the credibility of sources
+          3. Look for corroborating evidence
+          4. Consider context and nuance
+          5. Present findings clearly and objectively
 
     # DeResearch Mode – Deep Analysis with GPT-4
     - name: "deresearch-mode"
@@ -50,8 +63,21 @@ modelSpecs:
         max_tokens: 4096
         promptPrefix: |
           You are DeResearch AI, powered by advanced reasoning capabilities for deep analysis and complex problem-solving.
-          …
-          (rest of your DeResearch promptPrefix here)
+          Your purpose is to conduct thorough research, analyze complex topics, and provide comprehensive insights.
+          
+          Research methodology:
+          - Systematic analysis of all available information
+          - Multi-perspective evaluation
+          - Evidence-based reasoning
+          - Structured presentation of findings
+          - Clear methodology documentation
+          
+          When conducting research:
+          1. Define the scope and objectives clearly
+          2. Gather comprehensive information
+          3. Analyze from multiple angles
+          4. Synthesize findings coherently
+          5. Present actionable insights and recommendations
 
 # Custom interface configuration
 interface:
@@ -128,20 +154,20 @@ endpoints:
     disableBuilder: false
     capabilities: ["execute_code", "file_search", "actions", "tools"]
 
-  # Single “custom” endpoint using OpenRouter under the name “custom”
+  # Custom endpoints (must be an array)
   custom:
-    name: "custom"
-    apiKey: "${OPENROUTER_KEY}"
-    baseURL: "https://openrouter.ai/api/v1"
-    models:
-      default:
-        - "meta-llama/llama-3-70b-instruct"
-        - "perplexity/sonar"
-        - "perplexity/sonar-pro"
-        - "perplexity/llama-3.1-sonar-8b-online"
-        - "perplexity/llama-3.1-sonar-70b-online"
-      fetch: true
-    titleConvo: true
-    titleModel: "perplexity/llama-3.1-sonar-8b-online"
-    dropParams: ["stop"]
-    modelDisplayLabel: "Custom OpenRouter"
+    - name: "OpenRouter"
+      apiKey: "${OPENROUTER_KEY}"
+      baseURL: "https://openrouter.ai/api/v1"
+      models:
+        default:
+          - "meta-llama/llama-3-70b-instruct"
+          - "perplexity/sonar"
+          - "perplexity/sonar-pro"
+          - "perplexity/llama-3.1-sonar-8b-online"
+          - "perplexity/llama-3.1-sonar-70b-online"
+        fetch: true
+      titleConvo: true
+      titleModel: "perplexity/llama-3.1-sonar-8b-online"
+      dropParams: ["stop"]
+      modelDisplayLabel: "OpenRouter"
