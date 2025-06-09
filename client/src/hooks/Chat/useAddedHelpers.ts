@@ -39,9 +39,10 @@ export default function useAddedHelpers({
 
   const setMessages = useCallback(
     (messages: TMessage[]) => {
-      // Store comparison messages with special key
+      // Store comparison messages with special key, but ensure uniqueness
+      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
       queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, `${queryParam}_comparison`],
+        [QueryKeys.messages, comparisonKey],
         messages,
       );
       const latestMultiMessage = messages[messages.length - 1];
@@ -49,13 +50,14 @@ export default function useAddedHelpers({
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
       }
     },
-    [queryParam, queryClient, setLatestMultiMessage],
+    [queryParam, queryClient, setLatestMultiMessage, currentIndex],
   );
 
   const getMessages = useCallback(() => {
-    // Get comparison messages from special key
-    return queryClient.getQueryData<TMessage[]>([QueryKeys.messages, `${queryParam}_comparison`]);
-  }, [queryParam, queryClient]);
+    // Get comparison messages from unique key
+    const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+    return queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+  }, [queryParam, queryClient, currentIndex]);
 
   const setSubmission = useSetRecoilState(store.submissionByIndex(currentIndex));
 
