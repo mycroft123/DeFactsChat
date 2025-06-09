@@ -58,8 +58,7 @@ const startServer = async () => {
   app.use(cors());
   app.use(cookieParser());
 
-  // MOVE THE MIDDLEWARE HERE - AFTER BODY PARSING!
-  // Override any "key": "never" with your Railway secret
+  // UPDATED MIDDLEWARE - NOW SUPPORTS MULTIPLE ENDPOINTS
   app.use((req, res, next) => {
     // Only process if we have a body and the key is "never"
     if (req.body && req.body.key === 'never') {
@@ -70,9 +69,22 @@ const startServer = async () => {
         model: req.body.model,
       });
       
-      const secret = process.env.OPENROUTER_KEY;
+      let secret;
+      // Check the spec to determine which API key to use
+      if (req.body.spec === 'Perplexity') {
+        secret = process.env.PERPLEXITY_API_KEY;
+        console.log('🎯 [Index Middleware] Using Perplexity API key');
+      } else if (req.body.spec === 'OpenRouter') {
+        secret = process.env.OPENROUTER_KEY;
+        console.log('🎯 [Index Middleware] Using OpenRouter API key');
+      } else {
+        // Default to OpenRouter for backward compatibility
+        secret = process.env.OPENROUTER_KEY;
+        console.log('🎯 [Index Middleware] Using default OpenRouter API key');
+      }
+      
       if (!secret) {
-        console.error('🚨 [Index Middleware] Missing OPENROUTER_KEY in environment');
+        console.error('🚨 [Index Middleware] Missing API key for spec:', req.body.spec);
         return res.status(500).json({ error: 'Server misconfiguration' });
       }
       
@@ -116,13 +128,32 @@ const startServer = async () => {
   app.use('/api/auth', routes.auth);
   app.use('/api/actions', routes.actions);
   
-  // Intercept API key requests for custom endpoint
+  // UPDATED - Intercept API key requests for custom endpoints
   app.get('/api/keys', (req, res, next) => {
-    if (req.query.name === 'custom' && process.env.OPENROUTER_KEY) {
-      console.log('🔑 [Keys Intercept] Returning OpenRouter key for custom endpoint');
-      return res.json({
-        apiKey: process.env.OPENROUTER_KEY
-      });
+    const { name, spec } = req.query;
+    
+    if (name === 'custom') {
+      console.log('🔍 [Keys Intercept] Custom endpoint request with spec:', spec);
+      
+      if (spec === 'Perplexity' && process.env.PERPLEXITY_API_KEY) {
+        console.log('🔑 [Keys Intercept] Returning Perplexity key for custom endpoint');
+        return res.json({
+          apiKey: process.env.PERPLEXITY_API_KEY
+        });
+      } else if (spec === 'OpenRouter' && process.env.OPENROUTER_KEY) {
+        console.log('🔑 [Keys Intercept] Returning OpenRouter key for custom endpoint');
+        return res.json({
+          apiKey: process.env.OPENROUTER_KEY
+        });
+      } else if (!spec && process.env.OPENROUTER_KEY) {
+        // Default to OpenRouter for backward compatibility
+        console.log('🔑 [Keys Intercept] No spec provided, returning OpenRouter key as default');
+        return res.json({
+          apiKey: process.env.OPENROUTER_KEY
+        });
+      } else {
+        console.error('❌ [Keys Intercept] Missing API key for spec:', spec);
+      }
     }
     next();
   });
@@ -221,21 +252,32 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-// Near the top after loading environment variables
+// UPDATED - Near the top after loading environment variables
 console.log('=== DeFactsChat Environment Check ===');
 console.log('OPENROUTER_KEY:', process.env.OPENROUTER_KEY ? `Set (${process.env.OPENROUTER_KEY.substring(0, 10)}...)` : 'NOT SET');
+console.log('PERPLEXITY_API_KEY:', process.env.PERPLEXITY_API_KEY ? `Set (${process.env.PERPLEXITY_API_KEY.substring(0, 10)}...)` : 'NOT SET');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('====================================');
 
-// Test OpenRouter key availability
-console.log('🧪 Testing OpenRouter key access...');
-const testKey = process.env.OPENROUTER_KEY;
-if (testKey) {
-  console.log('✅ OpenRouter key accessible:', testKey.substring(0, 30) + '...');
-  console.log('🔍 Key starts with:', testKey.substring(0, 10));
-  console.log('📏 Key length:', testKey.length);
+// UPDATED - Test API keys availability
+console.log('🧪 Testing API keys access...');
+const openRouterKey = process.env.OPENROUTER_KEY;
+const perplexityKey = process.env.PERPLEXITY_API_KEY;
+
+if (openRouterKey) {
+  console.log('✅ OpenRouter key accessible:', openRouterKey.substring(0, 30) + '...');
+  console.log('🔍 OpenRouter key starts with:', openRouterKey.substring(0, 10));
+  console.log('📏 OpenRouter key length:', openRouterKey.length);
 } else {
   console.error('❌ OpenRouter key NOT accessible!');
+}
+
+if (perplexityKey) {
+  console.log('✅ Perplexity key accessible:', perplexityKey.substring(0, 30) + '...');
+  console.log('🔍 Perplexity key starts with:', perplexityKey.substring(0, 10));
+  console.log('📏 Perplexity key length:', perplexityKey.length);
+} else {
+  console.error('❌ Perplexity key NOT accessible!');
 }
 
 // export app for easier testing purposes
