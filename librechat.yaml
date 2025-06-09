@@ -159,6 +159,7 @@ endpoints:
 
   custom:
     - name: "Perplexity"
+      spec: "Perplexity"  # ADD THIS LINE
       apiKey: "${PERPLEXITY_API_KEY}"
       baseURL: "https://api.perplexity.ai"
       models:
