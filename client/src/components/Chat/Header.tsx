@@ -233,13 +233,13 @@ export default function Header() {
       console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
       console.log('📋 Base conversation object:', convo);
       
+      // Create a clean conversation object without any API key fields
       comparisonConvo = {
-        ...convo,
         conversationId: convo.conversationId,
-        title: '',
-        model: perplexityModel,
         endpoint: 'custom',
         endpointType: 'custom',
+        model: perplexityModel,
+        title: '',
         spec: 'OpenRouter',
         modelLabel: 'Perplexity',
         chatGptLabel: 'Perplexity (via OpenRouter)',
@@ -247,6 +247,8 @@ export default function Header() {
         _isAddedRequest: true,
         temperature: 0.7,
         maxOutputTokens: 2048,
+        maxContextTokens: 128000,
+        max_tokens: 2048,
         tools: [],
         agentOptions: null,
         resendFiles: false,
@@ -255,22 +257,56 @@ export default function Header() {
         greeting: '',
         promptPrefix: null,
         examples: [],
-        files: []
+        files: [],
+        // Don't include any fields from the original conversation that might have 'key'
+        createdAt: convo.createdAt,
+        updatedAt: convo.updatedAt,
       };
       
+      // Make absolutely sure no key field exists
+      if ('key' in comparisonConvo) {
+        delete (comparisonConvo as any).key;
+      }
+      if ('apiKey' in comparisonConvo) {
+        delete (comparisonConvo as any).apiKey;
+      }
+      
       console.log('📤 Perplexity comparison object:', JSON.stringify(comparisonConvo, null, 2));
-    } else {
+    }else {
+      // Clean the GPT-4 comparison object as well
       comparisonConvo = {
-        ...convo,
         conversationId: convo.conversationId,
-        title: '',
-        model: 'gpt-4o',
         endpoint: 'openAI',
+        model: 'gpt-4o',
+        title: '',
         modelLabel: 'GPT-4',
         chatGptLabel: 'GPT-4',
         isComparison: true,
-        _isAddedRequest: true
+        _isAddedRequest: true,
+        temperature: convo.temperature || 0.7,
+        maxOutputTokens: convo.maxOutputTokens || 2048,
+        maxContextTokens: convo.maxContextTokens || 128000,
+        max_tokens: convo.max_tokens || 2048,
+        tools: convo.tools || [],
+        agentOptions: convo.agentOptions || null,
+        resendFiles: false,
+        imageDetail: convo.imageDetail || 'auto',
+        iconURL: convo.iconURL || null,
+        greeting: '',
+        promptPrefix: convo.promptPrefix || null,
+        examples: convo.examples || [],
+        files: convo.files || [],
+        createdAt: convo.createdAt,
+        updatedAt: convo.updatedAt,
       };
+      
+      // Clean up any key fields
+      if ('key' in comparisonConvo) {
+        delete (comparisonConvo as any).key;
+      }
+      if ('apiKey' in comparisonConvo) {
+        delete (comparisonConvo as any).apiKey;
+      }
       
       console.log('📤 GPT-4 comparison object:', JSON.stringify(comparisonConvo, null, 2));
     }
