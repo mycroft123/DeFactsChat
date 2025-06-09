@@ -14,22 +14,21 @@ router.post('/abort', async (req, res) => {
 
 router.post(
   '/',
-  // Your middlewares
+  // Middleware to handle OpenRouter requests
   async (req, res, next) => {
     try {
       console.log('🎯 [CUSTOM ROUTE DEBUG] ==================');
       console.log('📋 [Custom Route] Full request body:', JSON.stringify(req.body, null, 2));
-      console.log('🔑 [Custom Route] Headers:', req.headers);
-      console.log('🎯 =====================================');
       
-      // Check what endpoint/spec we're dealing with
+      // The payload clearly has text field, so let's check other required fields
+      const requiredFields = ['text', 'endpoint', 'model'];
+      const missingFields = requiredFields.filter(field => !req.body[field]);
+      
+      if (missingFields.length > 0) {
+        console.error('❌ [Custom Route] Missing required fields:', missingFields);
+      }
+      
       const { endpoint, spec, model, key } = req.body;
-      console.log('🔍 [Custom Route] Extracted values:', {
-        endpoint,
-        spec,
-        model,
-        keyStatus: key ? `exists (${key === 'never' ? 'never' : 'some value'})` : 'missing'
-      });
       
       // Check if this is an OpenRouter request
       const isOpenRouter = spec === 'OpenRouter' ||
@@ -37,67 +36,111 @@ router.post(
                           model?.includes('perplexity') ||
                           req.body.chatGptLabel?.includes('OpenRouter');
       
-      console.log('🤔 [Custom Route] Is OpenRouter request?', isOpenRouter);
+      console.log('🤔 [Custom Route] Request details:', {
+        isOpenRouter,
+        endpoint,
+        spec,
+        model,
+        key: key === 'never' ? 'never' : 'exists'
+      });
       
-      // Load your Railway secret (uppercase)
+      // Load your Railway secret
       const openRouterKey = process.env.OPENROUTER_KEY;
-      if (!openRouterKey) {
+      if (!openRouterKey && isOpenRouter) {
         console.error('❌ [Custom Route] Missing OPENROUTER_KEY in environment');
         throw new Error('Missing OPENROUTER_KEY in environment');
       }
       
-      console.log('✅ [Custom Route] OpenRouter key found in env:', openRouterKey.substring(0, 20) + '...');
-      
-      // Override any user-supplied key for OpenRouter requests
-      if (isOpenRouter) {
-        console.log('🔄 [Custom Route] Overriding key for OpenRouter request');
+      // Override the "never" key for OpenRouter requests
+      if (isOpenRouter && openRouterKey) {
+        console.log('🔄 [Custom Route] Replacing key "never" with actual OpenRouter key');
         req.body.key = openRouterKey;
       }
       
-      // Log before passing to next handler
-      console.log('📤 [Custom Route] Passing to next handler with key:',
+      console.log('📤 [Custom Route] Proceeding with key:', 
         req.body.key ? req.body.key.substring(0, 20) + '...' : 'NO KEY');
       
       next();
     } catch (error) {
-      console.error('❌ [Custom Route] Error:', error);
+      console.error('❌ [Custom Route] Middleware error:', error);
       res.status(500).json({ error: error.message });
     }
   },
   async (req, res) => {
     try {
-      console.log('🎯 [CUSTOM CONTROLLER DEBUG] ==================');
-      console.log('📋 [Custom Controller] Starting request processing');
+      console.log('🎯 [CUSTOM CONTROLLER] ==================');
       
-      // Build the payload
+      // Log exactly what we're passing to initializeClient
+      console.log('📦 [Controller] req.body has these keys:', Object.keys(req.body));
+      console.log('📦 [Controller] req.user:', req.user ? { id: req.user.id, hasUser: true } : 'NO USER');
+      
+      if (!req.user || !req.user.id) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Build the payload - let's see exactly what we're building
       const payload = {
         ...req.body,
         user: req.user.id,
       };
       
-      console.log('📦 [Custom Controller] Payload prepared:', {
+      console.log('🏗️ [Controller] Payload for initializeClient:', {
+        hasText: !!payload.text,
+        text: payload.text?.substring(0, 50) + '...',
         endpoint: payload.endpoint,
         spec: payload.spec,
         model: payload.model,
-        keyExists: !!payload.key
+        user: payload.user,
+        allKeys: Object.keys(payload)
       });
       
-      // (Optional) enrich the prompt with a title
-      payload.prompt = await addTitle(payload.prompt);
+      // Try to add title - this might be where the error occurs
+      try {
+        if (payload.text) {
+          console.log('📝 [Controller] Adding title to text...');
+          payload.prompt = await addTitle(payload.text);
+          console.log('✅ [Controller] Title added successfully');
+        }
+      } catch (titleError) {
+        console.error('❌ [Controller] Error in addTitle:', titleError);
+        // Continue without title
+        payload.prompt = payload.text;
+      }
       
-      console.log('🏗️ [Custom Controller] Initializing client...');
+      console.log('🏗️ [Controller] About to initialize client...');
       
-      // Initialize the OpenRouter client
-      const client = initializeClient(payload);
+      // This is likely where the error occurs
+      let client;
+      try {
+        client = initializeClient(payload);
+        console.log('✅ [Controller] Client initialized successfully');
+      } catch (clientError) {
+        console.error('❌ [Controller] Error in initializeClient:', clientError);
+        console.error('❌ [Controller] Error stack:', clientError.stack);
+        throw clientError;
+      }
       
-      console.log('✅ [Custom Controller] Client initialized successfully');
-      
-      // Delegate to your controller
-      const controller = new Controller(client);
-      await controller(req, res);
+      // Try to create controller
+      try {
+        console.log('🎮 [Controller] Creating controller...');
+        const controller = new Controller(client);
+        console.log('✅ [Controller] Controller created, executing...');
+        await controller(req, res);
+      } catch (controllerError) {
+        console.error('❌ [Controller] Error in Controller execution:', controllerError);
+        console.error('❌ [Controller] Error stack:', controllerError.stack);
+        throw controllerError;
+      }
     } catch (error) {
-      console.error('❌ [Custom Controller] Error:', error);
-      res.status(500).json({ error: error.message });
+      console.error('❌ [Controller] Final error:', error.message);
+      console.error('❌ [Controller] Full error:', error);
+      res.status(500).json({ 
+        error: error.message,
+        details: process.env.NODE_ENV === 'development' ? {
+          stack: error.stack,
+          body: req.body ? Object.keys(req.body) : 'no body'
+        } : undefined
+      });
     }
   }
 );
