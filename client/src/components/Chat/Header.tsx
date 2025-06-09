@@ -228,7 +228,7 @@ export default function Header() {
     let comparisonConvo;
     
     if (selectedCompareModel === 'perplexity') {
-      const perplexityModel = 'perplexity/llama-3.1-sonar-small-128k-online';
+      const perplexityModel = 'perplexity/llama-3.1-sonar-8b-online';
       
       console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
       console.log('📋 Base conversation object:', convo);
