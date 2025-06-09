@@ -227,52 +227,55 @@ export default function Header() {
     
     let comparisonConvo;
     
-    if (selectedCompareModel === 'perplexity') {
-      const perplexityModel = 'perplexity/llama-3.1-sonar-8b-online';
-      
-      console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
-      console.log('📋 Base conversation object:', convo);
-      
-      // Create a clean conversation object without any API key fields
-      comparisonConvo = {
-        conversationId: convo.conversationId,
-        endpoint: 'custom',
-        endpointType: 'custom',
-        model: perplexityModel,
-        title: '',
-        spec: 'OpenRouter',
-        modelLabel: 'Perplexity',
-        chatGptLabel: 'Perplexity (via OpenRouter)',
-        isComparison: true,
-        _isAddedRequest: true,
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-        maxContextTokens: 128000,
-        max_tokens: 2048,
-        tools: [],
-        agentOptions: null,
-        resendFiles: false,
-        imageDetail: 'auto',
-        iconURL: null,
-        greeting: '',
-        promptPrefix: null,
-        examples: [],
-        files: [],
-        // Don't include any fields from the original conversation that might have 'key'
-        createdAt: convo.createdAt,
-        updatedAt: convo.updatedAt,
-      };
-      
-      // Make absolutely sure no key field exists
-      if ('key' in comparisonConvo) {
-        delete (comparisonConvo as any).key;
-      }
-      if ('apiKey' in comparisonConvo) {
-        delete (comparisonConvo as any).apiKey;
-      }
-      
-      console.log('📤 Perplexity comparison object:', JSON.stringify(comparisonConvo, null, 2));
-    }else {
+// In your Header component, update the handleCompareModels function
+// Find this section around line 180-220:
+
+if (selectedCompareModel === 'perplexity') {
+  const perplexityModel = 'perplexity/llama-3.1-sonar-8b-online';
+  
+  console.log('🔧 Building Perplexity comparison with model:', perplexityModel);
+  console.log('📋 Base conversation object:', convo);
+  
+  // Create a clean conversation object without any API key fields
+  comparisonConvo = {
+    conversationId: convo.conversationId,
+    endpoint: 'custom',
+    endpointType: 'custom',
+    model: perplexityModel,
+    title: '',
+    spec: 'Perplexity',  // ← CHANGE THIS FROM 'OpenRouter' TO 'Perplexity'
+    modelLabel: 'Perplexity',
+    chatGptLabel: 'Perplexity',  // ← Also update this to remove "(via OpenRouter)"
+    isComparison: true,
+    _isAddedRequest: true,
+    temperature: 0.7,
+    maxOutputTokens: 2048,
+    maxContextTokens: 128000,
+    max_tokens: 2048,
+    tools: [],
+    agentOptions: null,
+    resendFiles: false,
+    imageDetail: 'auto',
+    iconURL: null,
+    greeting: '',
+    promptPrefix: null,
+    examples: [],
+    files: [],
+    // Don't include any fields from the original conversation that might have 'key'
+    createdAt: convo.createdAt,
+    updatedAt: convo.updatedAt,
+  };
+  
+  // Make absolutely sure no key field exists
+  if ('key' in comparisonConvo) {
+    delete (comparisonConvo as any).key;
+  }
+  if ('apiKey' in comparisonConvo) {
+    delete (comparisonConvo as any).apiKey;
+  }
+  
+  console.log('📤 Perplexity comparison object:', JSON.stringify(comparisonConvo, null, 2));
+}else {
       // Clean the GPT-4 comparison object as well
       comparisonConvo = {
         conversationId: convo.conversationId,
