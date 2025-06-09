@@ -6,7 +6,6 @@ import type { TMessage } from 'librechat-data-provider';
 import useChatFunctions from '~/hooks/Chat/useChatFunctions';
 import store from '~/store';
 
-// this to be set somewhere else
 export default function useAddedHelpers({
   rootIndex = 0,
   currentIndex,
@@ -17,26 +16,32 @@ export default function useAddedHelpers({
   paramId?: string;
 }) {
   const queryClient = useQueryClient();
-
   const clearAllSubmissions = store.useClearSubmissionState();
   const [files, setFiles] = useRecoilState(store.filesByIndex(rootIndex));
-  const latestMessage = useRecoilValue(store.latestMessageFamily(rootIndex));
+  
+  // CRITICAL FIX: Use root messages to get the correct latest message
+  const rootMessages = queryClient.getQueryData<TMessage[]>([
+    QueryKeys.messages, 
+    paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? ''
+  ]);
+  
+  // Get the actual latest message from root context for correct parentMessageId
+  const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
+  
   const setLatestMultiMessage = useSetRecoilState(store.latestMessageFamily(currentIndex));
-
   const { useCreateConversationAtom } = store;
   const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
-
   const setSiblingIdx = useSetRecoilState(
-    store.messagesSiblingIdxFamily(latestMessage?.parentMessageId ?? null),
+    store.messagesSiblingIdxFamily(actualLatestMessage?.parentMessageId ?? null),
   );
-
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
   const setMessages = useCallback(
     (messages: TMessage[]) => {
+      // Store comparison messages with special key
       queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, queryParam, currentIndex],
+        [QueryKeys.messages, `${queryParam}_comparison`],
         messages,
       );
       const latestMultiMessage = messages[messages.length - 1];
@@ -44,12 +49,13 @@ export default function useAddedHelpers({
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
       }
     },
-    [queryParam, queryClient, currentIndex, setLatestMultiMessage],
+    [queryParam, queryClient, setLatestMultiMessage],
   );
 
   const getMessages = useCallback(() => {
-    return queryClient.getQueryData<TMessage[]>([QueryKeys.messages, queryParam, currentIndex]);
-  }, [queryParam, queryClient, currentIndex]);
+    // Get comparison messages from special key
+    return queryClient.getQueryData<TMessage[]>([QueryKeys.messages, `${queryParam}_comparison`]);
+  }, [queryParam, queryClient]);
 
   const setSubmission = useSetRecoilState(store.submissionByIndex(currentIndex));
 
@@ -62,11 +68,11 @@ export default function useAddedHelpers({
     isSubmitting,
     conversation,
     setSubmission,
-    latestMessage,
+    latestMessage: actualLatestMessage, // Use the actual latest message from root
   });
 
   const continueGeneration = () => {
-    if (!latestMessage) {
+    if (!actualLatestMessage) {
       console.error('Failed to regenerate the message: latestMessage not found.');
       return;
     }
@@ -74,7 +80,7 @@ export default function useAddedHelpers({
     const messages = getMessages();
 
     const parentMessage = messages?.find(
-      (element) => element.messageId == latestMessage.parentMessageId,
+      (element) => element.messageId == actualLatestMessage.parentMessageId,
     );
 
     if (parentMessage && parentMessage.isCreatedByUser) {
@@ -95,7 +101,7 @@ export default function useAddedHelpers({
 
   const handleRegenerate = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    const parentMessageId = latestMessage?.parentMessageId;
+    const parentMessageId = actualLatestMessage?.parentMessageId;
     if (!parentMessageId) {
       console.error('Failed to regenerate the message: parentMessageId not found.');
       return;
@@ -117,7 +123,7 @@ export default function useAddedHelpers({
     conversation,
     isSubmitting,
     setSiblingIdx,
-    latestMessage,
+    latestMessage: actualLatestMessage, // Return the correct latest message
     stopGenerating,
     handleContinue,
     setConversation,

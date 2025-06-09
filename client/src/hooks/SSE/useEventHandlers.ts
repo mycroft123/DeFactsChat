@@ -430,6 +430,19 @@ export default function useEventHandlers({
 
   const finalHandler = useCallback(
     (data: TFinalResData, submission: EventSubmission) => {
+      // FIX: Handle null conversation from Perplexity endpoint
+      if (!data.conversation) {
+        console.warn('⚠️ [finalHandler] No conversation in response, reconstructing from submission');
+        data.conversation = {
+          conversationId: submission.conversation?.conversationId || submission.overrideConvoId || v4(),
+          endpoint: submission.endpoint || submission.conversation?.endpoint,
+          model: submission.model || submission.conversation?.model,
+          title: submission.conversation?.title || 'New Chat',
+          // Copy other fields from submission
+          ...submission.conversation
+        } as TConversation;
+      }
+
       const { requestMessage, responseMessage, conversation, runMessages } = data;
       const {
         messages,
@@ -549,7 +562,9 @@ export default function useEventHandlers({
             comparisonConvo
           );
           
-          // DO NOT call setConversation for comparisons
+          // IMPORTANT: Early return to prevent state contamination
+          setIsSubmitting(false);
+          return; // <-- CRITICAL: This prevents state contamination
         } else {
           // This is a main conversation response (DeFacts)
           console.log('✅ [finalHandler] Updating main conversation state', {
