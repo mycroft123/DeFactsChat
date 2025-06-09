@@ -30,7 +30,7 @@ const clearDraft = (conversationId?: string | null) => {
   }
 };
 
-type ChatHelpers = Pick
+type ChatHelpers = Pick <
   EventHandlerParams,
   | 'setMessages'
   | 'getMessages'
