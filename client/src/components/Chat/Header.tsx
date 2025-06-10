@@ -376,7 +376,7 @@ export default function Header() {
                         onChange={(e) => setSelectedCompareModel(e.target.value)}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 dark:text-blue-400"
                       />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">GPT-4</span>
+                      <span className="text-sm text-gray-700 dark:text-gray-300">GPT4</span>
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
