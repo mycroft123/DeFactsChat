@@ -366,8 +366,7 @@ export default function Header() {
             <>
               {hasAccessToMultiConvo === true && conversation && (
                 <div className="flex items-center gap-3 rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Compare with:</span>
-                  <div className="flex items-center gap-3">
+                   <div className="flex items-center gap-3">
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
                         type="radio"
