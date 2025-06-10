@@ -40,15 +40,17 @@ export default function useAddedHelpers({
     store.messagesSiblingIdxFamily(null), // Always null to disable threading
   );
   
+  // Get setter for the actual message's parent ID (if needed)
+  const actualSiblingIdxSetter = actualLatestMessage?.parentMessageId 
+    ? useSetRecoilState(store.messagesSiblingIdxFamily(actualLatestMessage.parentMessageId))
+    : null;
+  
   // Override sibling index to always be 0 (first/only response)
   const resetSiblingIndex = useCallback(() => {
-    if (actualLatestMessage?.parentMessageId) {
-      const siblingIdxSetter = useSetRecoilState(
-        store.messagesSiblingIdxFamily(actualLatestMessage.parentMessageId)
-      );
-      siblingIdxSetter(0);
+    if (actualSiblingIdxSetter) {
+      actualSiblingIdxSetter(0);
     }
-  }, [actualLatestMessage?.parentMessageId]);
+  }, [actualSiblingIdxSetter]);
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
   const setMessages = useCallback(
@@ -67,8 +69,10 @@ export default function useAddedHelpers({
         siblingCount: 1,
         siblingIndex: 0,
         children: [],
-        // Ensure message has content
-        text: msg.text || msg.content || '',
+        // Ensure message has content and is a string
+        text: typeof msg.text === 'string' ? msg.text : 
+              typeof msg.content === 'string' ? msg.content : 
+              (msg.text || msg.content || '').toString(),
         isCompleted: true,
         finish_reason: 'stop',
       }));
@@ -155,7 +159,8 @@ export default function useAddedHelpers({
   const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     continueGeneration();
-    setSiblingIdx(0);
+    // Don't reset sibling index to prevent threading issues
+    // setSiblingIdx(0);
   };
 
   return {
