@@ -34,23 +34,26 @@ export default function useAddedHelpers({
   
   // Get the actual latest message from root context for correct parentMessageId
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
+  
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
-  // Force disable sibling threading completely
+  
+  // Force disable sibling threading completely - always use null to disable
   const setSiblingIdx = useSetRecoilState(
     store.messagesSiblingIdxFamily(null), // Always null to disable threading
   );
   
-  // Get setter for the actual message's parent ID (if needed)
-  const actualSiblingIdxSetter = actualLatestMessage?.parentMessageId 
-    ? useSetRecoilState(store.messagesSiblingIdxFamily(actualLatestMessage.parentMessageId))
-    : null;
+  // Always create a sibling setter, but use null as fallback to prevent errors
+  const parentMessageId = actualLatestMessage?.parentMessageId || null;
+  const actualSiblingIdxSetter = useSetRecoilState(
+    store.messagesSiblingIdxFamily(parentMessageId)
+  );
   
   // Override sibling index to always be 0 (first/only response)
   const resetSiblingIndex = useCallback(() => {
-    if (actualSiblingIdxSetter) {
+    if (parentMessageId) {
       actualSiblingIdxSetter(0);
     }
-  }, [actualSiblingIdxSetter]);
+  }, [actualSiblingIdxSetter, parentMessageId]);
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
   const setMessages = useCallback(
