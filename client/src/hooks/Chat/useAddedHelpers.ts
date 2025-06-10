@@ -35,10 +35,20 @@ export default function useAddedHelpers({
   // Get the actual latest message from root context for correct parentMessageId
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
-  // Disable sibling threading for comparison mode to prevent 1/2, 2/2 issues
+  // Force disable sibling threading completely
   const setSiblingIdx = useSetRecoilState(
     store.messagesSiblingIdxFamily(null), // Always null to disable threading
   );
+  
+  // Override sibling index to always be 0 (first/only response)
+  const resetSiblingIndex = useCallback(() => {
+    if (actualLatestMessage?.parentMessageId) {
+      const siblingIdxSetter = useSetRecoilState(
+        store.messagesSiblingIdxFamily(actualLatestMessage.parentMessageId)
+      );
+      siblingIdxSetter(0);
+    }
+  }, [actualLatestMessage?.parentMessageId]);
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
   const setMessages = useCallback(
@@ -48,13 +58,19 @@ export default function useAddedHelpers({
         return;
       }
       
+      console.log('Setting messages for currentIndex:', currentIndex, 'messages:', messages.length);
+      
       // Ensure messages don't have sibling properties that cause threading
-      const sanitizedMessages = messages.map(msg => ({
+      const sanitizedMessages = messages.map((msg, index) => ({
         ...msg,
-        // Remove threading-related properties
-        siblingCount: undefined,
-        siblingIndex: undefined,
-        children: undefined,
+        // Force single response properties
+        siblingCount: 1,
+        siblingIndex: 0,
+        children: [],
+        // Ensure message has content
+        text: msg.text || msg.content || '',
+        isCompleted: true,
+        finish_reason: 'stop',
       }));
       
       // Store comparison messages with unique key and validation
@@ -65,11 +81,15 @@ export default function useAddedHelpers({
       );
       
       const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
-      if (latestMultiMessage && latestMultiMessage.text) {
+      if (latestMultiMessage) {
+        console.log('Latest message text length:', latestMultiMessage.text?.length || 0);
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
       }
+      
+      // Force reset sibling index
+      resetSiblingIndex();
     },
-    [queryParam, queryClient, setLatestMultiMessage, currentIndex],
+    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
   );
 
   const getMessages = useCallback(() => {
@@ -92,9 +112,6 @@ export default function useAddedHelpers({
     conversation,
     setSubmission,
     latestMessage: actualLatestMessage, // Use the actual latest message from root
-    // Force single response mode
-    maxResponseCount: 1,
-    disableBranching: true,
   });
 
   const continueGeneration = () => {

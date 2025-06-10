@@ -24,7 +24,10 @@ export default function buildTree({
       ...message,
       children: [],
       depth: 0,
-      siblingIndex: childrenCount[parentId] - 1,
+      // FORCE SINGLE RESPONSE: Always set siblingIndex to 0 to prevent threading
+      siblingIndex: 0,
+      // FORCE SINGLE RESPONSE: Set siblingCount to 1 to show only one response
+      siblingCount: 1,
     };
 
     if (message.files && fileMap) {
@@ -35,8 +38,17 @@ export default function buildTree({
 
     const parentMessage = messageMap[parentId];
     if (parentMessage) {
-      parentMessage.children.push(extendedMessage);
-      extendedMessage.depth = parentMessage.depth + 1;
+      // FORCE SINGLE RESPONSE: Only add if this parent doesn't already have a child
+      // This prevents multiple siblings from being created
+      if (parentMessage.children.length === 0) {
+        parentMessage.children.push(extendedMessage);
+        extendedMessage.depth = parentMessage.depth + 1;
+      }
+      // If parent already has a child, replace it with the latest message
+      else {
+        parentMessage.children[0] = extendedMessage;
+        extendedMessage.depth = parentMessage.depth + 1;
+      }
     } else {
       rootMessages.push(extendedMessage);
     }
