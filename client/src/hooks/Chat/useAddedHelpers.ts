@@ -32,21 +32,28 @@ export default function useAddedHelpers({
   // Get the actual latest message from root context for correct parentMessageId
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
+  // Disable sibling threading for comparison mode to prevent 1/2, 2/2 issues
   const setSiblingIdx = useSetRecoilState(
-    store.messagesSiblingIdxFamily(actualLatestMessage?.parentMessageId ?? null),
+    store.messagesSiblingIdxFamily(null), // Always null to disable threading
   );
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
   const setMessages = useCallback(
     (messages: TMessage[]) => {
-      // Store comparison messages with special key, but ensure uniqueness
+      if (!messages || messages.length === 0) {
+        console.warn('Attempted to set empty messages array');
+        return;
+      }
+      
+      // Store comparison messages with unique key and validation
       const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
       queryClient.setQueryData<TMessage[]>(
         [QueryKeys.messages, comparisonKey],
         messages,
       );
+      
       const latestMultiMessage = messages[messages.length - 1];
-      if (latestMultiMessage) {
+      if (latestMultiMessage && latestMultiMessage.text) {
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
       }
     },
@@ -54,9 +61,11 @@ export default function useAddedHelpers({
   );
 
   const getMessages = useCallback(() => {
-    // Get comparison messages from unique key
     const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-    return queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+    const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+    
+    // Return empty array if no messages to prevent undefined errors
+    return messages || [];
   }, [queryParam, queryClient, currentIndex]);
 
   const setSubmission = useSetRecoilState(store.submissionByIndex(currentIndex));
