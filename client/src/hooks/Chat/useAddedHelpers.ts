@@ -15,6 +15,9 @@ export default function useAddedHelpers({
   currentIndex: number;
   paramId?: string;
 }) {
+  // Debug logging
+  console.log('useAddedHelpers initialized:', { rootIndex, currentIndex, paramId });
+  
   const queryClient = useQueryClient();
   const clearAllSubmissions = store.useClearSubmissionState();
   const [files, setFiles] = useRecoilState(store.filesByIndex(rootIndex));
@@ -45,14 +48,23 @@ export default function useAddedHelpers({
         return;
       }
       
+      // Ensure messages don't have sibling properties that cause threading
+      const sanitizedMessages = messages.map(msg => ({
+        ...msg,
+        // Remove threading-related properties
+        siblingCount: undefined,
+        siblingIndex: undefined,
+        children: undefined,
+      }));
+      
       // Store comparison messages with unique key and validation
       const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
       queryClient.setQueryData<TMessage[]>(
         [QueryKeys.messages, comparisonKey],
-        messages,
+        sanitizedMessages,
       );
       
-      const latestMultiMessage = messages[messages.length - 1];
+      const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
       if (latestMultiMessage && latestMultiMessage.text) {
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
       }
@@ -80,6 +92,9 @@ export default function useAddedHelpers({
     conversation,
     setSubmission,
     latestMessage: actualLatestMessage, // Use the actual latest message from root
+    // Force single response mode
+    maxResponseCount: 1,
+    disableBranching: true,
   });
 
   const continueGeneration = () => {
