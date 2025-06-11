@@ -17,6 +17,42 @@ import { useQueryClient } from '@tanstack/react-query';
 
 const defaultInterface = getConfigDefaults().interface;
 
+// Enhanced debug utility for comparison debugging
+const debugComparison = (context: string, data: any) => {
+  console.group(`🎭 COMPARISON DEBUG [${context}]`);
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('📊 Data:', data);
+  console.groupEnd();
+};
+
+// Debug utility for message tracking
+const debugMessages = (context: string, messages: any[], source: string) => {
+  console.group(`📨 MESSAGE DEBUG [${context}] - ${source}`);
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('📈 Count:', messages?.length || 0);
+  
+  if (messages && Array.isArray(messages)) {
+    messages.forEach((msg, idx) => {
+      console.log(`📝 Message ${idx}:`, {
+        id: msg._id || msg.id || msg.messageId || 'no-id',
+        text: msg.text ? `${msg.text.substring(0, 100)}...` : 'NO TEXT',
+        content: msg.content ? `${msg.content.substring(0, 100)}...` : 'NO CONTENT',
+        isCreatedByUser: msg.isCreatedByUser,
+        error: msg.error,
+        sender: msg.sender,
+        endpoint: msg.endpoint,
+        model: msg.model,
+        isCompleted: msg.isCompleted,
+        finish_reason: msg.finish_reason,
+        parentMessageId: msg.parentMessageId,
+        conversationId: msg.conversationId
+      });
+    });
+  }
+  
+  console.groupEnd();
+};
+
 export default function Header() {
   const { data: startupConfig } = useGetStartupConfig();
   const { navVisible, setNavVisible } = useOutletContext<ContextType>();
@@ -28,7 +64,7 @@ export default function Header() {
   
   // Add the chat context hooks for compare functionality
   const { conversation, setConversation } = useChatContext();
-  const { setConversation: setAddedConvo } = useAddedChatContext();
+  const { conversation: addedConversation, setConversation: setAddedConvo } = useAddedChatContext();
   
   // State to prevent multiple clicks
   const [isComparing, setIsComparing] = useState(false);
@@ -45,64 +81,71 @@ export default function Header() {
     model: 'gpt-4'
   });
   
-  // SINGLE debug effect to monitor both conversations - FIXED VERSION
+  // Debug both conversations comprehensively
   useEffect(() => {
-    console.log('🔍 CONVERSATION DEBUG:');
-    console.log('Main conversation (DeFacts):', conversation);
-    
-    // Check if messages are being received - BETTER MESSAGE ACCESS
-    if (conversation?.messages && Array.isArray(conversation.messages)) {
-      console.log('📨 DeFacts messages count:', conversation.messages.length);
-      
-      // The issue: conversation.messages might be just IDs, not full message objects
-      console.log('📨 DeFacts messages array:', conversation.messages);
-      
-      // Try to get actual message objects from query cache
-      const conversationId = conversation.conversationId;
-      if (conversationId) {
-        const messagesFromCache = queryClient.getQueryData(['messages', conversationId]);
-        console.log('📨 Messages from cache:', messagesFromCache);
-        
-        if (messagesFromCache && Array.isArray(messagesFromCache)) {
-          console.log('📨 Cached messages count:', messagesFromCache.length);
-          messagesFromCache.forEach((msg, idx) => {
-            console.log(`📨 DeFacts msg ${idx}:`, {
-              id: msg._id || msg.id || 'no-id',
-              text: msg.text ? msg.text.substring(0, 100) + '...' : 'NO TEXT',
-              content: msg.content ? msg.content.substring(0, 100) + '...' : 'NO CONTENT',  
-              isCreatedByUser: msg.isCreatedByUser,
-              error: msg.error,
-              sender: msg.sender,
-              messageId: msg.messageId,
-              // Show all properties to understand structure
-              allKeys: Object.keys(msg)
-            });
-          });
-        }
+    debugComparison('CONVERSATION_STATE_MONITOR', {
+      mainConversation: {
+        id: conversation?.conversationId,
+        endpoint: conversation?.endpoint,
+        model: conversation?.model,
+        title: conversation?.title,
+        hasMessages: !!conversation?.messages,
+        messageCount: conversation?.messages?.length || 0,
+        isComparison: conversation?.isComparison
+      },
+      addedConversation: {
+        id: addedConversation?.conversationId,
+        endpoint: addedConversation?.endpoint,
+        model: addedConversation?.model,
+        title: addedConversation?.title,
+        hasMessages: !!addedConversation?.messages,
+        messageCount: addedConversation?.messages?.length || 0,
+        isComparison: addedConversation?.isComparison
       }
+    });
+    
+    // Check message storage in query cache
+    if (conversation?.conversationId) {
+      const mainMessages = queryClient.getQueryData(['messages', conversation.conversationId]);
+      debugMessages('MAIN_CONVERSATION', mainMessages as any[], 'Query Cache');
+      
+      // Check comparison messages
+      const comparisonKey = `${conversation.conversationId}_comparison_1`;
+      const comparisonMessages = queryClient.getQueryData(['messages', comparisonKey]);
+      debugMessages('COMPARISON_MESSAGES', comparisonMessages as any[], `Query Cache - ${comparisonKey}`);
     }
     
-    // Also check the comparison messages
-    const comparisonMessages = queryClient.getQueryData(['messages', `${conversation?.conversationId}_comparison_1`]);
-    if (comparisonMessages) {
-      console.log('🔄 Comparison messages:', comparisonMessages);
-      if (Array.isArray(comparisonMessages)) {
-        comparisonMessages.forEach((msg, idx) => {
-          console.log(`🔄 Comparison msg ${idx}:`, {
-            text: msg.text ? msg.text.substring(0, 100) + '...' : 'NO TEXT',
-            isCreatedByUser: msg.isCreatedByUser,
-            error: msg.error
-          });
-        });
-      }
-    }
+    // Debug all query cache keys related to messages
+    const queryCache = queryClient.getQueryCache();
+    const allQueries = queryCache.getAll();
+    const messageQueries = allQueries.filter(query => 
+      query.queryKey[0] === 'messages' && query.state.data
+    );
     
-  }, [conversation, queryClient]);
+    debugComparison('ALL_MESSAGE_QUERIES', {
+      totalQueries: allQueries.length,
+      messageQueries: messageQueries.length,
+      queryKeys: messageQueries.map(q => q.queryKey),
+      queryData: messageQueries.map(q => ({
+        key: q.queryKey,
+        messageCount: Array.isArray(q.state.data) ? q.state.data.length : 'not-array',
+        hasData: !!q.state.data
+      }))
+    });
+    
+  }, [conversation, addedConversation, queryClient]);
 
-  // Also check localStorage on mount in case there's a saved preference
+  // Monitor localStorage changes
   useEffect(() => {
     const savedEndpoint = localStorage.getItem('defacts_comparison_endpoint');
     const savedModel = localStorage.getItem('defacts_comparison_model');
+    
+    debugComparison('LOCALSTORAGE_CHECK', {
+      savedEndpoint,
+      savedModel,
+      currentSelected: selectedCompareModel
+    });
+    
     if (savedEndpoint && savedModel) {
       setLastSelectedModel({
         endpoint: savedEndpoint,
@@ -113,111 +156,201 @@ export default function Header() {
       localStorage.setItem('defacts_comparison_endpoint', 'openAI');
       localStorage.setItem('defacts_comparison_model', 'gpt-4');
     }
-  }, []);
+  }, [selectedCompareModel]);
   
-  // Add comprehensive debugging
+  // Enhanced LibreChat debugging
   useEffect(() => {
-    console.log('=== LIBRECHAT DEBUG START ===');
+    debugComparison('LIBRECHAT_SYSTEM_DEBUG', {
+      hasStartupConfig: !!startupConfig,
+      hasUser: !!user,
+      hasConversation: !!conversation
+    });
     
-    // 1. Check available endpoints
+    // 1. Check available endpoints with enhanced logging
     fetch('/api/endpoints')
       .then(res => res.json())
       .then(endpoints => {
-        console.log('📌 Available Endpoints:', endpoints);
+        debugComparison('AVAILABLE_ENDPOINTS', endpoints);
         
         // Check each endpoint type
         Object.entries(endpoints).forEach(([name, config]) => {
-          console.log(`📍 Endpoint ${name}:`, config);
+          debugComparison(`ENDPOINT_${name.toUpperCase()}`, config);
         });
       })
-      .catch(err => console.error('❌ Error fetching endpoints:', err));
+      .catch(err => {
+        console.error('❌ Error fetching endpoints:', err);
+        debugComparison('ENDPOINT_FETCH_ERROR', { error: err.message });
+      });
     
-    // 2. Check startup config
+    // 2. Enhanced startup config debugging
     if (startupConfig) {
-      console.log('📋 Startup Config:', startupConfig);
-      console.log('📋 Model Specs:', startupConfig.modelSpecs);
+      debugComparison('STARTUP_CONFIG_DETAILED', {
+        modelSpecs: startupConfig.modelSpecs,
+        endpoints: startupConfig.endpoints,
+        interface: startupConfig.interface,
+        balance: startupConfig.balance,
+        customConfig: startupConfig.customConfig
+      });
     }
     
-    // 3. Try to get conversation structure
-    if (conversation) {
-      console.log('💬 Current Conversation Structure:', conversation);
-      console.log('💬 Conversation Keys:', Object.keys(conversation));
-    }
-    
-    // 4. Monitor for custom endpoint errors
-    const originalConsoleError = console.error;
-    console.error = function(...args) {
-      if (args[0]?.includes?.('Endpoint') || args[0]?.includes?.('models')) {
-        console.log('🚨 ENDPOINT ERROR CAUGHT:', ...args);
-      }
-      originalConsoleError.apply(console, args);
-    };
-    
-    // 5. Intercept fetch to see API calls
+    // 3. Monitor fetch requests with enhanced filtering
     const originalFetch = window.fetch;
-    window.fetch = function(...args) {
+    window.fetch = function(...args: any[]) {
       const url = args[0];
-      if (url.includes('/api/ask/') || url.includes('/api/chat/')) {
-        console.log('🔄 API Request:', {
+      const isApiCall = url.includes('/api/ask/') || url.includes('/api/chat/');
+      
+      if (isApiCall) {
+        const requestDetails = {
           url: url,
           method: args[1]?.method || 'GET',
-          body: args[1]?.body ? JSON.parse(args[1].body) : null
-        });
-      }
-      
-      // Add specific logging for Perplexity
-      if (url.includes('/api/ask/custom') && args[1]?.body) {
-        try {
-          const body = JSON.parse(args[1].body);
-          if (body.endpoint === 'custom' && body.spec === 'Perplexity') {
-            console.log('🌐 Perplexity API Call:', body);
+          headers: args[1]?.headers,
+          bodySize: args[1]?.body?.length || 0
+        };
+        
+        // Parse body for detailed logging
+        if (args[1]?.body) {
+          try {
+            const body = JSON.parse(args[1].body);
+            requestDetails.body = {
+              endpoint: body.endpoint,
+              model: body.model,
+              conversationId: body.conversationId,
+              parentMessageId: body.parentMessageId,
+              messageCount: body.messages?.length || 0,
+              isComparison: body._isAddedRequest,
+              userMessagePreview: body.messages?.[body.messages.length - 1]?.text?.substring(0, 100)
+            };
+            
+            debugComparison('API_REQUEST', requestDetails);
+          } catch (e) {
+            debugComparison('API_REQUEST_UNPARSEABLE', requestDetails);
           }
-        } catch (e) {
-          // Ignore parse errors
         }
       }
       
       return originalFetch.apply(this, args).then(response => {
-        if (!response.ok && (url.includes('/api/ask/') || url.includes('/api/chat/'))) {
-          console.error('❌ API Error Response:', {
+        if (isApiCall) {
+          debugComparison('API_RESPONSE', {
             url: url,
             status: response.status,
-            statusText: response.statusText
+            statusText: response.statusText,
+            ok: response.ok,
+            headers: Object.fromEntries(response.headers.entries())
           });
+          
+          if (!response.ok) {
+            console.error('❌ API Error Response:', response);
+          }
         }
         return response;
+      }).catch(error => {
+        if (isApiCall) {
+          debugComparison('API_REQUEST_ERROR', {
+            url: url,
+            error: error.message,
+            stack: error.stack
+          });
+        }
+        throw error;
       });
     };
     
-    // 6. Check for conversation presets
-    fetch('/api/presets')
-      .then(res => res.json())
-      .then(presets => console.log('🎨 Available Presets:', presets))
-      .catch(err => console.error('❌ Error fetching presets:', err));
+    // 4. Monitor SSE connections
+    const originalEventSource = window.EventSource;
+    if (originalEventSource) {
+      window.EventSource = function(url: string, options?: any) {
+        debugComparison('SSE_CONNECTION_CREATED', {
+          url: url,
+          options: options
+        });
+        
+        const es = new originalEventSource(url, options);
+        
+        const originalAddEventListener = es.addEventListener;
+        es.addEventListener = function(type: string, listener: any, options?: any) {
+          debugComparison('SSE_EVENT_LISTENER_ADDED', {
+            eventType: type,
+            url: url
+          });
+          
+          // Wrap the listener to log events
+          const wrappedListener = (event: any) => {
+            debugComparison('SSE_EVENT_RECEIVED', {
+              type: type,
+              url: url,
+              dataLength: event.data?.length || 0,
+              dataPreview: event.data?.substring(0, 100)
+            });
+            return listener(event);
+          };
+          
+          return originalAddEventListener.call(this, type, wrappedListener, options);
+        };
+        
+        return es;
+      };
+    }
     
-    // 7. Listen for SSE errors
-    window.addEventListener('error', (event) => {
-      if (event.message?.includes?.('EventSource') || event.message?.includes?.('stream')) {
-        console.error('🌊 SSE Error:', event);
+    // 5. Monitor recoil state changes (if possible)
+    const recoilDebugObserver = () => {
+      // This would require access to recoil internals
+      // For now, we'll rely on the conversation state monitoring above
+    };
+    
+    // 6. Check for comparison-related DOM elements
+    const checkComparisonDOM = () => {
+      const comparisonElements = document.querySelectorAll('[data-testid*="comparison"], [class*="comparison"], [id*="comparison"]');
+      debugComparison('COMPARISON_DOM_ELEMENTS', {
+        count: comparisonElements.length,
+        elements: Array.from(comparisonElements).map(el => ({
+          tagName: el.tagName,
+          id: el.id,
+          className: el.className,
+          testId: el.getAttribute('data-testid')
+        }))
+      });
+    };
+    
+    checkComparisonDOM();
+    
+    // Monitor DOM changes
+    const observer = new MutationObserver((mutations) => {
+      let hasComparisonChanges = false;
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as Element;
+              if (element.textContent?.includes('comparison') || 
+                  element.className?.includes('comparison') ||
+                  element.id?.includes('comparison')) {
+                hasComparisonChanges = true;
+              }
+            }
+          });
+        }
+      });
+      
+      if (hasComparisonChanges) {
+        debugComparison('DOM_COMPARISON_CHANGES', { mutations: mutations.length });
+        checkComparisonDOM();
       }
-    }, true);
+    });
     
-    // 8. Check custom endpoints specifically
-    fetch('/api/config')
-      .then(res => res.json())
-      .then(config => {
-        console.log('🔧 Custom Endpoints:', config.endpoints?.custom);
-        const perplexityEndpoint = config.endpoints?.custom?.find(e => e.name === 'Perplexity');
-        console.log('🎯 Perplexity Config:', perplexityEndpoint);
-      })
-      .catch(err => console.error('❌ Error fetching config:', err));
-    
-    console.log('=== LIBRECHAT DEBUG END ===');
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'id', 'data-testid']
+    });
     
     // Cleanup
     return () => {
-      console.error = originalConsoleError;
       window.fetch = originalFetch;
+      if (originalEventSource) {
+        window.EventSource = originalEventSource;
+      }
+      observer.disconnect();
     };
   }, [conversation, startupConfig]);
   
@@ -249,7 +382,10 @@ export default function Header() {
           rawTokenCredits: user.tokenCredits || 0
         }, '*'); // Use '*' for any domain, or specify exact domain for security
         
-        console.log('Sent user info to parent:', user.email, formattedBalance);
+        debugComparison('PARENT_MESSAGE_SENT', {
+          email: user.email,
+          tokenBalance: formattedBalance
+        });
       }
     }
   }, [user, formattedBalance]);
@@ -266,19 +402,33 @@ export default function Header() {
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   
-  // Modified compare handler with radio selection and enhanced debugging
+  // Enhanced compare handler with comprehensive debugging
   const handleCompareModels = () => {
-    if (!conversation || comparisonInProgress.current) return;
+    debugComparison('COMPARE_MODELS_START', {
+      hasConversation: !!conversation,
+      comparisonInProgress: comparisonInProgress.current,
+      selectedModel: selectedCompareModel,
+      currentEndpoint: conversation?.endpoint,
+      currentModel: conversation?.model
+    });
     
-    console.log('🎯 === COMPARISON DEBUG ===');
-    console.log('📝 Current conversation:', conversation);
-    console.log('🎯 Selected model:', selectedCompareModel);
+    if (!conversation || comparisonInProgress.current) {
+      debugComparison('COMPARE_MODELS_BLOCKED', {
+        reason: !conversation ? 'no-conversation' : 'comparison-in-progress'
+      });
+      return;
+    }
     
     comparisonInProgress.current = true;
     setIsComparing(true);
     
     // First, ensure main conversation is DeFacts (only when comparing)
     if (conversation.endpoint !== 'gptPlugins') {
+      debugComparison('SETTING_MAIN_TO_DEFACTS', {
+        from: { endpoint: conversation.endpoint, model: conversation.model },
+        to: { endpoint: 'gptPlugins', model: 'DeFacts' }
+      });
+      
       setConversation(prev => ({
         ...prev,
         endpoint: 'gptPlugins',
@@ -293,10 +443,9 @@ export default function Header() {
     if (selectedCompareModel === 'perplexity') {
       const perplexityModel = 'llama-3.1-sonar-small-128k-online';
       
-      // RESTORED ORIGINAL WORKING CODE
       comparisonConvo = {
         conversationId: convo.conversationId,
-        endpoint: 'Perplexity',  // Back to original
+        endpoint: 'Perplexity',
         model: perplexityModel,
         title: '',
         modelLabel: 'Perplexity',
@@ -313,8 +462,10 @@ export default function Header() {
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
       };
+      
+      debugComparison('PERPLEXITY_COMPARISON_OBJECT', comparisonConvo);
     } else {
-      // Clean the GPT-4 comparison object WITH LOGO FIX
+      // Clean the GPT-4 comparison object
       comparisonConvo = {
         conversationId: convo.conversationId,
         endpoint: 'openAI',
@@ -332,9 +483,9 @@ export default function Header() {
         agentOptions: convo.agentOptions || null,
         resendFiles: false,
         imageDetail: convo.imageDetail || 'auto',
-        iconURL: null, // LOGO FIX: Force null to use default OpenAI icon
+        iconURL: null, // Force null to use default OpenAI icon
         greeting: '',
-        promptPrefix: null, // LOGO FIX: Clear any DeFacts prompt
+        promptPrefix: null, // Clear any DeFacts prompt
         examples: convo.examples || [],
         files: convo.files || [],
         createdAt: convo.createdAt,
@@ -349,21 +500,30 @@ export default function Header() {
         delete (comparisonConvo as any).apiKey;
       }
       
-      console.log('📤 GPT-4 comparison object:', JSON.stringify(comparisonConvo, null, 2));
+      debugComparison('GPT4_COMPARISON_OBJECT', comparisonConvo);
     }
     
-    console.log('🎯 === END COMPARISON DEBUG ===');
+    debugComparison('SETTING_ADDED_CONVERSATION', {
+      comparisonConvo,
+      conversationId: comparisonConvo.conversationId
+    });
     
     setAddedConvo(comparisonConvo);
-  
+    
+    // Focus textarea
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
       textarea.focus();
+      debugComparison('TEXTAREA_FOCUSED', { textareaId: mainTextareaId });
+    } else {
+      debugComparison('TEXTAREA_NOT_FOUND', { textareaId: mainTextareaId });
     }
     
+    // Reset comparison state after delay
     setTimeout(() => {
       comparisonInProgress.current = false;
       setIsComparing(false);
+      debugComparison('COMPARISON_STATE_RESET', {});
     }, 2000);
   };
 
@@ -386,6 +546,14 @@ export default function Header() {
               <ChevronDownIcon className="h-4 w-4" />
             )}
           </button>
+          
+          {/* Debug Info - Remove in production */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="text-xs text-gray-500">
+              Main: {conversation?.endpoint}/{conversation?.model} | 
+              Added: {addedConversation?.endpoint}/{addedConversation?.model}
+            </div>
+          )}
         </div>
         
         {/* Right side icons - Only show on desktop */}
@@ -414,7 +582,13 @@ export default function Header() {
                         name="compareModel"
                         value="gpt-4"
                         checked={selectedCompareModel === 'gpt-4'}
-                        onChange={(e) => setSelectedCompareModel(e.target.value)}
+                        onChange={(e) => {
+                          setSelectedCompareModel(e.target.value);
+                          debugComparison('MODEL_SELECTION_CHANGED', { 
+                            selected: e.target.value,
+                            previous: selectedCompareModel 
+                          });
+                        }}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 dark:text-blue-400"
                       />
                       <span className="text-sm text-gray-700 dark:text-gray-300">GPT4</span>
@@ -425,7 +599,13 @@ export default function Header() {
                         name="compareModel"
                         value="perplexity"
                         checked={selectedCompareModel === 'perplexity'}
-                        onChange={(e) => setSelectedCompareModel(e.target.value)}
+                        onChange={(e) => {
+                          setSelectedCompareModel(e.target.value);
+                          debugComparison('MODEL_SELECTION_CHANGED', { 
+                            selected: e.target.value,
+                            previous: selectedCompareModel 
+                          });
+                        }}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 dark:text-blue-400"
                       />
                       <span className="text-sm text-gray-700 dark:text-gray-300">Perplexity</span>

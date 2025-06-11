@@ -20,6 +20,54 @@ import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
 import store from '~/store';
 
+// Enhanced debug utility for delta messages
+const debugDelta = (context: string, data: any, metadata?: any) => {
+  console.group(`🔄 DELTA DEBUG [${context}]`);
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('📊 Data:', data);
+  if (metadata) {
+    console.log('🔍 Metadata:', metadata);
+  }
+  
+  // Special handling for delta content
+  if (data?.delta) {
+    console.log('📝 Delta content detected:', {
+      hasContent: !!data.delta.content,
+      contentLength: data.delta.content?.length || 0,
+      contentPreview: data.delta.content?.substring(0, 100) + '...',
+      deltaKeys: Object.keys(data.delta)
+    });
+  }
+  
+  // Track message building
+  if (data?.text || data?.content) {
+    console.log('📝 Message content:', {
+      textLength: data.text?.length || 0,
+      contentLength: data.content?.length || 0,
+      preview: (data.text || data.content)?.substring(0, 100) + '...'
+    });
+  }
+  
+  console.groupEnd();
+};
+
+// Side-by-side comparison debug
+const debugComparison = (context: string, data: any) => {
+  console.group(`🔗 COMPARISON DEBUG [${context}]`);
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('📊 Data:', data);
+  
+  if (data?.isAddedRequest !== undefined) {
+    console.log('🎯 Is comparison request:', data.isAddedRequest);
+  }
+  
+  if (data?.runIndex !== undefined) {
+    console.log('🏃 Run index:', data.runIndex);
+  }
+  
+  console.groupEnd();
+};
+
 // Retry Status Component - safe JSX-free version
 const RetryStatusDisplay: React.FC<{
   isRetrying: boolean;
@@ -110,6 +158,16 @@ export default function useSSE(
   isAddedRequest = false,
   runIndex = 0,
 ): UseSSEReturn {
+  
+  // Enhanced initialization logging
+  debugComparison('useSSE INIT', {
+    isAddedRequest,
+    runIndex,
+    hasSubmission: !!submission,
+    submissionEndpoint: submission?.conversation?.endpoint,
+    submissionModel: submission?.conversation?.model
+  });
+
   const genTitle = useGenTitleMutation();
   const setActiveRunId = useSetRecoilState(store.activeRunFamily(runIndex));
 
@@ -124,6 +182,10 @@ export default function useSSE(
   const retryTimeoutRef = useRef<any>(null);
   const connectionTimeoutRef = useRef<any>(null);
   const currentSSERef = useRef<SSE | null>(null);
+
+  // Track delta message accumulation for debugging
+  const deltaAccumulator = useRef<{[messageId: string]: string}>({});
+  const messageStartTime = useRef<{[messageId: string]: number}>({});
 
   const {
     setMessages,
@@ -194,7 +256,14 @@ export default function useSSE(
     payload: TPayload,
     userMessage: TMessage
   ): void => {
-    console.log(`🔄 [useSSE] Handling retry for: ${errorReason}`);
+    debugComparison('RETRY_HANDLER', {
+      errorReason,
+      currentAttempt,
+      isAddedRequest,
+      runIndex,
+      endpoint: payload?.endpoint,
+      model: payload?.model
+    });
     
     if (currentAttempt >= RETRY_CONFIG.maxRetries) {
       console.error('❌ [useSSE] Max retries reached, giving up');
@@ -242,7 +311,15 @@ export default function useSSE(
     userMessage: TMessage,
     attempt: number = 0
   ): SSE => {
-    console.log(`🔄 [useSSE] Creating connection (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1})`);
+    debugComparison('SSE_CONNECTION_CREATE', {
+      attempt: attempt + 1,
+      maxRetries: RETRY_CONFIG.maxRetries + 1,
+      isAddedRequest,
+      runIndex,
+      endpoint: payload?.endpoint,
+      model: payload?.model,
+      serverUrl: payloadData?.server
+    });
     
     clearTimeouts();
     
@@ -278,32 +355,32 @@ export default function useSSE(
 
     // Handle successful connection
     sse.addEventListener('open', () => {
-      console.log('✅ [useSSE] Connection opened successfully');
+      debugComparison('SSE_CONNECTION_OPEN', {
+        isAddedRequest,
+        runIndex,
+        readyState: sse.readyState,
+        url: payloadData.server
+      });
+      
       clearTimeouts();
       setAbortScroll(false);
       setRetryCount(0);
       setIsRetrying(false);
       hasReceivedData = false;
-      
-      console.log('📡 [useSSE] Connection details:', {
-        url: payloadData.server,
-        readyState: sse.readyState,
-        attempt: attempt + 1,
-      });
     });
 
     // Enhanced error handling with retry logic
     sse.addEventListener('error', async (e: MessageEvent) => {
-      console.error('❌ [useSSE] Error in server stream');
-      console.error('🔍 [useSSE] Error event details:', {
-        data: e.data,
-        type: e.type,
+      debugComparison('SSE_ERROR', {
+        isAddedRequest,
+        runIndex,
         hasReceivedData,
         attempt: attempt + 1,
         /* @ts-ignore */
         responseCode: e.responseCode,
         /* @ts-ignore */
         statusCode: e.statusCode,
+        data: e.data
       });
 
       clearTimeouts();
@@ -367,10 +444,15 @@ export default function useSSE(
       }
     });
 
-    // All other event listeners with error handling
+    // All other event listeners with enhanced debugging
     sse.addEventListener('attachment', (e: MessageEvent) => {
       hasReceivedData = true;
-      console.log('📎 [useSSE] Attachment event received:', e.data);
+      debugComparison('SSE_ATTACHMENT', {
+        isAddedRequest,
+        runIndex,
+        dataLength: e.data?.length || 0
+      });
+      
       try {
         const data = JSON.parse(e.data);
         attachmentHandler({ data, submission: submission as EventSubmission });
@@ -381,7 +463,6 @@ export default function useSSE(
 
     sse.addEventListener('message', (e: MessageEvent) => {
       hasReceivedData = true;
-      console.log('💬 [useSSE] Message event received:', e.data?.substring(0, 100) + '...');
       
       let data: any;
       try {
@@ -392,20 +473,55 @@ export default function useSSE(
         return;
       }
 
+      // Enhanced message debugging
+      debugDelta('SSE_MESSAGE_RECEIVED', data, {
+        isAddedRequest,
+        runIndex,
+        messageType: data.final ? 'final' : 
+                    data.created ? 'created' :
+                    data.event ? 'step' :
+                    data.sync ? 'sync' :
+                    data.type ? 'content' : 'standard',
+        hasText: !!(data.text || data.response),
+        textLength: (data.text || data.response || '').length
+      });
+
       try {
         if (data.final != null) {
-          console.log('✅ [useSSE] Final message received:', data);
+          debugComparison('SSE_FINAL_MESSAGE', {
+            isAddedRequest,
+            runIndex,
+            finalData: data
+          });
+          
           clearTimeouts();
           clearDraft(submission?.conversation?.conversationId);
           const { plugins } = data;
           finalHandler(data, { ...submission, plugins } as EventSubmission);
           (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
-          console.log('final', data);
+          
+          // Clear delta accumulator for this message
+          if (data.messageId) {
+            delete deltaAccumulator.current[data.messageId];
+            delete messageStartTime.current[data.messageId];
+          }
+          
           return;
         } else if (data.created != null) {
-          console.log('🆕 [useSSE] Created event:', data);
+          debugComparison('SSE_CREATED_EVENT', {
+            isAddedRequest,
+            runIndex,
+            createdData: data
+          });
+          
           const runId = v4();
           setActiveRunId(runId);
+          
+          // Track message start time
+          if (data.messageId) {
+            messageStartTime.current[data.messageId] = Date.now();
+            deltaAccumulator.current[data.messageId] = '';
+          }
           
           // Don't mutate userMessage directly
           const updatedUserMessage = {
@@ -416,23 +532,61 @@ export default function useSSE(
 
           createdHandler(data, { ...submission, userMessage: updatedUserMessage } as EventSubmission);
         } else if (data.event != null) {
-          console.log('📊 [useSSE] Step event:', data);
+          debugComparison('SSE_STEP_EVENT', {
+            isAddedRequest,
+            runIndex,
+            stepData: data
+          });
+          
           stepHandler(data, { ...submission, userMessage } as EventSubmission);
         } else if (data.sync != null) {
-          console.log('🔄 [useSSE] Sync event:', data);
+          debugComparison('SSE_SYNC_EVENT', {
+            isAddedRequest,
+            runIndex,
+            syncData: data
+          });
+          
           const runId = v4();
           setActiveRunId(runId);
           syncHandler(data, { ...submission, userMessage } as EventSubmission);
         } else if (data.type != null) {
-          console.log('📝 [useSSE] Content event:', { type: data.type, index: data.index });
+          // This is likely a delta/streaming content message
+          debugDelta('SSE_CONTENT_EVENT', data, {
+            isAddedRequest,
+            runIndex,
+            contentType: data.type,
+            index: data.index,
+            hasText: !!data.text,
+            textLength: data.text?.length || 0
+          });
+          
           const { text, index } = data;
           if (text != null && index !== textIndex) {
             textIndex = index;
           }
 
+          // Track delta accumulation
+          if (data.messageId && data.text) {
+            deltaAccumulator.current[data.messageId] = 
+              (deltaAccumulator.current[data.messageId] || '') + data.text;
+            
+            debugDelta('DELTA_ACCUMULATION', {
+              messageId: data.messageId,
+              newText: data.text,
+              totalLength: deltaAccumulator.current[data.messageId].length,
+              timeElapsed: messageStartTime.current[data.messageId] ? 
+                Date.now() - messageStartTime.current[data.messageId] : 'unknown'
+            });
+          }
+
           contentHandler({ data, submission: submission as EventSubmission });
         } else {
-          console.log('📨 [useSSE] Standard message:', data);
+          debugComparison('SSE_STANDARD_MESSAGE', {
+            isAddedRequest,
+            runIndex,
+            standardData: data
+          });
+          
           const text = data.text ?? data.response;
           const { plugin, plugins } = data;
 
@@ -448,11 +602,21 @@ export default function useSSE(
         }
       } catch (error) {
         console.error('❌ [useSSE] Error processing message event:', error);
+        debugComparison('SSE_MESSAGE_PROCESSING_ERROR', {
+          isAddedRequest,
+          runIndex,
+          error: error.message,
+          data: data
+        });
       }
     });
 
     sse.addEventListener('cancel', async () => {
-      console.log('🚫 [useSSE] Cancel event received');
+      debugComparison('SSE_CANCEL_EVENT', {
+        isAddedRequest,
+        runIndex
+      });
+      
       clearTimeouts();
       
       try {
@@ -486,13 +650,22 @@ export default function useSSE(
     /* @ts-ignore */
     if (sse.addEventListener) {
       sse.addEventListener('readystatechange', () => {
-        /* @ts-ignore */
-        console.log('🔄 [useSSE] ReadyState changed:', sse.readyState);
+        debugComparison('SSE_READYSTATE_CHANGE', {
+          isAddedRequest,
+          runIndex,
+          /* @ts-ignore */
+          readyState: sse.readyState
+        });
       });
     }
 
     setIsSubmitting(true);
-    console.log('🚀 [useSSE] Starting stream...');
+    
+    debugComparison('SSE_STREAM_START', {
+      isAddedRequest,
+      runIndex,
+      url: payloadData.server
+    });
     
     try {
       sse.stream();
@@ -507,6 +680,11 @@ export default function useSSE(
   // Cleanup on component unmount
   useEffect(() => {
     return () => {
+      debugComparison('SSE_CLEANUP', {
+        isAddedRequest,
+        runIndex
+      });
+      
       clearTimeouts();
       if (currentSSERef.current) {
         try {
@@ -516,6 +694,10 @@ export default function useSSE(
         }
         currentSSERef.current = null;
       }
+      
+      // Clear delta accumulators
+      deltaAccumulator.current = {};
+      messageStartTime.current = {};
     };
   }, []);
 
@@ -543,18 +725,18 @@ export default function useSSE(
     }
 
     // Enhanced debugging
-    console.log('🚀 [useSSE] Sending request:', {
+    debugComparison('SSE_REQUEST_START', {
       model: payload?.model,
       endpoint: payload?.endpoint,
       isAddedRequest,
+      runIndex,
       conversationId: submission?.conversation?.conversationId,
-      userMessage: userMessage?.text?.substring(0, 50) + '...',
+      userMessagePreview: userMessage?.text?.substring(0, 50) + '...',
       retryEnabled: true,
       maxRetries: RETRY_CONFIG.maxRetries,
+      serverUrl: payloadData.server,
+      payloadSize: JSON.stringify(payload).length
     });
-    
-    console.log('📦 [useSSE] Full payload:', JSON.stringify(payload, null, 2));
-    console.log('🔗 [useSSE] Server URL:', payloadData.server);
 
     // Reset retry state
     setRetryCount(0);
@@ -572,10 +754,12 @@ export default function useSSE(
 
     return () => {
       const isCancelled = sse.readyState <= 1;
-      console.log('🛑 [useSSE] Cleanup - closing connection', { 
-        readyState: sse.readyState, 
+      debugComparison('SSE_EFFECT_CLEANUP', {
+        isAddedRequest,
+        runIndex,
+        readyState: sse.readyState,
         isCancelled,
-        retryCount,
+        retryCount
       });
       
       clearTimeouts();
