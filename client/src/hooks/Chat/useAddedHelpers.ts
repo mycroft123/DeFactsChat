@@ -6,7 +6,7 @@ import type { TMessage } from 'librechat-data-provider';
 import useChatFunctions from '~/hooks/Chat/useChatFunctions';
 import store from '~/store';
 
-// Enhanced debug utility
+// Debug utility
 const debugLog = (context: string, data: any) => {
   console.group(`🔧 DEBUG [${context}]`);
   console.log('Timestamp:', new Date().toISOString());
@@ -16,7 +16,14 @@ const debugLog = (context: string, data: any) => {
 
 // Safe text extraction
 const safeExtractText = (msg: any): string => {
-  const candidates = [msg.text, msg.content, msg.response];
+  const candidates = [
+    msg.text, 
+    msg.content, 
+    msg.response,
+    msg.message?.text,
+    msg.message?.content
+  ];
+  
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim().length > 0) {
       return candidate.trim();
@@ -34,16 +41,14 @@ export default function useAddedHelpers({
   currentIndex: number;
   paramId?: string;
 }) {
-  // Track initialization and prevent cross-contamination
-  const initTime = useRef(Date.now());
-  const instanceId = useRef(`${currentIndex}_${initTime.current}`);
-  const lastValidMessageCount = useRef(0);
+  // Track state to detect corruption patterns
+  const finalMessageReceived = useRef(false);
+  const lastGoodMessageCount = useRef(0);
   
-  debugLog('useAddedHelpers ISOLATED INIT', {
-    rootIndex,
-    currentIndex,
+  debugLog('useAddedHelpers INIT', { 
+    rootIndex, 
+    currentIndex, 
     paramId,
-    instanceId: instanceId.current,
     isMainConvo: currentIndex === 0,
     isComparisonConvo: currentIndex > 0
   });
@@ -75,158 +80,134 @@ export default function useAddedHelpers({
 
   const setMessages = useCallback(
     (messages: TMessage[]) => {
-      // CRITICAL: Prevent cross-contamination
       if (!messages || messages.length === 0) {
-        console.warn(`⚠️ [${instanceId.current}] Attempted to set empty messages array - BLOCKED`);
+        console.warn('⚠️ Attempted to set empty messages array');
         return;
       }
       
-      // CRITICAL: Validate message quality before processing
-      const hasValidText = messages.some(msg => {
-        const text = safeExtractText(msg);
-        return text.length > 10; // At least 10 characters of real content
-      });
+      // Get caller info to identify source
+      const callerStack = new Error().stack;
+      const isFromStepHandler = callerStack?.includes('stepHandler') || callerStack?.includes('Step');
+      const isFromFinalHandler = callerStack?.includes('finalHandler') || callerStack?.includes('Final');
       
-      if (!hasValidText && messages.length < lastValidMessageCount.current + 1) {
-        console.error(`🚫 [${instanceId.current}] BLOCKING CORRUPT MESSAGE SET:`, {
-          messagesCount: messages.length,
-          lastValidCount: lastValidMessageCount.current,
-          hasValidText,
-          currentIndex,
-          reason: 'Step event with incomplete messages'
-        });
-        return; // BLOCK THE CORRUPT UPDATE
-      }
-      
-      debugLog(`ISOLATED_SET_MESSAGES [${instanceId.current}]`, {
+      debugLog('SET_MESSAGES_CALL_INFO', {
         currentIndex,
         messagesCount: messages.length,
-        hasValidText,
-        lastValidCount: lastValidMessageCount.current,
-        queryParam,
-        conversationEndpoint: conversation?.endpoint,
-        conversationModel: conversation?.model
+        isFromStepHandler,
+        isFromFinalHandler,
+        finalMessageReceived: finalMessageReceived.current,
+        lastGoodCount: lastGoodMessageCount.current
       });
       
-      // Calculate isolated comparison key
+      // Check if this is a step event corruption pattern
+      const hasValidContent = messages.some(msg => {
+        const text = safeExtractText(msg);
+        return text.length > 5; // Must have some real content
+      });
+      
+      // TARGETED BLOCKING: Only block step events after final message with no valid content
+      if (isFromStepHandler && 
+          finalMessageReceived.current && 
+          !hasValidContent && 
+          messages.length <= lastGoodMessageCount.current) {
+        
+        console.error('🚫 BLOCKING STEP EVENT CORRUPTION:', {
+          currentIndex,
+          messagesCount: messages.length,
+          lastGoodCount: lastGoodMessageCount.current,
+          hasValidContent,
+          reason: 'Step event trying to overwrite good final response'
+        });
+        return; // Block this specific corruption pattern
+      }
+      
+      // Mark final message received
+      if (isFromFinalHandler) {
+        finalMessageReceived.current = true;
+        console.log('✅ Final message received for currentIndex:', currentIndex);
+      }
+      
       const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
       
-      // Verify this is the right conversation context
-      if (currentIndex === 0 && conversation?.endpoint !== 'gptPlugins') {
-        console.warn(`⚠️ Main conversation endpoint mismatch: ${conversation?.endpoint} (expected: gptPlugins)`);
-      }
+      // Sanitize messages
+      const sanitizedMessages = messages.map((msg, index) => ({
+        ...msg,
+        siblingCount: 1,
+        siblingIndex: 0,
+        children: [],
+        text: safeExtractText(msg),
+        isCompleted: true,
+        finish_reason: 'stop',
+      }));
       
-      if (currentIndex === 1 && !['openAI', 'Perplexity'].includes(conversation?.endpoint || '')) {
-        console.warn(`⚠️ Comparison conversation endpoint mismatch: ${conversation?.endpoint}`);
-      }
-      
-      // Sanitize messages with validation
-      const sanitizedMessages = messages.map((msg, index) => {
-        const extractedText = safeExtractText(msg);
-        
-        return {
-          ...msg,
-          siblingCount: 1,
-          siblingIndex: 0,
-          children: [],
-          text: extractedText,
-          isCompleted: true,
-          finish_reason: 'stop',
-          // Add isolation markers
-          _debugInstanceId: instanceId.current,
-          _debugCurrentIndex: currentIndex,
-          _debugTimestamp: Date.now()
-        };
-      });
-      
-      // Validate sanitized messages
-      const validMessages = sanitizedMessages.filter(msg => msg.text.length > 0);
-      if (validMessages.length === 0) {
-        console.error(`❌ [${instanceId.current}] All messages have empty text - BLOCKED`);
-        return;
-      }
-      
-      debugLog(`ISOLATED_STORING [${instanceId.current}]`, {
+      debugLog('SANITIZED_MESSAGES', {
+        currentIndex,
         comparisonKey,
         originalCount: messages.length,
         sanitizedCount: sanitizedMessages.length,
-        validCount: validMessages.length,
-        textLengths: sanitizedMessages.map(m => m.text.length)
+        textLengths: sanitizedMessages.map(m => m.text?.length || 0),
+        validTexts: sanitizedMessages.map(m => !!m.text && m.text.length > 0)
       });
       
-      // Store with isolation verification
+      // Store messages
       queryClient.setQueryData<TMessage[]>(
         [QueryKeys.messages, comparisonKey],
         sanitizedMessages,
       );
       
-      // Update valid message count
-      lastValidMessageCount.current = Math.max(lastValidMessageCount.current, sanitizedMessages.length);
-      
-      // Immediate verification
-      const verificationData = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
-      if (!verificationData || verificationData.length === 0) {
-        console.error(`❌ [${instanceId.current}] Storage failed - data not found after set`);
-        return;
+      // Update good message count if this set has valid content
+      if (hasValidContent) {
+        lastGoodMessageCount.current = Math.max(lastGoodMessageCount.current, sanitizedMessages.length);
       }
       
-      // Set latest message with validation
+      // Set latest message
       const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
-      if (latestMultiMessage && latestMultiMessage.text.length > 0) {
-        const finalTextLength = latestMultiMessage.text.length;
+      if (latestMultiMessage) {
+        const finalTextLength = latestMultiMessage.text?.length || 0;
         
-        console.log(`✅ [${instanceId.current}] Latest message text length: ${finalTextLength}`);
+        console.log(`📝 Latest message text length: ${finalTextLength}`);
+        
+        if (finalTextLength === 0) {
+          console.error('🚨 ZERO LENGTH TEXT DETECTED:', {
+            currentIndex,
+            messageId: latestMultiMessage.messageId,
+            originalMessage: messages[messages.length - 1],
+            sanitizedMessage: latestMultiMessage
+          });
+        }
         
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
-      } else {
-        console.error(`❌ [${instanceId.current}] Latest message has no text - corruption detected`);
       }
       
       resetSiblingIndex();
     },
-    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex, conversation, instanceId],
+    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
   );
 
   const getMessages = useCallback(() => {
     const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
     const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
     
-    debugLog(`ISOLATED_GET_MESSAGES [${instanceId.current}]`, {
+    debugLog('GET_MESSAGES', {
       comparisonKey,
+      currentIndex,
       messagesFound: !!messages,
-      messagesCount: messages?.length || 0,
-      hasValidMessages: messages ? messages.some(m => m.text?.length > 0) : false
+      messagesCount: messages?.length || 0
     });
     
     return messages || [];
-  }, [queryParam, queryClient, currentIndex, instanceId]);
+  }, [queryParam, queryClient, currentIndex]);
 
-  // Monitor for cross-contamination
+  // Reset state when conversation changes
   useEffect(() => {
-    const interval = setInterval(() => {
-      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-      const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
-      
-      if (messages && messages.length > 0) {
-        const corruptedMessages = messages.filter(msg => 
-          msg._debugCurrentIndex !== undefined && 
-          msg._debugCurrentIndex !== currentIndex
-        );
-        
-        if (corruptedMessages.length > 0) {
-          console.error(`🚨 [${instanceId.current}] CROSS-CONTAMINATION DETECTED:`, {
-            currentIndex,
-            corruptedMessages: corruptedMessages.map(msg => ({
-              storedIndex: msg._debugCurrentIndex,
-              instanceId: msg._debugInstanceId
-            }))
-          });
-        }
-      }
-    }, 2000);
-    
-    return () => clearInterval(interval);
-  }, [queryClient, queryParam, currentIndex, instanceId]);
+    finalMessageReceived.current = false;
+    lastGoodMessageCount.current = 0;
+    debugLog('CONVERSATION_RESET', {
+      currentIndex,
+      conversationId: conversation?.conversationId,
+      endpoint: conversation?.endpoint
+    });
+  }, [conversation?.conversationId, currentIndex]);
 
   const setSubmission = useSetRecoilState(store.submissionByIndex(currentIndex));
 
@@ -277,7 +258,7 @@ export default function useAddedHelpers({
     regenerate({ parentMessageId });
   };
 
-  const handleContinue = (e: React.MouseEvent<HTMLButtonButton>) => {
+  const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     continueGeneration();
   };
