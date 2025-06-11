@@ -17,11 +17,11 @@ const debugLog = (context: string, data: any) => {
 // Safe text extraction
 const safeExtractText = (msg: any): string => {
   const candidates = [
-    msg.text, 
-    msg.content, 
-    msg.response,
-    msg.message?.text,
-    msg.message?.content
+    msg?.text, 
+    msg?.content, 
+    msg?.response,
+    msg?.message?.text,
+    msg?.message?.content
   ];
   
   for (const candidate of candidates) {
@@ -41,9 +41,9 @@ export default function useAddedHelpers({
   currentIndex: number;
   paramId?: string;
 }) {
-  // Track state to detect corruption patterns
-  const finalMessageReceived = useRef(false);
-  const lastGoodMessageCount = useRef(0);
+  // Track good messages to prevent regression
+  const lastGoodMessages = useRef<TMessage[]>([]);
+  const hasReceivedValidContent = useRef(false);
   
   debugLog('useAddedHelpers INIT', { 
     rootIndex, 
@@ -85,46 +85,55 @@ export default function useAddedHelpers({
         return;
       }
       
-      // Get caller info to identify source
+      // Get caller info
       const callerStack = new Error().stack;
       const isFromStepHandler = callerStack?.includes('stepHandler') || callerStack?.includes('Step');
       const isFromFinalHandler = callerStack?.includes('finalHandler') || callerStack?.includes('Final');
       
-      debugLog('SET_MESSAGES_CALL_INFO', {
+      // Check if messages contain actual content
+      const hasValidContent = messages.some(msg => {
+        const text = safeExtractText(msg);
+        return text.length > 0;
+      });
+      
+      debugLog('SET_MESSAGES_VALIDATION', {
         currentIndex,
         messagesCount: messages.length,
         isFromStepHandler,
         isFromFinalHandler,
-        finalMessageReceived: finalMessageReceived.current,
-        lastGoodCount: lastGoodMessageCount.current
+        hasValidContent,
+        hasReceivedValidBefore: hasReceivedValidContent.current,
+        lastGoodCount: lastGoodMessages.current.length,
+        messagePreview: messages.map(m => ({
+          messageId: m.messageId,
+          sender: m.sender,
+          textLength: (m.text || '').length,
+          hasText: !!m.text,
+          textPreview: (m.text || '').substring(0, 50)
+        }))
       });
       
-      // Check if this is a step event corruption pattern
-      const hasValidContent = messages.some(msg => {
-        const text = safeExtractText(msg);
-        return text.length > 5; // Must have some real content
-      });
-      
-      // TARGETED BLOCKING: Only block step events after final message with no valid content
-      if (isFromStepHandler && 
-          finalMessageReceived.current && 
-          !hasValidContent && 
-          messages.length <= lastGoodMessageCount.current) {
-        
-        console.error('🚫 BLOCKING STEP EVENT CORRUPTION:', {
+      // CRITICAL FIX: Block empty step events that would overwrite good content
+      if (isFromStepHandler && !hasValidContent && hasReceivedValidContent.current) {
+        console.log('🚫 BLOCKING EMPTY STEP EVENT - Would overwrite good content:', {
           currentIndex,
           messagesCount: messages.length,
-          lastGoodCount: lastGoodMessageCount.current,
-          hasValidContent,
-          reason: 'Step event trying to overwrite good final response'
+          reason: 'Step event with empty text trying to overwrite valid content'
         });
-        return; // Block this specific corruption pattern
+        return; // Block the corruption
       }
       
-      // Mark final message received
-      if (isFromFinalHandler) {
-        finalMessageReceived.current = true;
-        console.log('✅ Final message received for currentIndex:', currentIndex);
+      // ALSO Block if this would be a regression (fewer messages with no new content)
+      if (!hasValidContent && 
+          messages.length <= lastGoodMessages.current.length && 
+          hasReceivedValidContent.current) {
+        console.log('🚫 BLOCKING MESSAGE REGRESSION:', {
+          currentIndex,
+          newCount: messages.length,
+          lastGoodCount: lastGoodMessages.current.length,
+          reason: 'Would reduce message count without adding content'
+        });
+        return; // Block the regression
       }
       
       const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
@@ -136,17 +145,28 @@ export default function useAddedHelpers({
         siblingIndex: 0,
         children: [],
         text: safeExtractText(msg),
-        isCompleted: true,
-        finish_reason: 'stop',
+        isCompleted: isFromFinalHandler,
+        finish_reason: isFromFinalHandler ? 'stop' : null,
       }));
       
-      debugLog('SANITIZED_MESSAGES', {
+      // Update tracking if this set has valid content
+      if (hasValidContent) {
+        lastGoodMessages.current = [...sanitizedMessages];
+        hasReceivedValidContent.current = true;
+        console.log('✅ UPDATED GOOD MESSAGE CACHE:', {
+          currentIndex,
+          messageCount: sanitizedMessages.length,
+          totalTextLength: sanitizedMessages.reduce((sum, m) => sum + (m.text?.length || 0), 0)
+        });
+      }
+      
+      debugLog('FINAL_SANITIZED_MESSAGES', {
         currentIndex,
         comparisonKey,
         originalCount: messages.length,
         sanitizedCount: sanitizedMessages.length,
         textLengths: sanitizedMessages.map(m => m.text?.length || 0),
-        validTexts: sanitizedMessages.map(m => !!m.text && m.text.length > 0)
+        hasAnyText: sanitizedMessages.some(m => m.text && m.text.length > 0)
       });
       
       // Store messages
@@ -154,11 +174,6 @@ export default function useAddedHelpers({
         [QueryKeys.messages, comparisonKey],
         sanitizedMessages,
       );
-      
-      // Update good message count if this set has valid content
-      if (hasValidContent) {
-        lastGoodMessageCount.current = Math.max(lastGoodMessageCount.current, sanitizedMessages.length);
-      }
       
       // Set latest message
       const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
@@ -168,12 +183,17 @@ export default function useAddedHelpers({
         console.log(`📝 Latest message text length: ${finalTextLength}`);
         
         if (finalTextLength === 0) {
-          console.error('🚨 ZERO LENGTH TEXT DETECTED:', {
+          console.error('🚨 STILL ZERO LENGTH - INVESTIGATION NEEDED:', {
             currentIndex,
             messageId: latestMultiMessage.messageId,
-            originalMessage: messages[messages.length - 1],
-            sanitizedMessage: latestMultiMessage
+            sender: latestMultiMessage.sender,
+            endpoint: latestMultiMessage.endpoint,
+            originalText: messages[messages.length - 1]?.text,
+            allKeys: Object.keys(latestMultiMessage),
+            fullMessage: JSON.stringify(latestMultiMessage, null, 2)
           });
+        } else {
+          console.log('✅ SUCCESS - Text extracted:', finalTextLength, 'characters');
         }
         
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
@@ -198,10 +218,10 @@ export default function useAddedHelpers({
     return messages || [];
   }, [queryParam, queryClient, currentIndex]);
 
-  // Reset state when conversation changes
+  // Reset tracking when conversation changes
   useEffect(() => {
-    finalMessageReceived.current = false;
-    lastGoodMessageCount.current = 0;
+    lastGoodMessages.current = [];
+    hasReceivedValidContent.current = false;
     debugLog('CONVERSATION_RESET', {
       currentIndex,
       conversationId: conversation?.conversationId,
