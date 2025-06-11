@@ -13,6 +13,8 @@ import AddMultiConvo from './AddMultiConvo';
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import { useChatContext, useAddedChatContext } from '~/Providers';
 import { mainTextareaId } from '~/common';
+import { useQueryClient } from '@tanstack/react-query';
+
 const defaultInterface = getConfigDefaults().interface;
 
 export default function Header() {
@@ -20,6 +22,9 @@ export default function Header() {
   const { navVisible, setNavVisible } = useOutletContext<ContextType>();
   const { user } = useAuthContext();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Add queryClient hook INSIDE the component
+  const queryClient = useQueryClient();
   
   // Add the chat context hooks for compare functionality
   const { conversation, setConversation } = useChatContext();
@@ -34,39 +39,66 @@ export default function Header() {
   // Add a ref to track if comparison is in progress
   const comparisonInProgress = useRef(false);
   
-  // Force DeFacts as default on mount
-  /*useEffect(() => {
-    if (conversation && conversation.endpoint !== 'gptPlugins') {
-      console.log('🔧 Forcing DeFacts for main conversation');
-      setConversation(prev => ({
-        ...prev,
-        endpoint: 'gptPlugins',
-        model: 'DeFacts'
-      }));
-    }
-  }, []);*/ // Run once on mount
-  
   // Track the last selected model for comparison - default to GPT-4
   const [lastSelectedModel, setLastSelectedModel] = useState({
     endpoint: 'openAI',
     model: 'gpt-4'
   });
   
-  // Listen for model selection changes
+  // SINGLE debug effect to monitor both conversations - FIXED VERSION
   useEffect(() => {
-    // Check conversation changes to track what was selected
-    if (conversation && conversation.endpoint !== 'gptPlugins') {
-      // User selected a non-DeFacts model, save it for comparison
-      setLastSelectedModel({
-        endpoint: conversation.endpoint,
-        model: conversation.model || 'gpt-4'
-      });
-      // Also save to localStorage as backup
-      localStorage.setItem('defacts_comparison_endpoint', conversation.endpoint);
-      localStorage.setItem('defacts_comparison_model', conversation.model || 'gpt-4');
+    console.log('🔍 CONVERSATION DEBUG:');
+    console.log('Main conversation (DeFacts):', conversation);
+    
+    // Check if messages are being received - BETTER MESSAGE ACCESS
+    if (conversation?.messages && Array.isArray(conversation.messages)) {
+      console.log('📨 DeFacts messages count:', conversation.messages.length);
+      
+      // The issue: conversation.messages might be just IDs, not full message objects
+      console.log('📨 DeFacts messages array:', conversation.messages);
+      
+      // Try to get actual message objects from query cache
+      const conversationId = conversation.conversationId;
+      if (conversationId) {
+        const messagesFromCache = queryClient.getQueryData(['messages', conversationId]);
+        console.log('📨 Messages from cache:', messagesFromCache);
+        
+        if (messagesFromCache && Array.isArray(messagesFromCache)) {
+          console.log('📨 Cached messages count:', messagesFromCache.length);
+          messagesFromCache.forEach((msg, idx) => {
+            console.log(`📨 DeFacts msg ${idx}:`, {
+              id: msg._id || msg.id || 'no-id',
+              text: msg.text ? msg.text.substring(0, 100) + '...' : 'NO TEXT',
+              content: msg.content ? msg.content.substring(0, 100) + '...' : 'NO CONTENT',  
+              isCreatedByUser: msg.isCreatedByUser,
+              error: msg.error,
+              sender: msg.sender,
+              messageId: msg.messageId,
+              // Show all properties to understand structure
+              allKeys: Object.keys(msg)
+            });
+          });
+        }
+      }
     }
-  }, [conversation?.endpoint, conversation?.model]);
-  
+    
+    // Also check the comparison messages
+    const comparisonMessages = queryClient.getQueryData(['messages', `${conversation?.conversationId}_comparison_1`]);
+    if (comparisonMessages) {
+      console.log('🔄 Comparison messages:', comparisonMessages);
+      if (Array.isArray(comparisonMessages)) {
+        comparisonMessages.forEach((msg, idx) => {
+          console.log(`🔄 Comparison msg ${idx}:`, {
+            text: msg.text ? msg.text.substring(0, 100) + '...' : 'NO TEXT',
+            isCreatedByUser: msg.isCreatedByUser,
+            error: msg.error
+          });
+        });
+      }
+    }
+    
+  }, [conversation, queryClient]);
+
   // Also check localStorage on mount in case there's a saved preference
   useEffect(() => {
     const savedEndpoint = localStorage.getItem('defacts_comparison_endpoint');
@@ -233,26 +265,6 @@ export default function Header() {
   });
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
-
-
-  // Debug effect to monitor both conversations
-useEffect(() => {
-  console.log('🔍 CONVERSATION DEBUG:');
-  console.log('Main conversation (DeFacts):', conversation);
-  console.log('Added conversation (Comparison):', /* you'll need to get this from context */);
-  
-  // Check if messages are being received
-  if (conversation?.messages) {
-    console.log('📨 DeFacts messages count:', conversation.messages.length);
-    conversation.messages.forEach((msg, idx) => {
-      console.log(`📨 DeFacts msg ${idx}:`, {
-        text: msg.text?.substring(0, 100) + '...',
-        isCreatedByUser: msg.isCreatedByUser,
-        error: msg.error
-      });
-    });
-  }
-}, [conversation]);
   
   // Modified compare handler with radio selection and enhanced debugging
   const handleCompareModels = () => {
@@ -354,7 +366,6 @@ useEffect(() => {
       setIsComparing(false);
     }, 2000);
   };
-
 
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
