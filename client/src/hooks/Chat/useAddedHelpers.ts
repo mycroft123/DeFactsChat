@@ -81,35 +81,28 @@ export default function useAddedHelpers({
     isComparisonConvo: currentIndex > 0
   });
   
-  // Add query client to window for debugging
-  if (typeof window !== 'undefined' && currentIndex === 0) {
-    (window as any).__LIBRECHAT_QUERY_CLIENT__ = queryClient;
-    (window as any).__LIBRECHAT_DEBUG__ = {
+  // Add comprehensive debugging immediately
+  console.log('🔧 DEBUGGING - currentIndex:', currentIndex, 'queryParam:', queryParam);
+  
+  // Try to expose debugging tools globally
+  if (typeof window !== 'undefined') {
+    if (!window.__LIBRECHAT_DEBUG__) {
+      window.__LIBRECHAT_DEBUG__ = {};
+    }
+    window.__LIBRECHAT_DEBUG__[`helper_${currentIndex}`] = {
       queryClient,
-      getMessages: (convId: string) => {
-        console.log('Checking all possible message storage locations for:', convId);
-        const results: any = {};
-        
-        // Try all possible key combinations
-        results['3-part-0'] = queryClient.getQueryData(['messages', convId, 0]);
-        results['3-part-1'] = queryClient.getQueryData(['messages', convId, 1]);
-        results['2-part-main'] = queryClient.getQueryData(['messages', convId]);
-        results['2-part-comp'] = queryClient.getQueryData(['messages', convId + '_comparison_1']);
-        
-        // Also check the cache directly
-        const cache = queryClient.getQueryCache();
-        const queries = cache.getAll();
-        const messageQueries = queries.filter((q: any) => q.queryKey[0] === 'messages');
-        
-        console.log('Found message queries:', messageQueries.map((q: any) => q.queryKey));
-        console.log('Results:', results);
-        
-        return results;
-      },
       currentIndex,
-      queryParam
+      queryParam,
+      getStoredMessages: () => {
+        const results = {};
+        results[`3-part-${currentIndex}`] = queryClient.getQueryData(['messages', queryParam, currentIndex]);
+        results['cache-all'] = queryClient.getQueryCache().getAll()
+          .filter(q => q.queryKey[0] === 'messages')
+          .map(q => ({ key: q.queryKey, hasData: !!q.state.data }));
+        return results;
+      }
     };
-    console.log('🔧 Debug tools available at window.__LIBRECHAT_DEBUG__');
+    console.log(`🔧 Debug helper available at window.__LIBRECHAT_DEBUG__.helper_${currentIndex}`);
   }
 
   const setMessages = useCallback(
