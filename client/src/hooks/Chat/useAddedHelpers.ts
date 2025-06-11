@@ -15,7 +15,6 @@ export default function useAddedHelpers({
   currentIndex: number;
   paramId?: string;
 }) {
-  // Debug logging with more detail
   console.log('🔧 [useAddedHelpers] Initialized:', { 
     rootIndex, 
     currentIndex, 
@@ -57,7 +56,75 @@ export default function useAddedHelpers({
   
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
-  // COMPLETELY REWRITTEN: Bypass broken comparison system
+  // IMPROVED: Better text extraction with proper fallbacks
+  const extractTextContent = useCallback((msg: any): string => {
+    console.log('🔍 [extractTextContent] Analyzing message:', {
+      hasText: !!msg.text,
+      hasContent: !!msg.content,
+      hasDelta: !!msg.delta,
+      messageId: msg.messageId
+    });
+    
+    // Direct text - most common case
+    if (typeof msg.text === 'string' && msg.text.trim()) {
+      console.log('✅ [extractTextContent] Found direct text:', msg.text.substring(0, 50) + '...');
+      return msg.text.trim();
+    }
+    
+    // Content as string
+    if (typeof msg.content === 'string' && msg.content.trim()) {
+      console.log('✅ [extractTextContent] Found string content:', msg.content.substring(0, 50) + '...');
+      return msg.content.trim();
+    }
+    
+    // Content as array (common in streaming responses)
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content
+        .filter(part => part?.type === 'text' && typeof part.text === 'string')
+        .map(part => part.text.trim())
+        .filter(Boolean);
+      
+      if (textParts.length > 0) {
+        const combined = textParts.join(' ');
+        console.log('✅ [extractTextContent] Found array content:', combined.substring(0, 50) + '...');
+        return combined;
+      }
+    }
+    
+    // Delta content (streaming updates)
+    if (msg.delta?.content && Array.isArray(msg.delta.content)) {
+      const deltaText = msg.delta.content
+        .filter(part => part?.type === 'text' && typeof part.text === 'string')
+        .map(part => part.text.trim())
+        .filter(Boolean);
+      
+      if (deltaText.length > 0) {
+        const combined = deltaText.join(' ');
+        console.log('✅ [extractTextContent] Found delta content:', combined.substring(0, 50) + '...');
+        return combined;
+      }
+    }
+    
+    // Fallback: try to find ANY text-like property
+    const possibleTextFields = ['text', 'content', 'message', 'response', 'body'];
+    for (const field of possibleTextFields) {
+      const value = msg[field];
+      if (typeof value === 'string' && value.trim()) {
+        console.log(`✅ [extractTextContent] Found fallback text in ${field}:`, value.substring(0, 50) + '...');
+        return value.trim();
+      }
+    }
+    
+    // Final fallback - return placeholder instead of empty string
+    const fallbackText = msg.role === 'user' 
+      ? '[User message content not available]' 
+      : '[Assistant response not available]';
+    
+    console.warn('⚠️ [extractTextContent] No text content found, using fallback:', fallbackText);
+    return fallbackText;
+  }, []);
+
+  // SIMPLIFIED: Single cache strategy
   const setMessages = useCallback(
     (messages: TMessage[]) => {
       if (!messages || messages.length === 0) {
@@ -65,162 +132,78 @@ export default function useAddedHelpers({
         return;
       }
       
-      const timestamp = new Date().toISOString();
-      console.log(`🔧 [setMessages] Processing ${messages.length} messages for currentIndex: ${currentIndex}`, {
-        timestamp,
-        messageCount: messages.length,
-        currentIndex
-      });
+      console.log(`🔧 [setMessages] Processing ${messages.length} messages for currentIndex: ${currentIndex}`);
       
-      // Extract actual text content with comprehensive fallback
-      const extractTextContent = (msg: any): string => {
-        console.log('🔍 [extractTextContent] Analyzing message:', {
-          hasText: !!msg.text,
-          hasContent: !!msg.content,
-          hasDelta: !!msg.delta,
-          textType: typeof msg.text,
-          contentType: typeof msg.content
-        });
-        
-        // Direct text
-        if (typeof msg.text === 'string' && msg.text.trim().length > 0) {
-          console.log('✅ [extractTextContent] Found direct text:', msg.text.substring(0, 50) + '...');
-          return msg.text;
-        }
-        
-        // Content as string
-        if (typeof msg.content === 'string' && msg.content.trim().length > 0) {
-          console.log('✅ [extractTextContent] Found string content:', msg.content.substring(0, 50) + '...');
-          return msg.content;
-        }
-        
-        // Content as array
-        if (Array.isArray(msg.content)) {
-          const textParts = msg.content
-            .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
-            .map(part => part.text)
-            .filter(text => text && text.trim().length > 0);
-          
-          if (textParts.length > 0) {
-            const combined = textParts.join('');
-            console.log('✅ [extractTextContent] Found array content:', combined.substring(0, 50) + '...');
-            return combined;
-          }
-        }
-        
-        // Delta content (streaming)
-        if (msg.delta && Array.isArray(msg.delta.content)) {
-          const deltaText = msg.delta.content
-            .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
-            .map(part => part.text)
-            .filter(text => text && text.trim().length > 0);
-          
-          if (deltaText.length > 0) {
-            const combined = deltaText.join('');
-            console.log('✅ [extractTextContent] Found delta content:', combined.substring(0, 50) + '...');
-            return combined;
-          }
-        }
-        
-        console.warn('❌ [extractTextContent] No text content found in message');
-        return '';
-      };
-      
-      // Process messages with proper text extraction
+      // Process messages with robust text extraction
       const processedMessages = messages.map((msg, index) => {
         const extractedText = extractTextContent(msg);
         
         const processed = {
           ...msg,
-          // Force single response properties
+          text: extractedText,
+          // Ensure single response (no siblings)
           siblingCount: 1,
           siblingIndex: 0,
           children: [],
-          text: extractedText,
           isCompleted: true,
-          finish_reason: 'stop',
-          // Add metadata for debugging
-          _debugInfo: {
-            processedAt: timestamp,
-            originalTextType: typeof msg.text,
-            originalContentType: typeof msg.content,
-            extractedLength: extractedText.length,
-            currentIndex,
-            messageIndex: index
-          }
+          finish_reason: msg.finish_reason || 'stop',
+          // Preserve original data for debugging
+          _originalText: msg.text,
+          _originalContent: msg.content,
+          _processedAt: new Date().toISOString()
         };
         
         console.log(`🔧 [setMessages] Processed message ${index}:`, {
           messageId: processed.messageId,
+          role: processed.role,
           textLength: processed.text.length,
-          preview: processed.text.substring(0, 100) + '...'
+          hasText: processed.text !== '[User message content not available]' && processed.text !== '[Assistant response not available]'
         });
         
         return processed;
       });
       
-      // Store in BOTH comparison cache AND main cache to bypass broken system
-      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-      const mainKey = queryParam;
+      // Store in query cache with single key strategy
+      const cacheKey = queryParam;
+      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, cacheKey], processedMessages);
+      console.log(`✅ [setMessages] Stored ${processedMessages.length} messages in cache: ${cacheKey}`);
       
-      // Store in comparison cache
-      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, comparisonKey], processedMessages);
-      console.log(`✅ [setMessages] Stored ${processedMessages.length} messages in comparison cache:`, comparisonKey);
-      
-      // ALSO store in main cache to bypass comparison issues
-      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, mainKey], processedMessages);
-      console.log(`✅ [setMessages] Stored ${processedMessages.length} messages in main cache:`, mainKey);
-      
-      // Force update the latest message display
+      // Update latest message
       const latestMessage = processedMessages[processedMessages.length - 1];
       if (latestMessage) {
         console.log('🔧 [setMessages] Setting latest message:', {
           messageId: latestMessage.messageId,
-          textLength: latestMessage.text.length,
-          preview: latestMessage.text.substring(0, 100) + '...',
-          currentIndex
+          role: latestMessage.role,
+          textLength: latestMessage.text.length
         });
         
-        // Force set the latest message
         setLatestMultiMessage({ 
           ...latestMessage, 
-          depth: -1,
-          _forceUpdate: timestamp // Force re-render
+          depth: -1
         });
         
-        console.log('✅ [setMessages] Latest message set successfully for currentIndex:', currentIndex);
+        console.log('✅ [setMessages] Latest message set successfully');
       }
       
-      // Reset sibling index
       resetSiblingIndex();
-      
-      console.log('🎉 [setMessages] Complete! Messages processed and stored successfully');
+      console.log('🎉 [setMessages] Processing complete!');
     },
-    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
+    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex, extractTextContent],
   );
 
-  // REWRITTEN: Get messages from BOTH caches
+  // SIMPLIFIED: Single cache retrieval
   const getMessages = useCallback(() => {
-    const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-    const mainKey = queryParam;
-    
-    // Try comparison cache first
-    let messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
-    
-    // Fallback to main cache
-    if (!messages || messages.length === 0) {
-      messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, mainKey]);
-      console.log('🔧 [getMessages] Using main cache fallback');
-    }
+    const cacheKey = queryParam;
+    const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, cacheKey]);
     
     console.log('🔧 [getMessages] Retrieved messages:', {
       currentIndex,
-      comparisonKey,
-      mainKey,
+      cacheKey,
       messageCount: messages?.length || 0,
-      latestTextLength: messages?.[messages.length - 1]?.text?.length || 0
+      hasMessages: !!messages && messages.length > 0
     });
     
+    // If no messages found, return empty array instead of undefined
     return messages || [];
   }, [queryParam, queryClient, currentIndex]);
 
