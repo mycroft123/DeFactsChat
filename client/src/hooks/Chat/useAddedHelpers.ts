@@ -87,10 +87,29 @@ export default function useAddedHelpers({
         sanitizedMessages,
       );
       
+      // 🔧 FIXED: Get the latest message from the sanitized array that was just processed
       const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
       if (latestMultiMessage) {
         console.log('Latest message text length:', latestMultiMessage.text?.length || 0);
-        setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
+        console.log('🔍 [DEBUG] Message content preview:', latestMultiMessage.text?.substring(0, 100) + '...');
+        
+        // Ensure the message has content before setting it
+        if (latestMultiMessage.text && latestMultiMessage.text.length > 0) {
+          setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
+          console.log('✅ [DEBUG] Latest message set successfully for currentIndex:', currentIndex);
+        } else {
+          console.warn('⚠️ [DEBUG] Message has no text content, not setting as latest');
+          
+          // Fallback: Try to get from comparison cache
+          const cachedMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+          const cachedLatest = cachedMessages?.[cachedMessages.length - 1];
+          if (cachedLatest && cachedLatest.text && cachedLatest.text.length > 0) {
+            console.log('🔄 [DEBUG] Using cached message as fallback');
+            setLatestMultiMessage({ ...cachedLatest, depth: -1 });
+          }
+        }
+      } else {
+        console.error('❌ [DEBUG] No latest message found in sanitizedMessages');
       }
       
       // Force reset sibling index
@@ -102,6 +121,13 @@ export default function useAddedHelpers({
   const getMessages = useCallback(() => {
     const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
     const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+    
+    // Debug logging for messages retrieval
+    console.log('🔍 [DEBUG] getMessages called for currentIndex:', currentIndex);
+    console.log('🔍 [DEBUG] Retrieved messages count:', messages?.length || 0);
+    if (messages && messages.length > 0) {
+      console.log('🔍 [DEBUG] Latest message text length:', messages[messages.length - 1]?.text?.length || 0);
+    }
     
     // Return empty array if no messages to prevent undefined errors
     return messages || [];
