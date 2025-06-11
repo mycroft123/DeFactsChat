@@ -35,8 +35,8 @@ const debugMessages = (context: string, messages: any[], source: string) => {
     messages.forEach((msg, idx) => {
       console.log(`📝 Message ${idx}:`, {
         id: msg._id || msg.id || msg.messageId || 'no-id',
-        text: msg.text ? `${msg.text.substring(0, 100)}...` : 'NO TEXT',
-        content: msg.content ? `${msg.content.substring(0, 100)}...` : 'NO CONTENT',
+        text: typeof msg.text === 'string' ? `${msg.text.substring(0, 100)}...` : `Type: ${typeof msg.text}`,
+        content: typeof msg.content === 'string' ? `${msg.content.substring(0, 100)}...` : `Type: ${typeof msg.content}`,
         isCreatedByUser: msg.isCreatedByUser,
         error: msg.error,
         sender: msg.sender,
@@ -51,6 +51,14 @@ const debugMessages = (context: string, messages: any[], source: string) => {
   }
   
   console.groupEnd();
+};
+
+// Safe content extraction
+const safeExtractText = (obj: any): string => {
+  if (typeof obj === 'string') return obj;
+  if (typeof obj === 'number') return obj.toString();
+  if (obj && typeof obj.toString === 'function') return obj.toString();
+  return 'NO_TEXT';
 };
 
 export default function Header() {

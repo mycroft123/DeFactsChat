@@ -33,8 +33,9 @@ const debugDelta = (context: string, data: any, metadata?: any) => {
   if (data?.delta) {
     console.log('📝 Delta content detected:', {
       hasContent: !!data.delta.content,
-      contentLength: data.delta.content?.length || 0,
-      contentPreview: data.delta.content?.substring(0, 100) + '...',
+      contentType: typeof data.delta.content,
+      contentLength: typeof data.delta.content === 'string' ? data.delta.content.length : 0,
+      contentPreview: typeof data.delta.content === 'string' ? data.delta.content.substring(0, 100) + '...' : `Type: ${typeof data.delta.content}`,
       deltaKeys: Object.keys(data.delta)
     });
   }
@@ -42,13 +43,39 @@ const debugDelta = (context: string, data: any, metadata?: any) => {
   // Track message building
   if (data?.text || data?.content) {
     console.log('📝 Message content:', {
-      textLength: data.text?.length || 0,
-      contentLength: data.content?.length || 0,
-      preview: (data.text || data.content)?.substring(0, 100) + '...'
+      textType: typeof data.text,
+      contentType: typeof data.content,
+      textLength: typeof data.text === 'string' ? data.text.length : 0,
+      contentLength: typeof data.content === 'string' ? data.content.length : 0,
+      preview: typeof data.text === 'string' ? data.text.substring(0, 100) + '...' : 
+               typeof data.content === 'string' ? data.content.substring(0, 100) + '...' : 
+               `Text: ${typeof data.text}, Content: ${typeof data.content}`
     });
   }
   
   console.groupEnd();
+};
+
+// Safe content extraction utility
+const safeGetContent = (obj: any, field: string = 'content'): string => {
+  const value = obj?.[field];
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return value.toString();
+  if (value && typeof value === 'object' && value.toString) return value.toString();
+  return '';
+};
+
+// Safe preview utility
+const safePreview = (content: any, length: number = 100): string => {
+  if (typeof content === 'string') {
+    return content.substring(0, length) + (content.length > length ? '...' : '');
+  }
+  if (typeof content === 'number') {
+    return content.toString();
+  }
+  if (content === null) return 'null';
+  if (content === undefined) return 'undefined';
+  return `Type: ${typeof content}`;
 };
 
 // Side-by-side comparison debug
@@ -567,12 +594,13 @@ export default function useSSE(
 
           // Track delta accumulation
           if (data.messageId && data.text) {
+            const safeText = safeGetContent(data, 'text');
             deltaAccumulator.current[data.messageId] = 
-              (deltaAccumulator.current[data.messageId] || '') + data.text;
+              (deltaAccumulator.current[data.messageId] || '') + safeText;
             
             debugDelta('DELTA_ACCUMULATION', {
               messageId: data.messageId,
-              newText: data.text,
+              newText: safePreview(safeText, 50),
               totalLength: deltaAccumulator.current[data.messageId].length,
               timeElapsed: messageStartTime.current[data.messageId] ? 
                 Date.now() - messageStartTime.current[data.messageId] : 'unknown'
