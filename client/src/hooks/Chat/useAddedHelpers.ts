@@ -74,20 +74,20 @@ export default function useAddedHelpers({
         children: [],
         // Enhanced text extraction for streaming messages
         text: (() => {
-          // Direct text property
+          // Direct text property (highest priority)
           if (typeof msg.text === 'string' && msg.text.length > 0) {
             return msg.text;
           }
           
-          // Content as string
+          // Content as string (second priority)
           if (typeof msg.content === 'string' && msg.content.length > 0) {
             return msg.content;
           }
           
-          // Content as array (streaming format)
+          // Content as array (streaming format - third priority)
           if (Array.isArray(msg.content)) {
             const textParts = msg.content
-              .filter(part => part.type === 'text' && part.text)
+              .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
               .map(part => part.text)
               .join('');
             if (textParts.length > 0) {
@@ -95,8 +95,25 @@ export default function useAddedHelpers({
             }
           }
           
-          // Fallback
-          return (msg.text || msg.content || '').toString();
+          // Delta content extraction (for streaming)
+          if (msg.delta && Array.isArray(msg.delta.content)) {
+            const deltaText = msg.delta.content
+              .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
+              .map(part => part.text)
+              .join('');
+            if (deltaText.length > 0) {
+              return deltaText;
+            }
+          }
+          
+          // Fallback - but avoid converting objects to [object Object]
+          const fallback = msg.text || msg.content || '';
+          if (typeof fallback === 'string') {
+            return fallback;
+          }
+          
+          // If all else fails, return empty string to avoid [object Object]
+          return '';
         })(),
         isCompleted: true,
         finish_reason: 'stop',
@@ -113,7 +130,15 @@ export default function useAddedHelpers({
       const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
       if (latestMultiMessage) {
         console.log('Latest message text length:', latestMultiMessage.text?.length || 0);
-        console.log('🔍 [DEBUG] Message content preview:', latestMultiMessage.text?.substring(0, 100) + '...');
+        
+        // Enhanced preview that handles objects properly
+        const preview = (() => {
+          if (typeof latestMultiMessage.text === 'string' && latestMultiMessage.text.length > 0) {
+            return latestMultiMessage.text.substring(0, 100) + '...';
+          }
+          return 'No text content';
+        })();
+        console.log('🔍 [DEBUG] Message content preview:', preview);
         
         // Ensure the message has content before setting it
         if (latestMultiMessage.text && latestMultiMessage.text.length > 0) {
@@ -121,6 +146,7 @@ export default function useAddedHelpers({
           console.log('✅ [DEBUG] Latest message set successfully for currentIndex:', currentIndex);
         } else {
           console.warn('⚠️ [DEBUG] Message has no text content, not setting as latest');
+          console.warn('⚠️ [DEBUG] Message object:', JSON.stringify(latestMultiMessage, null, 2));
           
           // Fallback: Try to get from comparison cache
           const cachedMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
