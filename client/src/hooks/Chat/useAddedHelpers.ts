@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { QueryKeys } from 'librechat-data-provider';
 import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
@@ -14,55 +14,32 @@ const debugLog = (context: string, data: any) => {
   console.groupEnd();
 };
 
-// CRITICAL FIX: Enhanced text extraction that handles all message formats
+// Enhanced text extraction to handle all message formats including Perplexity
 const safeExtractText = (msg: any): string => {
-  // Log what we're trying to extract from
-  console.log('🔍 Attempting text extraction from:', {
-    messageKeys: Object.keys(msg || {}),
-    hasText: !!msg?.text,
-    hasContent: !!msg?.content,
-    hasResponse: !!msg?.response,
-    hasDelta: !!msg?.delta,
-    messageId: msg?.messageId,
-    sender: msg?.sender
-  });
-  
-  // All possible text locations in priority order
-  const candidates = [
-    msg?.text,
-    msg?.content,
-    msg?.response,
-    msg?.message?.text,
-    msg?.message?.content,
-    msg?.delta?.content,
-    msg?.choices?.[0]?.delta?.content,
-    msg?.choices?.[0]?.message?.content,
-    msg?.parts?.[0]?.text,
-    msg?.result?.response,
-    msg?.data?.text,
-    msg?.data?.content
-  ];
-  
-  for (let i = 0; i < candidates.length; i++) {
-    const candidate = candidates[i];
-    if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      console.log(`✅ Found text at position ${i}:`, candidate.substring(0, 50) + '...');
-      return candidate.trim();
+  // First check if content is an array (Perplexity/structured format)
+  if (Array.isArray(msg?.content)) {
+    for (const item of msg.content) {
+      if (item?.type === 'text' && typeof item.text === 'string' && item.text.trim().length > 0) {
+        return item.text.trim();
+      }
     }
   }
   
-  // If no text found, log the entire structure for debugging
-  console.error('❌ No text found in message structure:', JSON.stringify(msg, null, 2));
-  return '';
-};
-
-// CRITICAL: Centralized storage key generator to ensure consistency
-const getStorageKey = (queryParam: string, currentIndex: number): string => {
-  if (currentIndex === 0) {
-    return queryParam; // Main conversation uses base key
-  } else {
-    return `${queryParam}_comparison_${currentIndex}`; // Comparison uses indexed key
+  // Then check standard text fields
+  const candidates = [
+    msg?.text, 
+    msg?.content, 
+    msg?.response,
+    msg?.message?.text,
+    msg?.message?.content
+  ];
+  
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
   }
+  return '';
 };
 
 export default function useAddedHelpers({
@@ -74,321 +51,130 @@ export default function useAddedHelpers({
   currentIndex: number;
   paramId?: string;
 }) {
+  const queryClient = useQueryClient();
+  
   // Track good messages to prevent regression
   const lastGoodMessages = useRef<TMessage[]>([]);
   const hasReceivedValidContent = useRef(false);
-  const messageUpdateCount = useRef(0);
-  
+
+  const clearAllSubmissions = store.useClearSubmissionState();
+  const [files, setFiles] = useRecoilState(store.filesByIndex(rootIndex));
+  const latestMessage = useRecoilValue(store.latestMessageFamily(rootIndex));
+  const setLatestMultiMessage = useSetRecoilState(store.latestMessageFamily(currentIndex));
+
+  const { useCreateConversationAtom } = store;
+  const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
+  const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
+
+  const setSiblingIdx = useSetRecoilState(
+    store.messagesSiblingIdxFamily(latestMessage?.parentMessageId ?? null),
+  );
+
+  const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
+
   debugLog('useAddedHelpers INIT', { 
     rootIndex, 
     currentIndex, 
     paramId,
+    queryParam,
     isMainConvo: currentIndex === 0,
     isComparisonConvo: currentIndex > 0
   });
-  
-  const queryClient = useQueryClient();
-  const clearAllSubmissions = store.useClearSubmissionState();
-  const [files, setFiles] = useRecoilState(store.filesByIndex(rootIndex));
-  
-  const setLatestMultiMessage = useSetRecoilState(store.latestMessageFamily(currentIndex));
-  const { useCreateConversationAtom } = store;
-  const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
-  
-  const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
-  
-  // CRITICAL: Always use the centralized key generator
-  const storageKey = getStorageKey(queryParam, currentIndex);
-  
-  const rootMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, storageKey]);
-  const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
-  
-  const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
-  
-  // Sibling management
-  const setSiblingIdx = useSetRecoilState(store.messagesSiblingIdxFamily(null));
-  const parentMessageId = actualLatestMessage?.parentMessageId || null;
-  const actualSiblingIdxSetter = useSetRecoilState(store.messagesSiblingIdxFamily(parentMessageId));
-  
-  const resetSiblingIndex = useCallback(() => {
-    if (parentMessageId) {
-      actualSiblingIdxSetter(0);
-    }
-  }, [actualSiblingIdxSetter, parentMessageId]);
 
   const setMessages = useCallback(
     (messages: TMessage[]) => {
-      messageUpdateCount.current++;
-      
       if (!messages || messages.length === 0) {
         console.warn('⚠️ Attempted to set empty messages array');
         return;
       }
       
-      // Get caller info for debugging
+      // Get caller info
       const callerStack = new Error().stack;
       const isFromStepHandler = callerStack?.includes('stepHandler') || callerStack?.includes('Step');
       const isFromFinalHandler = callerStack?.includes('finalHandler') || callerStack?.includes('Final');
-      const isFromContentHandler = callerStack?.includes('contentHandler') || callerStack?.includes('Content');
       
-      // CRITICAL: Extract text properly for validation
-      const messagesWithText = messages.map(msg => {
+      // Enhanced message processing
+      const processedMessages = messages.map(msg => {
         const extractedText = safeExtractText(msg);
-        return {
-          ...msg,
-          _extractedText: extractedText,
-          _originalText: msg.text
-        };
+        // If text field is empty but we extracted text, use the extracted text
+        if (!msg.text && extractedText) {
+          return { ...msg, text: extractedText };
+        }
+        return msg;
       });
       
       // Check if messages contain actual content
-      const hasValidContent = messagesWithText.some(msg => msg._extractedText.length > 0);
-      
-      // CRITICAL: Use centralized storage key
-      const comparisonKey = getStorageKey(queryParam, currentIndex);
+      const hasValidContent = processedMessages.some(msg => {
+        const text = msg.text || '';
+        return text.length > 0;
+      });
       
       debugLog('SET_MESSAGES_VALIDATION', {
         currentIndex,
-        comparisonKey,
+        queryParam,
         messagesCount: messages.length,
-        updateNumber: messageUpdateCount.current,
         isFromStepHandler,
         isFromFinalHandler,
-        isFromContentHandler,
         hasValidContent,
         hasReceivedValidBefore: hasReceivedValidContent.current,
         lastGoodCount: lastGoodMessages.current.length,
-        messagePreview: messagesWithText.map(m => ({
+        messagePreview: processedMessages.map(m => ({
           messageId: m.messageId,
           sender: m.sender,
-          originalTextLength: (m._originalText || '').length,
-          extractedTextLength: m._extractedText.length,
-          hasOriginalText: !!m._originalText,
-          hasExtractedText: m._extractedText.length > 0,
-          textPreview: m._extractedText.substring(0, 50)
+          endpoint: m.endpoint,
+          textLength: (m.text || '').length,
+          hasText: !!m.text,
+          textPreview: (m.text || '').substring(0, 50)
         }))
       });
       
-      // CRITICAL FIX: For content handlers, always update if we have new content
-      if (isFromContentHandler && hasValidContent) {
-        console.log('✅ CONTENT HANDLER WITH VALID TEXT - PROCEEDING');
-      }
       // Block empty step events that would overwrite good content
-      else if (isFromStepHandler && !hasValidContent && hasReceivedValidContent.current) {
-        console.log('🚫 BLOCKING EMPTY STEP EVENT - Would overwrite good content:', {
-          currentIndex,
-          comparisonKey,
-          messagesCount: messages.length,
-          reason: 'Step event with empty text trying to overwrite valid content'
-        });
-        return; // Block the corruption
-      }
-      // Also block if this would be a regression (fewer messages with no new content)
-      else if (!hasValidContent && 
-          messages.length <= lastGoodMessages.current.length && 
-          hasReceivedValidContent.current &&
-          !isFromFinalHandler) { // Allow final handler to complete even without new content
-        console.log('🚫 BLOCKING MESSAGE REGRESSION:', {
-          currentIndex,
-          comparisonKey,
-          newCount: messages.length,
-          lastGoodCount: lastGoodMessages.current.length,
-          reason: 'Would reduce message count without adding content'
-        });
-        return; // Block the regression
+      if (isFromStepHandler && !hasValidContent && hasReceivedValidContent.current) {
+        console.log('🚫 BLOCKING EMPTY STEP EVENT - Would overwrite good content');
+        return;
       }
       
-      // Sanitize messages with proper metadata and extracted text
-      const sanitizedMessages = messagesWithText.map((msg, index) => {
-        // Remove our temporary extraction fields
-        const { _extractedText, _originalText, ...cleanMsg } = msg;
-        
-        return {
-          ...cleanMsg,
-          siblingCount: 1,
-          siblingIndex: 0,
-          children: [],
-          text: _extractedText || _originalText || '', // Use extracted text
-          isCompleted: isFromFinalHandler,
-          finish_reason: isFromFinalHandler ? 'stop' : null,
-          // Add conversation tracking metadata
-          _conversationIndex: currentIndex,
-          _storageKey: comparisonKey,
-          _timestamp: Date.now(),
-          _updateNumber: messageUpdateCount.current
-        };
-      });
+      // Block if this would be a regression
+      if (!hasValidContent && 
+          messages.length <= lastGoodMessages.current.length && 
+          hasReceivedValidContent.current &&
+          !isFromFinalHandler) {
+        console.log('🚫 BLOCKING MESSAGE REGRESSION');
+        return;
+      }
       
       // Update tracking if this set has valid content
       if (hasValidContent) {
-        lastGoodMessages.current = [...sanitizedMessages];
+        lastGoodMessages.current = [...processedMessages];
         hasReceivedValidContent.current = true;
-        console.log('✅ UPDATED GOOD MESSAGE CACHE:', {
-          currentIndex,
-          comparisonKey,
-          messageCount: sanitizedMessages.length,
-          totalTextLength: sanitizedMessages.reduce((sum, m) => sum + (m.text?.length || 0), 0)
-        });
       }
       
-      debugLog('FINAL_SANITIZED_MESSAGES', {
-        currentIndex,
-        comparisonKey,
-        originalCount: messages.length,
-        sanitizedCount: sanitizedMessages.length,
-        textLengths: sanitizedMessages.map(m => m.text?.length || 0),
-        hasAnyText: sanitizedMessages.some(m => m.text && m.text.length > 0),
-        storageStrategy: currentIndex === 0 ? 'main-messages' : 'comparison-cache'
-      });
-      
-      // Store messages with proper key - DO NOT DUPLICATE
+      // Store messages using the original 3-part key structure
       queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, comparisonKey],
-        sanitizedMessages,
+        [QueryKeys.messages, queryParam, currentIndex],
+        processedMessages,
       );
       
-      // Immediate verification
-      setTimeout(() => {
-        const verifyMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
-        debugLog('STORAGE_VERIFICATION', {
-          comparisonKey,
-          currentIndex,
-          messagesStored: !!verifyMessages,
-          storedCount: verifyMessages?.length || 0,
-          expectedCount: sanitizedMessages.length,
-          updateNumber: messageUpdateCount.current
-        });
-        
-        if (!verifyMessages || verifyMessages.length === 0) {
-          console.error('🚨 MESSAGES DISAPPEARED AFTER STORAGE!', {
-            comparisonKey,
-            currentIndex,
-            hadMessages: sanitizedMessages.length,
-            updateNumber: messageUpdateCount.current
-          });
-          
-          // Try to recover from backup
-          if (lastGoodMessages.current.length > 0) {
-            console.log('🔧 ATTEMPTING RECOVERY FROM BACKUP');
-            queryClient.setQueryData<TMessage[]>(
-              [QueryKeys.messages, comparisonKey],
-              lastGoodMessages.current,
-            );
-          }
-        }
-      }, 100);
-      
-      // Set latest message
-      const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
+      const latestMultiMessage = processedMessages[processedMessages.length - 1];
       if (latestMultiMessage) {
-        const finalTextLength = latestMultiMessage.text?.length || 0;
-        
-        console.log(`📝 Latest message text length: ${finalTextLength}`);
-        
-        if (finalTextLength === 0) {
-          console.error('🚨 STILL ZERO LENGTH - INVESTIGATION NEEDED:', {
-            currentIndex,
-            comparisonKey,
-            messageId: latestMultiMessage.messageId,
-            sender: latestMultiMessage.sender,
-            endpoint: latestMultiMessage.endpoint,
-            originalText: messages[messages.length - 1]?.text,
-            extractedText: messagesWithText[messagesWithText.length - 1]?._extractedText,
-            allKeys: Object.keys(latestMultiMessage),
-            fullMessage: JSON.stringify(latestMultiMessage, null, 2)
-          });
-        } else {
-          console.log('✅ SUCCESS - Text extracted:', finalTextLength, 'characters');
-        }
-        
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
       }
-      
-      resetSiblingIndex();
     },
-    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
+    [queryParam, queryClient, currentIndex, setLatestMultiMessage],
   );
 
   const getMessages = useCallback(() => {
-    // CRITICAL: Use centralized storage key
-    const comparisonKey = getStorageKey(queryParam, currentIndex);
-    
-    const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+    const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, queryParam, currentIndex]);
     
     debugLog('GET_MESSAGES', {
-      comparisonKey,
+      queryParam,
       currentIndex,
       messagesFound: !!messages,
-      messagesCount: messages?.length || 0,
-      storageStrategy: currentIndex === 0 ? 'main-messages' : 'comparison-cache'
+      messagesCount: messages?.length || 0
     });
     
-    return messages || [];
+    return messages;
   }, [queryParam, queryClient, currentIndex]);
-
-  // Monitor all query cache changes for debugging
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const mainKey = getStorageKey(queryParam, 0);
-      const comparisonKey = getStorageKey(queryParam, currentIndex);
-      
-      const mainMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, mainKey]);
-      const currentMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
-      
-      // Check for all comparison keys
-      const allCacheKeys = queryClient.getQueryCache().getAll()
-        .filter(query => query.queryKey[0] === QueryKeys.messages)
-        .map(query => query.queryKey[1]);
-      
-      debugLog('PERIODIC_CACHE_CHECK', {
-        currentIndex,
-        mainKey,
-        comparisonKey,
-        mainMessagesCount: mainMessages?.length || 0,
-        currentMessagesCount: currentMessages?.length || 0,
-        mainHasContent: mainMessages?.some(m => m.text?.length > 0) || false,
-        currentHasContent: currentMessages?.some(m => m.text?.length > 0) || false,
-        allMessageKeys: allCacheKeys,
-        updateCount: messageUpdateCount.current
-      });
-    }, 5000);
-    
-    return () => clearInterval(interval);
-  }, [queryClient, queryParam, currentIndex]);
-
-  // Reset tracking when conversation changes
-  useEffect(() => {
-    lastGoodMessages.current = [];
-    hasReceivedValidContent.current = false;
-    messageUpdateCount.current = 0;
-    debugLog('CONVERSATION_RESET', {
-      currentIndex,
-      conversationId: conversation?.conversationId,
-      endpoint: conversation?.endpoint
-    });
-  }, [conversation?.conversationId, currentIndex]);
-
-  // Add global debug helper
-  useEffect(() => {
-    if (typeof window !== 'undefined' && currentIndex === 0) {
-      (window as any).debugLibreChat = {
-        getMainMessages: () => queryClient.getQueryData([QueryKeys.messages, queryParam]),
-        getComparisonMessages: () => queryClient.getQueryData([QueryKeys.messages, `${queryParam}_comparison_1`]),
-        getAllMessageQueries: () => {
-          const queries = queryClient.getQueryCache().getAll();
-          return queries
-            .filter(q => q.queryKey[0] === QueryKeys.messages)
-            .map(q => ({
-              key: q.queryKey[1],
-              data: q.state.data
-            }));
-        },
-        getLastGoodMessages: () => lastGoodMessages.current,
-        getUpdateCount: () => messageUpdateCount.current
-      };
-      console.log('🔧 Debug helpers available at window.debugLibreChat');
-    }
-  }, [queryClient, queryParam, currentIndex]);
 
   const setSubmission = useSetRecoilState(store.submissionByIndex(currentIndex));
 
@@ -401,24 +187,27 @@ export default function useAddedHelpers({
     isSubmitting,
     conversation,
     setSubmission,
-    latestMessage: actualLatestMessage,
+    latestMessage,
   });
 
   const continueGeneration = () => {
-    if (!actualLatestMessage) {
-      console.error('❌ Failed to regenerate the message: latestMessage not found.');
+    if (!latestMessage) {
+      console.error('Failed to regenerate the message: latestMessage not found.');
       return;
     }
 
     const messages = getMessages();
+
     const parentMessage = messages?.find(
-      (element) => element.messageId == actualLatestMessage.parentMessageId,
+      (element) => element.messageId == latestMessage.parentMessageId,
     );
 
     if (parentMessage && parentMessage.isCreatedByUser) {
       ask({ ...parentMessage }, { isContinued: true, isRegenerate: true, isEdited: true });
     } else {
-      console.error('❌ Failed to regenerate the message: parentMessage not found, or not created by user.');
+      console.error(
+        'Failed to regenerate the message: parentMessage not found, or not created by user.',
+      );
     }
   };
 
@@ -431,9 +220,9 @@ export default function useAddedHelpers({
 
   const handleRegenerate = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    const parentMessageId = actualLatestMessage?.parentMessageId;
+    const parentMessageId = latestMessage?.parentMessageId;
     if (!parentMessageId) {
-      console.error('❌ Failed to regenerate the message: parentMessageId not found.');
+      console.error('Failed to regenerate the message: parentMessageId not found.');
       return;
     }
     regenerate({ parentMessageId });
@@ -442,6 +231,7 @@ export default function useAddedHelpers({
   const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     continueGeneration();
+    setSiblingIdx(0);
   };
 
   return {
@@ -452,7 +242,7 @@ export default function useAddedHelpers({
     conversation,
     isSubmitting,
     setSiblingIdx,
-    latestMessage: actualLatestMessage,
+    latestMessage,
     stopGenerating,
     handleContinue,
     setConversation,
