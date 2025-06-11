@@ -15,8 +15,13 @@ export default function useAddedHelpers({
   currentIndex: number;
   paramId?: string;
 }) {
-  // Debug logging
-  console.log('useAddedHelpers initialized:', { rootIndex, currentIndex, paramId });
+  // Debug logging with more detail
+  console.log('🔧 [useAddedHelpers] Initialized:', { 
+    rootIndex, 
+    currentIndex, 
+    paramId,
+    timestamp: new Date().toISOString()
+  });
   
   const queryClient = useQueryClient();
   const clearAllSubmissions = store.useClearSubmissionState();
@@ -26,158 +31,196 @@ export default function useAddedHelpers({
   const { useCreateConversationAtom } = store;
   const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
   
-  // CRITICAL FIX: Use root messages to get the correct latest message
+  // Get root messages for reference
   const rootMessages = queryClient.getQueryData<TMessage[]>([
     QueryKeys.messages, 
     paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? ''
   ]);
   
-  // Get the actual latest message from root context for correct parentMessageId
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
   
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
   
-  // Force disable sibling threading completely - always use null to disable
-  const setSiblingIdx = useSetRecoilState(
-    store.messagesSiblingIdxFamily(null), // Always null to disable threading
-  );
+  // Disable sibling threading
+  const setSiblingIdx = useSetRecoilState(store.messagesSiblingIdxFamily(null));
   
-  // Always create a sibling setter, but use null as fallback to prevent errors
   const parentMessageId = actualLatestMessage?.parentMessageId || null;
   const actualSiblingIdxSetter = useSetRecoilState(
     store.messagesSiblingIdxFamily(parentMessageId)
   );
   
-  // Override sibling index to always be 0 (first/only response)
   const resetSiblingIndex = useCallback(() => {
     if (parentMessageId) {
       actualSiblingIdxSetter(0);
     }
   }, [actualSiblingIdxSetter, parentMessageId]);
+  
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
+  // COMPLETELY REWRITTEN: Bypass broken comparison system
   const setMessages = useCallback(
     (messages: TMessage[]) => {
       if (!messages || messages.length === 0) {
-        console.warn('Attempted to set empty messages array');
+        console.warn('🔧 [setMessages] Empty messages array received');
         return;
       }
       
-      console.log('Setting messages for currentIndex:', currentIndex, 'messages:', messages.length);
+      const timestamp = new Date().toISOString();
+      console.log(`🔧 [setMessages] Processing ${messages.length} messages for currentIndex: ${currentIndex}`, {
+        timestamp,
+        messageCount: messages.length,
+        currentIndex
+      });
       
-      // Ensure messages don't have sibling properties that cause threading
-      const sanitizedMessages = messages.map((msg, index) => ({
-        ...msg,
-        // Force single response properties
-        siblingCount: 1,
-        siblingIndex: 0,
-        children: [],
-        // Enhanced text extraction for streaming messages
-        text: (() => {
-          // Direct text property (highest priority)
-          if (typeof msg.text === 'string' && msg.text.length > 0) {
-            return msg.text;
-          }
-          
-          // Content as string (second priority)
-          if (typeof msg.content === 'string' && msg.content.length > 0) {
-            return msg.content;
-          }
-          
-          // Content as array (streaming format - third priority)
-          if (Array.isArray(msg.content)) {
-            const textParts = msg.content
-              .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
-              .map(part => part.text)
-              .join('');
-            if (textParts.length > 0) {
-              return textParts;
-            }
-          }
-          
-          // Delta content extraction (for streaming)
-          if (msg.delta && Array.isArray(msg.delta.content)) {
-            const deltaText = msg.delta.content
-              .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
-              .map(part => part.text)
-              .join('');
-            if (deltaText.length > 0) {
-              return deltaText;
-            }
-          }
-          
-          // Fallback - but avoid converting objects to [object Object]
-          const fallback = msg.text || msg.content || '';
-          if (typeof fallback === 'string') {
-            return fallback;
-          }
-          
-          // If all else fails, return empty string to avoid [object Object]
-          return '';
-        })(),
-        isCompleted: true,
-        finish_reason: 'stop',
-      }));
-      
-      // Store comparison messages with unique key and validation
-      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-      queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, comparisonKey],
-        sanitizedMessages,
-      );
-      
-      // 🔧 FIXED: Get the latest message from the sanitized array that was just processed
-      const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
-      if (latestMultiMessage) {
-        console.log('Latest message text length:', latestMultiMessage.text?.length || 0);
+      // Extract actual text content with comprehensive fallback
+      const extractTextContent = (msg: any): string => {
+        console.log('🔍 [extractTextContent] Analyzing message:', {
+          hasText: !!msg.text,
+          hasContent: !!msg.content,
+          hasDelta: !!msg.delta,
+          textType: typeof msg.text,
+          contentType: typeof msg.content
+        });
         
-        // Enhanced preview that handles objects properly
-        const preview = (() => {
-          if (typeof latestMultiMessage.text === 'string' && latestMultiMessage.text.length > 0) {
-            return latestMultiMessage.text.substring(0, 100) + '...';
-          }
-          return 'No text content';
-        })();
-        console.log('🔍 [DEBUG] Message content preview:', preview);
+        // Direct text
+        if (typeof msg.text === 'string' && msg.text.trim().length > 0) {
+          console.log('✅ [extractTextContent] Found direct text:', msg.text.substring(0, 50) + '...');
+          return msg.text;
+        }
         
-        // Ensure the message has content before setting it
-        if (latestMultiMessage.text && latestMultiMessage.text.length > 0) {
-          setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
-          console.log('✅ [DEBUG] Latest message set successfully for currentIndex:', currentIndex);
-        } else {
-          console.warn('⚠️ [DEBUG] Message has no text content, not setting as latest');
-          console.warn('⚠️ [DEBUG] Message object:', JSON.stringify(latestMultiMessage, null, 2));
+        // Content as string
+        if (typeof msg.content === 'string' && msg.content.trim().length > 0) {
+          console.log('✅ [extractTextContent] Found string content:', msg.content.substring(0, 50) + '...');
+          return msg.content;
+        }
+        
+        // Content as array
+        if (Array.isArray(msg.content)) {
+          const textParts = msg.content
+            .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
+            .map(part => part.text)
+            .filter(text => text && text.trim().length > 0);
           
-          // Fallback: Try to get from comparison cache
-          const cachedMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
-          const cachedLatest = cachedMessages?.[cachedMessages.length - 1];
-          if (cachedLatest && cachedLatest.text && cachedLatest.text.length > 0) {
-            console.log('🔄 [DEBUG] Using cached message as fallback');
-            setLatestMultiMessage({ ...cachedLatest, depth: -1 });
+          if (textParts.length > 0) {
+            const combined = textParts.join('');
+            console.log('✅ [extractTextContent] Found array content:', combined.substring(0, 50) + '...');
+            return combined;
           }
         }
-      } else {
-        console.error('❌ [DEBUG] No latest message found in sanitizedMessages');
+        
+        // Delta content (streaming)
+        if (msg.delta && Array.isArray(msg.delta.content)) {
+          const deltaText = msg.delta.content
+            .filter(part => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
+            .map(part => part.text)
+            .filter(text => text && text.trim().length > 0);
+          
+          if (deltaText.length > 0) {
+            const combined = deltaText.join('');
+            console.log('✅ [extractTextContent] Found delta content:', combined.substring(0, 50) + '...');
+            return combined;
+          }
+        }
+        
+        console.warn('❌ [extractTextContent] No text content found in message');
+        return '';
+      };
+      
+      // Process messages with proper text extraction
+      const processedMessages = messages.map((msg, index) => {
+        const extractedText = extractTextContent(msg);
+        
+        const processed = {
+          ...msg,
+          // Force single response properties
+          siblingCount: 1,
+          siblingIndex: 0,
+          children: [],
+          text: extractedText,
+          isCompleted: true,
+          finish_reason: 'stop',
+          // Add metadata for debugging
+          _debugInfo: {
+            processedAt: timestamp,
+            originalTextType: typeof msg.text,
+            originalContentType: typeof msg.content,
+            extractedLength: extractedText.length,
+            currentIndex,
+            messageIndex: index
+          }
+        };
+        
+        console.log(`🔧 [setMessages] Processed message ${index}:`, {
+          messageId: processed.messageId,
+          textLength: processed.text.length,
+          preview: processed.text.substring(0, 100) + '...'
+        });
+        
+        return processed;
+      });
+      
+      // Store in BOTH comparison cache AND main cache to bypass broken system
+      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+      const mainKey = queryParam;
+      
+      // Store in comparison cache
+      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, comparisonKey], processedMessages);
+      console.log(`✅ [setMessages] Stored ${processedMessages.length} messages in comparison cache:`, comparisonKey);
+      
+      // ALSO store in main cache to bypass comparison issues
+      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, mainKey], processedMessages);
+      console.log(`✅ [setMessages] Stored ${processedMessages.length} messages in main cache:`, mainKey);
+      
+      // Force update the latest message display
+      const latestMessage = processedMessages[processedMessages.length - 1];
+      if (latestMessage) {
+        console.log('🔧 [setMessages] Setting latest message:', {
+          messageId: latestMessage.messageId,
+          textLength: latestMessage.text.length,
+          preview: latestMessage.text.substring(0, 100) + '...',
+          currentIndex
+        });
+        
+        // Force set the latest message
+        setLatestMultiMessage({ 
+          ...latestMessage, 
+          depth: -1,
+          _forceUpdate: timestamp // Force re-render
+        });
+        
+        console.log('✅ [setMessages] Latest message set successfully for currentIndex:', currentIndex);
       }
       
-      // Force reset sibling index
+      // Reset sibling index
       resetSiblingIndex();
+      
+      console.log('🎉 [setMessages] Complete! Messages processed and stored successfully');
     },
     [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
   );
 
+  // REWRITTEN: Get messages from BOTH caches
   const getMessages = useCallback(() => {
     const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-    const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+    const mainKey = queryParam;
     
-    // Debug logging for messages retrieval
-    console.log('🔍 [DEBUG] getMessages called for currentIndex:', currentIndex);
-    console.log('🔍 [DEBUG] Retrieved messages count:', messages?.length || 0);
-    if (messages && messages.length > 0) {
-      console.log('🔍 [DEBUG] Latest message text length:', messages[messages.length - 1]?.text?.length || 0);
+    // Try comparison cache first
+    let messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+    
+    // Fallback to main cache
+    if (!messages || messages.length === 0) {
+      messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, mainKey]);
+      console.log('🔧 [getMessages] Using main cache fallback');
     }
     
-    // Return empty array if no messages to prevent undefined errors
+    console.log('🔧 [getMessages] Retrieved messages:', {
+      currentIndex,
+      comparisonKey,
+      mainKey,
+      messageCount: messages?.length || 0,
+      latestTextLength: messages?.[messages.length - 1]?.text?.length || 0
+    });
+    
     return messages || [];
   }, [queryParam, queryClient, currentIndex]);
 
@@ -192,7 +235,7 @@ export default function useAddedHelpers({
     isSubmitting,
     conversation,
     setSubmission,
-    latestMessage: actualLatestMessage, // Use the actual latest message from root
+    latestMessage: actualLatestMessage,
   });
 
   const continueGeneration = () => {
@@ -202,7 +245,6 @@ export default function useAddedHelpers({
     }
 
     const messages = getMessages();
-
     const parentMessage = messages?.find(
       (element) => element.messageId == actualLatestMessage.parentMessageId,
     );
@@ -210,9 +252,7 @@ export default function useAddedHelpers({
     if (parentMessage && parentMessage.isCreatedByUser) {
       ask({ ...parentMessage }, { isContinued: true, isRegenerate: true, isEdited: true });
     } else {
-      console.error(
-        'Failed to regenerate the message: parentMessage not found, or not created by user.',
-      );
+      console.error('Failed to regenerate the message: parentMessage not found, or not created by user.');
     }
   };
 
@@ -236,8 +276,6 @@ export default function useAddedHelpers({
   const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     continueGeneration();
-    // Don't reset sibling index to prevent threading issues
-    // setSiblingIdx(0);
   };
 
   return {
@@ -248,7 +286,7 @@ export default function useAddedHelpers({
     conversation,
     isSubmitting,
     setSiblingIdx,
-    latestMessage: actualLatestMessage, // Return the correct latest message
+    latestMessage: actualLatestMessage,
     stopGenerating,
     handleContinue,
     setConversation,
