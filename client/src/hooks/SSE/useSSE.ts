@@ -65,6 +65,42 @@ const safeGetContent = (obj: any, field: string = 'content'): string => {
   return '';
 };
 
+// Extract text from delta content (handles both old and new formats)
+const extractDeltaText = (data: any): string => {
+  // Check for direct text in delta
+  if (data?.delta?.text) {
+    return data.delta.text;
+  }
+  
+  // Check for content array format (DeFacts uses this)
+  if (data?.delta?.content && Array.isArray(data.delta.content)) {
+    const textContent = data.delta.content.find((item: any) => item?.type === 'text');
+    if (textContent?.text) {
+      return textContent.text;
+    }
+  }
+  
+  // Check if data itself has the delta structure (for step events)
+  if (data?.data?.delta?.content && Array.isArray(data.data.delta.content)) {
+    const textContent = data.data.delta.content.find((item: any) => item?.type === 'text');
+    if (textContent?.text) {
+      return textContent.text;
+    }
+  }
+  
+  return '';
+};
+
+// Check if data contains text (handles multiple formats)
+const hasTextContent = (data: any): boolean => {
+  return !!(
+    data?.text || 
+    data?.response || 
+    data?.delta?.text || 
+    extractDeltaText(data)
+  );
+};
+
 // Safe preview utility
 const safePreview = (content: any, length: number = 100): string => {
   if (typeof content === 'string') {
@@ -500,7 +536,7 @@ export default function useSSE(
         return;
       }
 
-      // Enhanced message debugging
+      // Enhanced message debugging with better text detection
       debugDelta('SSE_MESSAGE_RECEIVED', data, {
         isAddedRequest,
         runIndex,
@@ -509,8 +545,8 @@ export default function useSSE(
                     data.event ? 'step' :
                     data.sync ? 'sync' :
                     data.type ? 'content' : 'standard',
-        hasText: !!(data.text || data.response),
-        textLength: (data.text || data.response || '').length
+        hasText: hasTextContent(data),
+        textLength: (data.text || data.response || extractDeltaText(data) || '').length
       });
 
       try {
@@ -562,8 +598,30 @@ export default function useSSE(
           debugComparison('SSE_STEP_EVENT', {
             isAddedRequest,
             runIndex,
-            stepData: data
+            stepData: data,
+            eventType: data.event,
+            hasDeltaContent: !!(data.data?.delta?.content)
           });
+          
+          // Extract and track delta text for DeFacts messages
+          if (data.event === 'on_message_delta' && !isAddedRequest) {
+            const deltaText = extractDeltaText(data);
+            if (deltaText && data.data?.id) {
+              const messageId = data.data.id;
+              if (!deltaAccumulator.current[messageId]) {
+                deltaAccumulator.current[messageId] = '';
+                messageStartTime.current[messageId] = Date.now();
+              }
+              deltaAccumulator.current[messageId] += deltaText;
+              
+              debugDelta('DEFACTS_DELTA_ACCUMULATION', {
+                messageId,
+                newText: safePreview(deltaText, 50),
+                totalLength: deltaAccumulator.current[messageId].length,
+                timeElapsed: Date.now() - messageStartTime.current[messageId]
+              });
+            }
+          }
           
           stepHandler(data, { ...submission, userMessage } as EventSubmission);
         } else if (data.sync != null) {
