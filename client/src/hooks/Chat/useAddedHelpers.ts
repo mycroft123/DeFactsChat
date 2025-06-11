@@ -5,58 +5,64 @@ import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
 import type { TMessage } from 'librechat-data-provider';
 import useChatFunctions from '~/hooks/Chat/useChatFunctions';
 import store from '~/store';
-import { 
-  LibreChatDebugger, 
-  enhancedTextExtractor, 
-  validateStorageKey,
-  MessageFlowTracker,
-  QueryCacheMonitor 
-} from './LibreChatDebugger'; // Import from the debug tools file
 
-// Get debugger instance
-const debugger = LibreChatDebugger.getInstance();
-
-// Debug utility - keep for backward compatibility
+// Debug utility
 const debugLog = (context: string, data: any) => {
   console.group(`🔧 DEBUG [${context}]`);
   console.log('Timestamp:', new Date().toISOString());
   console.log('Data:', data);
   console.groupEnd();
-  
-  // Also log to debugger
-  debugger.captureStateSnapshot(context, data);
 };
 
 // CRITICAL FIX: Enhanced text extraction that handles all message formats
 const safeExtractText = (msg: any): string => {
-  debugLog('TEXT_EXTRACTION_ATTEMPT', {
+  // Log what we're trying to extract from
+  console.log('🔍 Attempting text extraction from:', {
     messageKeys: Object.keys(msg || {}),
-    messageType: msg?.sender || msg?.role || 'unknown',
     hasText: !!msg?.text,
     hasContent: !!msg?.content,
     hasResponse: !!msg?.response,
     hasDelta: !!msg?.delta,
-    fullMessage: msg
+    messageId: msg?.messageId,
+    sender: msg?.sender
   });
   
-  // Use the enhanced extractor
-  const extractedText = enhancedTextExtractor(msg);
+  // All possible text locations in priority order
+  const candidates = [
+    msg?.text,
+    msg?.content,
+    msg?.response,
+    msg?.message?.text,
+    msg?.message?.content,
+    msg?.delta?.content,
+    msg?.choices?.[0]?.delta?.content,
+    msg?.choices?.[0]?.message?.content,
+    msg?.parts?.[0]?.text,
+    msg?.result?.response,
+    msg?.data?.text,
+    msg?.data?.content
+  ];
   
-  if (!extractedText) {
-    console.error('🚨 CRITICAL: No text extracted from message:', {
-      messageId: msg?.messageId,
-      sender: msg?.sender,
-      keys: Object.keys(msg || {}),
-      stringified: JSON.stringify(msg, null, 2)
-    });
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      console.log(`✅ Found text at position ${i}:`, candidate.substring(0, 50) + '...');
+      return candidate.trim();
+    }
   }
   
-  return extractedText;
+  // If no text found, log the entire structure for debugging
+  console.error('❌ No text found in message structure:', JSON.stringify(msg, null, 2));
+  return '';
 };
 
 // CRITICAL: Centralized storage key generator to ensure consistency
 const getStorageKey = (queryParam: string, currentIndex: number): string => {
-  return validateStorageKey(queryParam, currentIndex);
+  if (currentIndex === 0) {
+    return queryParam; // Main conversation uses base key
+  } else {
+    return `${queryParam}_comparison_${currentIndex}`; // Comparison uses indexed key
+  }
 };
 
 export default function useAddedHelpers({
@@ -94,18 +100,6 @@ export default function useAddedHelpers({
   // CRITICAL: Always use the centralized key generator
   const storageKey = getStorageKey(queryParam, currentIndex);
   
-  // Track conversation in message flow
-  useEffect(() => {
-    if (conversation?.conversationId) {
-      MessageFlowTracker.trackEvent(conversation.conversationId, 'CONVERSATION_INIT', {
-        currentIndex,
-        endpoint: conversation.endpoint,
-        model: conversation.model,
-        storageKey
-      });
-    }
-  }, [conversation?.conversationId, currentIndex, storageKey]);
-  
   const rootMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, storageKey]);
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
   
@@ -126,13 +120,6 @@ export default function useAddedHelpers({
     (messages: TMessage[]) => {
       messageUpdateCount.current++;
       
-      MessageFlowTracker.trackEvent(queryParam, 'SET_MESSAGES_CALLED', {
-        updateNumber: messageUpdateCount.current,
-        messageCount: messages?.length || 0,
-        currentIndex,
-        storageKey
-      });
-      
       if (!messages || messages.length === 0) {
         console.warn('⚠️ Attempted to set empty messages array');
         return;
@@ -145,14 +132,17 @@ export default function useAddedHelpers({
       const isFromContentHandler = callerStack?.includes('contentHandler') || callerStack?.includes('Content');
       
       // CRITICAL: Extract text properly for validation
-      const messagesWithText = messages.map(msg => ({
-        ...msg,
-        extractedText: safeExtractText(msg),
-        originalText: msg.text
-      }));
+      const messagesWithText = messages.map(msg => {
+        const extractedText = safeExtractText(msg);
+        return {
+          ...msg,
+          _extractedText: extractedText,
+          _originalText: msg.text
+        };
+      });
       
       // Check if messages contain actual content
-      const hasValidContent = messagesWithText.some(msg => msg.extractedText.length > 0);
+      const hasValidContent = messagesWithText.some(msg => msg._extractedText.length > 0);
       
       // CRITICAL: Use centralized storage key
       const comparisonKey = getStorageKey(queryParam, currentIndex);
@@ -161,6 +151,7 @@ export default function useAddedHelpers({
         currentIndex,
         comparisonKey,
         messagesCount: messages.length,
+        updateNumber: messageUpdateCount.current,
         isFromStepHandler,
         isFromFinalHandler,
         isFromContentHandler,
@@ -170,11 +161,11 @@ export default function useAddedHelpers({
         messagePreview: messagesWithText.map(m => ({
           messageId: m.messageId,
           sender: m.sender,
-          originalTextLength: (m.originalText || '').length,
-          extractedTextLength: m.extractedText.length,
-          hasOriginalText: !!m.originalText,
-          hasExtractedText: m.extractedText.length > 0,
-          textPreview: m.extractedText.substring(0, 50)
+          originalTextLength: (m._originalText || '').length,
+          extractedTextLength: m._extractedText.length,
+          hasOriginalText: !!m._originalText,
+          hasExtractedText: m._extractedText.length > 0,
+          textPreview: m._extractedText.substring(0, 50)
         }))
       });
       
@@ -208,20 +199,25 @@ export default function useAddedHelpers({
       }
       
       // Sanitize messages with proper metadata and extracted text
-      const sanitizedMessages = messagesWithText.map((msg, index) => ({
-        ...msg,
-        siblingCount: 1,
-        siblingIndex: 0,
-        children: [],
-        text: msg.extractedText || msg.originalText || '', // Use extracted text
-        isCompleted: isFromFinalHandler,
-        finish_reason: isFromFinalHandler ? 'stop' : null,
-        // Add conversation tracking metadata
-        _conversationIndex: currentIndex,
-        _storageKey: comparisonKey,
-        _timestamp: Date.now(),
-        _updateNumber: messageUpdateCount.current
-      }));
+      const sanitizedMessages = messagesWithText.map((msg, index) => {
+        // Remove our temporary extraction fields
+        const { _extractedText, _originalText, ...cleanMsg } = msg;
+        
+        return {
+          ...cleanMsg,
+          siblingCount: 1,
+          siblingIndex: 0,
+          children: [],
+          text: _extractedText || _originalText || '', // Use extracted text
+          isCompleted: isFromFinalHandler,
+          finish_reason: isFromFinalHandler ? 'stop' : null,
+          // Add conversation tracking metadata
+          _conversationIndex: currentIndex,
+          _storageKey: comparisonKey,
+          _timestamp: Date.now(),
+          _updateNumber: messageUpdateCount.current
+        };
+      });
       
       // Update tracking if this set has valid content
       if (hasValidContent) {
@@ -250,14 +246,6 @@ export default function useAddedHelpers({
         [QueryKeys.messages, comparisonKey],
         sanitizedMessages,
       );
-      
-      // Track storage event
-      MessageFlowTracker.trackEvent(queryParam, 'MESSAGES_STORED', {
-        storageKey: comparisonKey,
-        messageCount: sanitizedMessages.length,
-        hasContent: hasValidContent,
-        updateNumber: messageUpdateCount.current
-      });
       
       // Immediate verification
       setTimeout(() => {
@@ -305,7 +293,7 @@ export default function useAddedHelpers({
             sender: latestMultiMessage.sender,
             endpoint: latestMultiMessage.endpoint,
             originalText: messages[messages.length - 1]?.text,
-            extractedText: messagesWithText[messagesWithText.length - 1]?.extractedText,
+            extractedText: messagesWithText[messagesWithText.length - 1]?._extractedText,
             allKeys: Object.keys(latestMultiMessage),
             fullMessage: JSON.stringify(latestMultiMessage, null, 2)
           });
@@ -335,13 +323,6 @@ export default function useAddedHelpers({
       storageStrategy: currentIndex === 0 ? 'main-messages' : 'comparison-cache'
     });
     
-    // Track retrieval
-    MessageFlowTracker.trackEvent(queryParam, 'MESSAGES_RETRIEVED', {
-      storageKey: comparisonKey,
-      found: !!messages,
-      count: messages?.length || 0
-    });
-    
     return messages || [];
   }, [queryParam, queryClient, currentIndex]);
 
@@ -354,8 +335,10 @@ export default function useAddedHelpers({
       const mainMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, mainKey]);
       const currentMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
       
-      // Analyze cache
-      QueryCacheMonitor.analyzeCache(queryClient);
+      // Check for all comparison keys
+      const allCacheKeys = queryClient.getQueryCache().getAll()
+        .filter(query => query.queryKey[0] === QueryKeys.messages)
+        .map(query => query.queryKey[1]);
       
       debugLog('PERIODIC_CACHE_CHECK', {
         currentIndex,
@@ -365,6 +348,7 @@ export default function useAddedHelpers({
         currentMessagesCount: currentMessages?.length || 0,
         mainHasContent: mainMessages?.some(m => m.text?.length > 0) || false,
         currentHasContent: currentMessages?.some(m => m.text?.length > 0) || false,
+        allMessageKeys: allCacheKeys,
         updateCount: messageUpdateCount.current
       });
     }, 5000);
@@ -383,6 +367,28 @@ export default function useAddedHelpers({
       endpoint: conversation?.endpoint
     });
   }, [conversation?.conversationId, currentIndex]);
+
+  // Add global debug helper
+  useEffect(() => {
+    if (typeof window !== 'undefined' && currentIndex === 0) {
+      (window as any).debugLibreChat = {
+        getMainMessages: () => queryClient.getQueryData([QueryKeys.messages, queryParam]),
+        getComparisonMessages: () => queryClient.getQueryData([QueryKeys.messages, `${queryParam}_comparison_1`]),
+        getAllMessageQueries: () => {
+          const queries = queryClient.getQueryCache().getAll();
+          return queries
+            .filter(q => q.queryKey[0] === QueryKeys.messages)
+            .map(q => ({
+              key: q.queryKey[1],
+              data: q.state.data
+            }));
+        },
+        getLastGoodMessages: () => lastGoodMessages.current,
+        getUpdateCount: () => messageUpdateCount.current
+      };
+      console.log('🔧 Debug helpers available at window.debugLibreChat');
+    }
+  }, [queryClient, queryParam, currentIndex]);
 
   const setSubmission = useSetRecoilState(store.submissionByIndex(currentIndex));
 
