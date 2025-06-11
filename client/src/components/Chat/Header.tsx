@@ -261,9 +261,10 @@ export default function Header() {
     if (selectedCompareModel === 'perplexity') {
       const perplexityModel = 'llama-3.1-sonar-small-128k-online';
       
+      // RESTORED ORIGINAL WORKING CODE
       comparisonConvo = {
         conversationId: convo.conversationId,
-        endpoint: 'custom',
+        endpoint: 'Perplexity',  // Back to original
         model: perplexityModel,
         title: '',
         modelLabel: 'Perplexity',
@@ -279,11 +280,9 @@ export default function Header() {
         files: [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
-        spec: 'Perplexity',
-        iconURL: null, // Clear any inherited iconURL
       };
     } else {
-      // Clean the GPT-4 comparison object
+      // Clean the GPT-4 comparison object WITH LOGO FIX
       comparisonConvo = {
         conversationId: convo.conversationId,
         endpoint: 'openAI',
@@ -301,24 +300,21 @@ export default function Header() {
         agentOptions: convo.agentOptions || null,
         resendFiles: false,
         imageDetail: convo.imageDetail || 'auto',
-        iconURL: null, // FORCE null to use default OpenAI icon
+        iconURL: null, // LOGO FIX: Force null to use default OpenAI icon
         greeting: '',
-        promptPrefix: null, // Clear any DeFacts prompt
+        promptPrefix: null, // LOGO FIX: Clear any DeFacts prompt
         examples: convo.examples || [],
         files: convo.files || [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
       };
       
-      // Clean up any key fields that might interfere
+      // Clean up any key fields
       if ('key' in comparisonConvo) {
         delete (comparisonConvo as any).key;
       }
       if ('apiKey' in comparisonConvo) {
         delete (comparisonConvo as any).apiKey;
-      }
-      if ('spec' in comparisonConvo) {
-        delete (comparisonConvo as any).spec;
       }
       
       console.log('📤 GPT-4 comparison object:', JSON.stringify(comparisonConvo, null, 2));
