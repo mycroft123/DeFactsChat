@@ -233,6 +233,26 @@ export default function Header() {
   });
   
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
+
+
+  // Debug effect to monitor both conversations
+useEffect(() => {
+  console.log('🔍 CONVERSATION DEBUG:');
+  console.log('Main conversation (DeFacts):', conversation);
+  console.log('Added conversation (Comparison):', /* you'll need to get this from context */);
+  
+  // Check if messages are being received
+  if (conversation?.messages) {
+    console.log('📨 DeFacts messages count:', conversation.messages.length);
+    conversation.messages.forEach((msg, idx) => {
+      console.log(`📨 DeFacts msg ${idx}:`, {
+        text: msg.text?.substring(0, 100) + '...',
+        isCreatedByUser: msg.isCreatedByUser,
+        error: msg.error
+      });
+    });
+  }
+}, [conversation]);
   
   // Modified compare handler with radio selection and enhanced debugging
   const handleCompareModels = () => {
