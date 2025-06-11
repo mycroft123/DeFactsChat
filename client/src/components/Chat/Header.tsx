@@ -263,8 +263,7 @@ export default function Header() {
       
       comparisonConvo = {
         conversationId: convo.conversationId,
-        endpoint: 'custom',  // Changed from 'Perplexity' to 'custom'
-        endpointType: 'Perplexity',  // Added this
+        endpoint: 'custom',
         model: perplexityModel,
         title: '',
         modelLabel: 'Perplexity',
@@ -280,6 +279,8 @@ export default function Header() {
         files: [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
+        spec: 'Perplexity',
+        iconURL: null, // Clear any inherited iconURL
       };
     } else {
       // Clean the GPT-4 comparison object
@@ -300,21 +301,24 @@ export default function Header() {
         agentOptions: convo.agentOptions || null,
         resendFiles: false,
         imageDetail: convo.imageDetail || 'auto',
-        iconURL: convo.iconURL || null,
+        iconURL: null, // FORCE null to use default OpenAI icon
         greeting: '',
-        promptPrefix: convo.promptPrefix || null,
+        promptPrefix: null, // Clear any DeFacts prompt
         examples: convo.examples || [],
         files: convo.files || [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
       };
       
-      // Clean up any key fields
+      // Clean up any key fields that might interfere
       if ('key' in comparisonConvo) {
         delete (comparisonConvo as any).key;
       }
       if ('apiKey' in comparisonConvo) {
         delete (comparisonConvo as any).apiKey;
+      }
+      if ('spec' in comparisonConvo) {
+        delete (comparisonConvo as any).spec;
       }
       
       console.log('📤 GPT-4 comparison object:', JSON.stringify(comparisonConvo, null, 2));
@@ -336,7 +340,6 @@ export default function Header() {
   };
 
 
-  
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
       <div className="flex w-full items-center justify-between gap-2">
