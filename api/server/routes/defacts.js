@@ -39,15 +39,21 @@ router.use((req, res, next) => {
   next();
 });
 
-// Initialize OpenAI client (for DeFacts and DeResearch)
+
+
+// Initialize OpenAI client (for DeFacts and DeResearch) - WITH TIMEOUT
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  timeout: parseInt(process.env.OPENAI_TIMEOUT || process.env.REQUEST_TIMEOUT || '300000'), // 5 minutes default
+  maxRetries: 3,
 });
 
-// Initialize Perplexity client (for DeNews)
+// Initialize Perplexity client (for DeNews) - WITH TIMEOUT
 const perplexity = new OpenAI({
   apiKey: process.env.PERPLEXITY_API_KEY,
   baseURL: 'https://api.perplexity.ai',
+  timeout: parseInt(process.env.PERPLEXITY_TIMEOUT || process.env.REQUEST_TIMEOUT || '300000'), // 5 minutes default
+  maxRetries: 3,
 });
 
 // System prompts for each model

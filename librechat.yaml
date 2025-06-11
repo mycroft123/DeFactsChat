@@ -129,6 +129,7 @@ endpoints:
   # OpenAI Configuration (used by DeFacts and DeResearch modes)
   openAI:
     iconURL: "/assets/openai.svg"  # ADD THIS LINE
+    timeout: 300000  # 5 minutes in milliseconds - ADD THIS LINE
     models:
       default:
         - "gpt-4o"
