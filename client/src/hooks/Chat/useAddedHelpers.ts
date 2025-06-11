@@ -72,10 +72,32 @@ export default function useAddedHelpers({
         siblingCount: 1,
         siblingIndex: 0,
         children: [],
-        // Ensure message has content and is a string
-        text: typeof msg.text === 'string' ? msg.text : 
-              typeof msg.content === 'string' ? msg.content : 
-              (msg.text || msg.content || '').toString(),
+        // Enhanced text extraction for streaming messages
+        text: (() => {
+          // Direct text property
+          if (typeof msg.text === 'string' && msg.text.length > 0) {
+            return msg.text;
+          }
+          
+          // Content as string
+          if (typeof msg.content === 'string' && msg.content.length > 0) {
+            return msg.content;
+          }
+          
+          // Content as array (streaming format)
+          if (Array.isArray(msg.content)) {
+            const textParts = msg.content
+              .filter(part => part.type === 'text' && part.text)
+              .map(part => part.text)
+              .join('');
+            if (textParts.length > 0) {
+              return textParts;
+            }
+          }
+          
+          // Fallback
+          return (msg.text || msg.content || '').toString();
+        })(),
         isCompleted: true,
         finish_reason: 'stop',
       }));
