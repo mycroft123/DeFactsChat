@@ -96,8 +96,32 @@ export default function useAddedHelpers({
         return text.length > 0;
       });
       
+      // CRITICAL: Determine correct storage key based on conversation type
+      let comparisonKey: string;
+      
+      if (currentIndex === 0) {
+        // Main conversation (DeFacts) - store in main messages
+        comparisonKey = queryParam;
+        debugLog('MAIN_CONVERSATION_STORAGE', {
+          currentIndex,
+          queryParam,
+          comparisonKey,
+          conversationEndpoint: conversation?.endpoint
+        });
+      } else {
+        // Comparison conversation - use specific comparison key
+        comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+        debugLog('COMPARISON_CONVERSATION_STORAGE', {
+          currentIndex,
+          queryParam,
+          comparisonKey,
+          conversationEndpoint: conversation?.endpoint
+        });
+      }
+      
       debugLog('SET_MESSAGES_VALIDATION', {
         currentIndex,
+        comparisonKey,
         messagesCount: messages.length,
         isFromStepHandler,
         isFromFinalHandler,
@@ -117,6 +141,7 @@ export default function useAddedHelpers({
       if (isFromStepHandler && !hasValidContent && hasReceivedValidContent.current) {
         console.log('🚫 BLOCKING EMPTY STEP EVENT - Would overwrite good content:', {
           currentIndex,
+          comparisonKey,
           messagesCount: messages.length,
           reason: 'Step event with empty text trying to overwrite valid content'
         });
@@ -129,14 +154,13 @@ export default function useAddedHelpers({
           hasReceivedValidContent.current) {
         console.log('🚫 BLOCKING MESSAGE REGRESSION:', {
           currentIndex,
+          comparisonKey,
           newCount: messages.length,
           lastGoodCount: lastGoodMessages.current.length,
           reason: 'Would reduce message count without adding content'
         });
         return; // Block the regression
       }
-      
-      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
       
       // Sanitize messages
       const sanitizedMessages = messages.map((msg, index) => ({
@@ -147,6 +171,10 @@ export default function useAddedHelpers({
         text: safeExtractText(msg),
         isCompleted: isFromFinalHandler,
         finish_reason: isFromFinalHandler ? 'stop' : null,
+        // Add conversation tracking
+        _conversationIndex: currentIndex,
+        _storageKey: comparisonKey,
+        _timestamp: Date.now()
       }));
       
       // Update tracking if this set has valid content
@@ -155,6 +183,7 @@ export default function useAddedHelpers({
         hasReceivedValidContent.current = true;
         console.log('✅ UPDATED GOOD MESSAGE CACHE:', {
           currentIndex,
+          comparisonKey,
           messageCount: sanitizedMessages.length,
           totalTextLength: sanitizedMessages.reduce((sum, m) => sum + (m.text?.length || 0), 0)
         });
@@ -166,14 +195,44 @@ export default function useAddedHelpers({
         originalCount: messages.length,
         sanitizedCount: sanitizedMessages.length,
         textLengths: sanitizedMessages.map(m => m.text?.length || 0),
-        hasAnyText: sanitizedMessages.some(m => m.text && m.text.length > 0)
+        hasAnyText: sanitizedMessages.some(m => m.text && m.text.length > 0),
+        storageStrategy: currentIndex === 0 ? 'main-messages' : 'comparison-cache'
       });
       
-      // Store messages
+      // Store messages with proper key
       queryClient.setQueryData<TMessage[]>(
         [QueryKeys.messages, comparisonKey],
         sanitizedMessages,
       );
+      
+      // CRITICAL: For main conversation, also update root messages
+      if (currentIndex === 0) {
+        queryClient.setQueryData<TMessage[]>(
+          [QueryKeys.messages, queryParam],
+          sanitizedMessages,
+        );
+        console.log('📝 MAIN CONVERSATION: Updated root messages cache');
+      }
+      
+      // Immediate verification
+      setTimeout(() => {
+        const verifyMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+        debugLog('STORAGE_VERIFICATION', {
+          comparisonKey,
+          currentIndex,
+          messagesStored: !!verifyMessages,
+          storedCount: verifyMessages?.length || 0,
+          expectedCount: sanitizedMessages.length
+        });
+        
+        if (!verifyMessages || verifyMessages.length === 0) {
+          console.error('🚨 MESSAGES DISAPPEARED AFTER STORAGE!', {
+            comparisonKey,
+            currentIndex,
+            hadMessages: sanitizedMessages.length
+          });
+        }
+      }, 100);
       
       // Set latest message
       const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
@@ -185,6 +244,7 @@ export default function useAddedHelpers({
         if (finalTextLength === 0) {
           console.error('🚨 STILL ZERO LENGTH - INVESTIGATION NEEDED:', {
             currentIndex,
+            comparisonKey,
             messageId: latestMultiMessage.messageId,
             sender: latestMultiMessage.sender,
             endpoint: latestMultiMessage.endpoint,
@@ -201,22 +261,56 @@ export default function useAddedHelpers({
       
       resetSiblingIndex();
     },
-    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
+    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex, conversation],
   );
 
   const getMessages = useCallback(() => {
-    const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+    // CRITICAL: Use same key logic as setMessages
+    let comparisonKey: string;
+    
+    if (currentIndex === 0) {
+      // Main conversation - get from main messages
+      comparisonKey = queryParam;
+    } else {
+      // Comparison conversation - get from comparison cache
+      comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+    }
+    
     const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
     
     debugLog('GET_MESSAGES', {
       comparisonKey,
       currentIndex,
       messagesFound: !!messages,
-      messagesCount: messages?.length || 0
+      messagesCount: messages?.length || 0,
+      storageStrategy: currentIndex === 0 ? 'main-messages' : 'comparison-cache'
     });
     
     return messages || [];
   }, [queryParam, queryClient, currentIndex]);
+
+  // Monitor all query cache changes for debugging
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const mainKey = queryParam;
+      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+      
+      const mainMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, mainKey]);
+      const comparisonMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+      
+      debugLog('PERIODIC_CACHE_CHECK', {
+        currentIndex,
+        mainKey,
+        comparisonKey,
+        mainMessagesCount: mainMessages?.length || 0,
+        comparisonMessagesCount: comparisonMessages?.length || 0,
+        mainHasContent: mainMessages?.some(m => m.text?.length > 0) || false,
+        comparisonHasContent: comparisonMessages?.some(m => m.text?.length > 0) || false
+      });
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [queryClient, queryParam, currentIndex]);
 
   // Reset tracking when conversation changes
   useEffect(() => {
