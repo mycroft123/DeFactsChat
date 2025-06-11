@@ -1,10 +1,46 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { QueryKeys } from 'librechat-data-provider';
 import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
 import type { TMessage } from 'librechat-data-provider';
 import useChatFunctions from '~/hooks/Chat/useChatFunctions';
 import store from '~/store';
+
+// State debugging utility
+const debugState = (context: string, data: any) => {
+  console.group(`🏛️ STATE DEBUG [${context}]`);
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('📊 Data:', data);
+  console.groupEnd();
+};
+
+// Query key debugging
+const debugQueryKeys = (queryClient: any, context: string) => {
+  const allQueries = queryClient.getQueryCache().getAll();
+  const messageQueries = allQueries.filter(query => query.queryKey[0] === 'messages');
+  
+  debugState(`QUERY_CACHE_${context}`, {
+    totalQueries: allQueries.length,
+    messageQueries: messageQueries.length,
+    messageQueryKeys: messageQueries.map(q => ({
+      key: q.queryKey,
+      hasData: !!q.state.data,
+      dataLength: Array.isArray(q.state.data) ? q.state.data.length : 'not-array',
+      lastUpdate: q.state.dataUpdatedAt
+    }))
+  });
+};
+
+// Safe text extraction - simplified for debugging
+const safeExtractText = (msg: any): string => {
+  const candidates = [msg.text, msg.content, msg.response];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return '';
+};
 
 export default function useAddedHelpers({
   rootIndex = 0,
@@ -15,8 +51,18 @@ export default function useAddedHelpers({
   currentIndex: number;
   paramId?: string;
 }) {
-  // Debug logging
-  console.log('useAddedHelpers initialized:', { rootIndex, currentIndex, paramId });
+  // Track render count and initialization
+  const renderCount = useRef(0);
+  const initTime = useRef(Date.now());
+  renderCount.current++;
+  
+  debugState('INITIALIZATION', {
+    rootIndex,
+    currentIndex,
+    paramId,
+    renderCount: renderCount.current,
+    timeSinceInit: Date.now() - initTime.current
+  });
   
   const queryClient = useQueryClient();
   const clearAllSubmissions = store.useClearSubmissionState();
@@ -26,74 +72,206 @@ export default function useAddedHelpers({
   const { useCreateConversationAtom } = store;
   const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
   
-  // CRITICAL FIX: Use root messages to get the correct latest message
+  // Enhanced conversation debugging
+  useEffect(() => {
+    debugState('CONVERSATION_CHANGE', {
+      currentIndex,
+      conversation: {
+        id: conversation?.conversationId,
+        endpoint: conversation?.endpoint,
+        model: conversation?.model,
+        isComparison: conversation?.isComparison,
+        _isAddedRequest: conversation?._isAddedRequest
+      }
+    });
+  }, [conversation, currentIndex]);
+  
+  // Query parameter calculation with debugging
+  const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
+  
+  debugState('QUERY_PARAM_CALCULATION', {
+    paramId,
+    conversationId: conversation?.conversationId,
+    finalQueryParam: queryParam,
+    currentIndex
+  });
+  
+  // Root messages with debugging
   const rootMessages = queryClient.getQueryData<TMessage[]>([
     QueryKeys.messages, 
-    paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? ''
+    queryParam
   ]);
   
-  // Get the actual latest message from root context for correct parentMessageId
+  useEffect(() => {
+    debugState('ROOT_MESSAGES_CHANGE', {
+      queryParam,
+      rootMessagesCount: rootMessages?.length || 0,
+      currentIndex,
+      lastRootMessage: rootMessages?.[rootMessages.length - 1] ? {
+        id: rootMessages[rootMessages.length - 1].messageId,
+        text: rootMessages[rootMessages.length - 1].text?.substring(0, 50) + '...',
+        endpoint: rootMessages[rootMessages.length - 1].endpoint
+      } : null
+    });
+  }, [rootMessages, queryParam, currentIndex]);
+  
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
   
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
   
-  // Force disable sibling threading completely - always use null to disable
-  const setSiblingIdx = useSetRecoilState(
-    store.messagesSiblingIdxFamily(null), // Always null to disable threading
-  );
+  // State management debugging
+  useEffect(() => {
+    debugState('SUBMISSION_STATE_CHANGE', {
+      currentIndex,
+      isSubmitting,
+      timestamp: Date.now()
+    });
+  }, [isSubmitting, currentIndex]);
   
-  // Always create a sibling setter, but use null as fallback to prevent errors
+  // Sibling management (disabled)
+  const setSiblingIdx = useSetRecoilState(store.messagesSiblingIdxFamily(null));
   const parentMessageId = actualLatestMessage?.parentMessageId || null;
-  const actualSiblingIdxSetter = useSetRecoilState(
-    store.messagesSiblingIdxFamily(parentMessageId)
-  );
+  const actualSiblingIdxSetter = useSetRecoilState(store.messagesSiblingIdxFamily(parentMessageId));
   
-  // Override sibling index to always be 0 (first/only response)
   const resetSiblingIndex = useCallback(() => {
+    debugState('RESET_SIBLING_INDEX', { parentMessageId, currentIndex });
     if (parentMessageId) {
       actualSiblingIdxSetter(0);
     }
-  }, [actualSiblingIdxSetter, parentMessageId]);
-  const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
+  }, [actualSiblingIdxSetter, parentMessageId, currentIndex]);
 
   const setMessages = useCallback(
     (messages: TMessage[]) => {
+      const callTime = Date.now();
+      
+      debugState('SET_MESSAGES_START', {
+        currentIndex,
+        messagesCount: messages?.length || 0,
+        queryParam,
+        callTime,
+        callerInfo: new Error().stack?.split('\n')[2]?.trim() || 'unknown'
+      });
+      
       if (!messages || messages.length === 0) {
-        console.warn('Attempted to set empty messages array');
+        console.warn('⚠️ Attempted to set empty messages array');
         return;
       }
       
-      console.log('Setting messages for currentIndex:', currentIndex, 'messages:', messages.length);
+      // Calculate comparison key with detailed logging
+      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
       
-      // Ensure messages don't have sibling properties that cause threading
+      debugState('COMPARISON_KEY_CALCULATION', {
+        queryParam,
+        currentIndex,
+        comparisonKey,
+        isMainConvo: currentIndex === 0,
+        isComparisonConvo: currentIndex > 0
+      });
+      
+      // Check for key collisions
+      debugQueryKeys(queryClient, `BEFORE_SET_${currentIndex}`);
+      
+      // Sanitize messages with minimal processing for debugging
       const sanitizedMessages = messages.map((msg, index) => ({
         ...msg,
-        // Force single response properties
         siblingCount: 1,
         siblingIndex: 0,
         children: [],
-        // Ensure message has content and is a string
-        text: typeof msg.text === 'string' ? msg.text : 
-              typeof msg.content === 'string' ? msg.content : 
-              (msg.text || msg.content || '').toString(),
+        text: safeExtractText(msg),
         isCompleted: true,
         finish_reason: 'stop',
       }));
       
-      // Store comparison messages with unique key and validation
-      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+      debugState('MESSAGES_SANITIZED', {
+        currentIndex,
+        comparisonKey,
+        originalCount: messages.length,
+        sanitizedCount: sanitizedMessages.length,
+        textLengths: sanitizedMessages.map((m, i) => ({
+          index: i,
+          messageId: m.messageId,
+          textLength: m.text?.length || 0,
+          hasText: !!m.text
+        }))
+      });
+      
+      // Store with timestamp for debugging
+      const timestampedMessages = sanitizedMessages.map(msg => ({
+        ...msg,
+        _debugStorageTime: callTime,
+        _debugCurrentIndex: currentIndex,
+        _debugComparisonKey: comparisonKey
+      }));
+      
+      debugState('STORING_MESSAGES', {
+        comparisonKey,
+        currentIndex,
+        messagesCount: timestampedMessages.length,
+        storageTime: callTime
+      });
+      
       queryClient.setQueryData<TMessage[]>(
         [QueryKeys.messages, comparisonKey],
-        sanitizedMessages,
+        timestampedMessages,
       );
       
-      const latestMultiMessage = sanitizedMessages[sanitizedMessages.length - 1];
+      // Immediate verification
+      const verificationData = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+      
+      debugState('STORAGE_VERIFICATION', {
+        comparisonKey,
+        currentIndex,
+        wasSet: !!verificationData,
+        verificationCount: verificationData?.length || 0,
+        verificationTexts: verificationData?.map((m, i) => ({
+          index: i,
+          messageId: m.messageId,
+          textLength: m.text?.length || 0,
+          storageTime: m._debugStorageTime,
+          storedIndex: m._debugCurrentIndex
+        })) || []
+      });
+      
+      // Check for overwrites
+      setTimeout(() => {
+        const delayedCheck = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+        debugState('DELAYED_VERIFICATION', {
+          comparisonKey,
+          currentIndex,
+          stillExists: !!delayedCheck,
+          countChanged: (delayedCheck?.length || 0) !== (verificationData?.length || 0),
+          wasOverwritten: !delayedCheck || delayedCheck.length === 0
+        });
+      }, 100);
+      
+      // Set latest message
+      const latestMultiMessage = timestampedMessages[timestampedMessages.length - 1];
       if (latestMultiMessage) {
-        console.log('Latest message text length:', latestMultiMessage.text?.length || 0);
+        const finalTextLength = latestMultiMessage.text?.length || 0;
+        
+        debugState('LATEST_MESSAGE_UPDATE', {
+          messageId: latestMultiMessage.messageId,
+          textLength: finalTextLength,
+          currentIndex,
+          comparisonKey,
+          hasText: !!latestMultiMessage.text
+        });
+        
+        console.log(`📝 Latest message text length: ${finalTextLength}`);
+        
+        if (finalTextLength === 0) {
+          console.error('🚨 ZERO LENGTH TEXT - STATE CORRUPTION DETECTED!', {
+            currentIndex,
+            comparisonKey,
+            originalMessage: messages[messages.length - 1],
+            processedMessage: latestMultiMessage
+          });
+        }
+        
         setLatestMultiMessage({ ...latestMultiMessage, depth: -1 });
       }
       
-      // Force reset sibling index
+      debugQueryKeys(queryClient, `AFTER_SET_${currentIndex}`);
       resetSiblingIndex();
     },
     [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
@@ -103,9 +281,25 @@ export default function useAddedHelpers({
     const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
     const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
     
-    // Return empty array if no messages to prevent undefined errors
+    debugState('GET_MESSAGES', {
+      comparisonKey,
+      currentIndex,
+      messagesFound: !!messages,
+      messagesCount: messages?.length || 0,
+      retrievalTime: Date.now()
+    });
+    
     return messages || [];
   }, [queryParam, queryClient, currentIndex]);
+
+  // Debug query cache changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      debugQueryKeys(queryClient, `PERIODIC_${currentIndex}`);
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [queryClient, currentIndex]);
 
   const setSubmission = useSetRecoilState(store.submissionByIndex(currentIndex));
 
@@ -118,17 +312,16 @@ export default function useAddedHelpers({
     isSubmitting,
     conversation,
     setSubmission,
-    latestMessage: actualLatestMessage, // Use the actual latest message from root
+    latestMessage: actualLatestMessage,
   });
 
   const continueGeneration = () => {
     if (!actualLatestMessage) {
-      console.error('Failed to regenerate the message: latestMessage not found.');
+      console.error('❌ Failed to regenerate the message: latestMessage not found.');
       return;
     }
 
     const messages = getMessages();
-
     const parentMessage = messages?.find(
       (element) => element.messageId == actualLatestMessage.parentMessageId,
     );
@@ -136,9 +329,7 @@ export default function useAddedHelpers({
     if (parentMessage && parentMessage.isCreatedByUser) {
       ask({ ...parentMessage }, { isContinued: true, isRegenerate: true, isEdited: true });
     } else {
-      console.error(
-        'Failed to regenerate the message: parentMessage not found, or not created by user.',
-      );
+      console.error('❌ Failed to regenerate the message: parentMessage not found, or not created by user.');
     }
   };
 
@@ -153,7 +344,7 @@ export default function useAddedHelpers({
     e.preventDefault();
     const parentMessageId = actualLatestMessage?.parentMessageId;
     if (!parentMessageId) {
-      console.error('Failed to regenerate the message: parentMessageId not found.');
+      console.error('❌ Failed to regenerate the message: parentMessageId not found.');
       return;
     }
     regenerate({ parentMessageId });
@@ -162,8 +353,6 @@ export default function useAddedHelpers({
   const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     continueGeneration();
-    // Don't reset sibling index to prevent threading issues
-    // setSiblingIdx(0);
   };
 
   return {
@@ -174,7 +363,7 @@ export default function useAddedHelpers({
     conversation,
     isSubmitting,
     setSiblingIdx,
-    latestMessage: actualLatestMessage, // Return the correct latest message
+    latestMessage: actualLatestMessage,
     stopGenerating,
     handleContinue,
     setConversation,
