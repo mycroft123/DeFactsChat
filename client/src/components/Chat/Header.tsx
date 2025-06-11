@@ -61,6 +61,15 @@ const safeExtractText = (obj: any): string => {
   return 'NO_TEXT';
 };
 
+// CRITICAL: Centralized storage key generator (must match useAddedHelpers)
+const getStorageKey = (queryParam: string, currentIndex: number): string => {
+  if (currentIndex === 0) {
+    return queryParam;
+  } else {
+    return `${queryParam}_comparison_${currentIndex}`;
+  }
+};
+
 export default function Header() {
   const { data: startupConfig } = useGetStartupConfig();
   const { navVisible, setNavVisible } = useOutletContext<ContextType>();
@@ -440,11 +449,18 @@ export default function Header() {
       setConversation(prev => ({
         ...prev,
         endpoint: 'gptPlugins',
-        model: 'DeFacts'
+        model: 'DeFacts',
+        // Clear any comparison flags from main conversation
+        isComparison: false,
+        _isAddedRequest: false
       }));
     }
     
     const { title: _t, ...convo } = conversation;
+    
+    // Clear any existing comparison messages before setting new conversation
+    const comparisonKey = getStorageKey(convo.conversationId, 1);
+    queryClient.removeQueries(['messages', comparisonKey]);
     
     let comparisonConvo;
     
@@ -469,6 +485,9 @@ export default function Header() {
         files: [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
+        // Ensure proper isolation
+        _conversationIndex: 1,
+        _storageKey: comparisonKey
       };
       
       debugComparison('PERPLEXITY_COMPARISON_OBJECT', comparisonConvo);
@@ -498,6 +517,9 @@ export default function Header() {
         files: convo.files || [],
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
+        // Ensure proper isolation
+        _conversationIndex: 1,
+        _storageKey: comparisonKey
       };
       
       // Clean up any key fields
@@ -513,7 +535,8 @@ export default function Header() {
     
     debugComparison('SETTING_ADDED_CONVERSATION', {
       comparisonConvo,
-      conversationId: comparisonConvo.conversationId
+      conversationId: comparisonConvo.conversationId,
+      storageKey: comparisonConvo._storageKey
     });
     
     setAddedConvo(comparisonConvo);
@@ -534,6 +557,22 @@ export default function Header() {
       debugComparison('COMPARISON_STATE_RESET', {});
     }, 2000);
   };
+
+  // Add cleanup effect when conversation changes
+  useEffect(() => {
+    return () => {
+      // Clean up comparison state on unmount or conversation change
+      if (conversation?.conversationId) {
+        const comparisonKey = getStorageKey(conversation.conversationId, 1);
+        debugComparison('CLEANUP_COMPARISON_STATE', {
+          conversationId: conversation.conversationId,
+          comparisonKey
+        });
+        // Don't remove queries here as it might interfere with navigation
+        // queryClient.removeQueries(['messages', comparisonKey]);
+      }
+    };
+  }, [conversation?.conversationId]);
 
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">

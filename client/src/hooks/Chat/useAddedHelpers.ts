@@ -32,6 +32,15 @@ const safeExtractText = (msg: any): string => {
   return '';
 };
 
+// CRITICAL: Centralized storage key generator to ensure consistency
+const getStorageKey = (queryParam: string, currentIndex: number): string => {
+  if (currentIndex === 0) {
+    return queryParam; // Main conversation uses base key
+  } else {
+    return `${queryParam}_comparison_${currentIndex}`; // Comparison uses indexed key
+  }
+};
+
 export default function useAddedHelpers({
   rootIndex = 0,
   currentIndex,
@@ -62,7 +71,11 @@ export default function useAddedHelpers({
   const { conversation, setConversation } = useCreateConversationAtom(currentIndex);
   
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
-  const rootMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, queryParam]);
+  
+  // CRITICAL: Always use the centralized key generator
+  const storageKey = getStorageKey(queryParam, currentIndex);
+  
+  const rootMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, storageKey]);
   const actualLatestMessage = rootMessages?.[rootMessages.length - 1];
   
   const [isSubmitting, setIsSubmitting] = useRecoilState(store.isSubmittingFamily(currentIndex));
@@ -85,7 +98,7 @@ export default function useAddedHelpers({
         return;
       }
       
-      // Get caller info
+      // Get caller info for debugging
       const callerStack = new Error().stack;
       const isFromStepHandler = callerStack?.includes('stepHandler') || callerStack?.includes('Step');
       const isFromFinalHandler = callerStack?.includes('finalHandler') || callerStack?.includes('Final');
@@ -96,28 +109,8 @@ export default function useAddedHelpers({
         return text.length > 0;
       });
       
-      // CRITICAL: Determine correct storage key based on conversation type
-      let comparisonKey: string;
-      
-      if (currentIndex === 0) {
-        // Main conversation (DeFacts) - store in main messages
-        comparisonKey = queryParam;
-        debugLog('MAIN_CONVERSATION_STORAGE', {
-          currentIndex,
-          queryParam,
-          comparisonKey,
-          conversationEndpoint: conversation?.endpoint
-        });
-      } else {
-        // Comparison conversation - use specific comparison key
-        comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-        debugLog('COMPARISON_CONVERSATION_STORAGE', {
-          currentIndex,
-          queryParam,
-          comparisonKey,
-          conversationEndpoint: conversation?.endpoint
-        });
-      }
+      // CRITICAL: Use centralized storage key
+      const comparisonKey = getStorageKey(queryParam, currentIndex);
       
       debugLog('SET_MESSAGES_VALIDATION', {
         currentIndex,
@@ -162,7 +155,7 @@ export default function useAddedHelpers({
         return; // Block the regression
       }
       
-      // Sanitize messages
+      // Sanitize messages with proper metadata
       const sanitizedMessages = messages.map((msg, index) => ({
         ...msg,
         siblingCount: 1,
@@ -171,7 +164,7 @@ export default function useAddedHelpers({
         text: safeExtractText(msg),
         isCompleted: isFromFinalHandler,
         finish_reason: isFromFinalHandler ? 'stop' : null,
-        // Add conversation tracking
+        // Add conversation tracking metadata
         _conversationIndex: currentIndex,
         _storageKey: comparisonKey,
         _timestamp: Date.now()
@@ -199,20 +192,11 @@ export default function useAddedHelpers({
         storageStrategy: currentIndex === 0 ? 'main-messages' : 'comparison-cache'
       });
       
-      // Store messages with proper key
+      // Store messages with proper key - DO NOT DUPLICATE
       queryClient.setQueryData<TMessage[]>(
         [QueryKeys.messages, comparisonKey],
         sanitizedMessages,
       );
-      
-      // CRITICAL: For main conversation, also update root messages
-      if (currentIndex === 0) {
-        queryClient.setQueryData<TMessage[]>(
-          [QueryKeys.messages, queryParam],
-          sanitizedMessages,
-        );
-        console.log('📝 MAIN CONVERSATION: Updated root messages cache');
-      }
       
       // Immediate verification
       setTimeout(() => {
@@ -261,20 +245,12 @@ export default function useAddedHelpers({
       
       resetSiblingIndex();
     },
-    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex, conversation],
+    [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex],
   );
 
   const getMessages = useCallback(() => {
-    // CRITICAL: Use same key logic as setMessages
-    let comparisonKey: string;
-    
-    if (currentIndex === 0) {
-      // Main conversation - get from main messages
-      comparisonKey = queryParam;
-    } else {
-      // Comparison conversation - get from comparison cache
-      comparisonKey = `${queryParam}_comparison_${currentIndex}`;
-    }
+    // CRITICAL: Use centralized storage key
+    const comparisonKey = getStorageKey(queryParam, currentIndex);
     
     const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
     
@@ -292,20 +268,26 @@ export default function useAddedHelpers({
   // Monitor all query cache changes for debugging
   useEffect(() => {
     const interval = setInterval(() => {
-      const mainKey = queryParam;
-      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+      const mainKey = getStorageKey(queryParam, 0);
+      const comparisonKey = getStorageKey(queryParam, currentIndex);
       
       const mainMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, mainKey]);
-      const comparisonMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+      const currentMessages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+      
+      // Check for all comparison keys
+      const allCacheKeys = queryClient.getQueryCache().getAll()
+        .filter(query => query.queryKey[0] === QueryKeys.messages)
+        .map(query => query.queryKey[1]);
       
       debugLog('PERIODIC_CACHE_CHECK', {
         currentIndex,
         mainKey,
         comparisonKey,
         mainMessagesCount: mainMessages?.length || 0,
-        comparisonMessagesCount: comparisonMessages?.length || 0,
+        currentMessagesCount: currentMessages?.length || 0,
         mainHasContent: mainMessages?.some(m => m.text?.length > 0) || false,
-        comparisonHasContent: comparisonMessages?.some(m => m.text?.length > 0) || false
+        currentHasContent: currentMessages?.some(m => m.text?.length > 0) || false,
+        allMessageKeys: allCacheKeys
       });
     }, 5000);
     
