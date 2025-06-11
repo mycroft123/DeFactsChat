@@ -35,7 +35,7 @@ export default function Header() {
   const comparisonInProgress = useRef(false);
   
   // Force DeFacts as default on mount
-  useEffect(() => {
+  /*useEffect(() => {
     if (conversation && conversation.endpoint !== 'gptPlugins') {
       console.log('🔧 Forcing DeFacts for main conversation');
       setConversation(prev => ({
@@ -44,7 +44,7 @@ export default function Header() {
         model: 'DeFacts'
       }));
     }
-  }, []); // Run once on mount
+  }, []);*/ // Run once on mount
   
   // Track the last selected model for comparison - default to GPT-4
   const [lastSelectedModel, setLastSelectedModel] = useState({
@@ -245,6 +245,15 @@ export default function Header() {
     comparisonInProgress.current = true;
     setIsComparing(true);
     
+    // First, ensure main conversation is DeFacts (only when comparing)
+    if (conversation.endpoint !== 'gptPlugins') {
+      setConversation(prev => ({
+        ...prev,
+        endpoint: 'gptPlugins',
+        model: 'DeFacts'
+      }));
+    }
+    
     const { title: _t, ...convo } = conversation;
     
     let comparisonConvo;
@@ -254,8 +263,8 @@ export default function Header() {
       
       comparisonConvo = {
         conversationId: convo.conversationId,
-        endpoint: 'Perplexity',  // NOT 'custom'
-        // Remove endpointType completely
+        endpoint: 'custom',  // Changed from 'Perplexity' to 'custom'
+        endpointType: 'Perplexity',  // Added this
         model: perplexityModel,
         title: '',
         modelLabel: 'Perplexity',
@@ -272,7 +281,7 @@ export default function Header() {
         createdAt: convo.createdAt,
         updatedAt: convo.updatedAt,
       };
-    }else {
+    } else {
       // Clean the GPT-4 comparison object
       comparisonConvo = {
         conversationId: convo.conversationId,
@@ -314,7 +323,7 @@ export default function Header() {
     console.log('🎯 === END COMPARISON DEBUG ===');
     
     setAddedConvo(comparisonConvo);
-
+  
     const textarea = document.getElementById(mainTextareaId);
     if (textarea) {
       textarea.focus();
@@ -325,6 +334,8 @@ export default function Header() {
       setIsComparing(false);
     }, 2000);
   };
+
+
   
   return (
     <div className="sticky top-0 z-10 flex h-auto w-full flex-col bg-white p-2 font-semibold text-text-primary dark:bg-gray-800 md:h-14 md:flex-row">
