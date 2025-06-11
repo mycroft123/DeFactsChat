@@ -128,6 +128,7 @@ actions:
 endpoints:
   # OpenAI Configuration (used by DeFacts and DeResearch modes)
   openAI:
+    iconURL: "/assets/openai.svg"  # ADD THIS LINE
     models:
       default:
         - "gpt-4o"
