@@ -345,7 +345,7 @@ export default function useAddedHelpers({
     return extractedText;
   }, [debugMessageStructure]);
 
-  // ENHANCED MESSAGE PROCESSING
+  // ENHANCED MESSAGE PROCESSING WITH COMPARISON SUPPORT
   const setMessages = useCallback(
     (messages: TMessage[]) => {
       if (!messages || messages.length === 0) {
@@ -402,10 +402,17 @@ export default function useAddedHelpers({
         return processed;
       });
       
-      // Store in cache
-      const cacheKey = queryParam;
-      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, cacheKey], processedMessages);
-      console.log(`💾 Stored ${processedMessages.length} messages in cache: ${cacheKey}`);
+      // RESTORE COMPARISON SYSTEM: Store in BOTH comparison cache AND main cache
+      const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+      const mainKey = queryParam;
+      
+      // Store in comparison cache (for comparison mode)
+      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, comparisonKey], processedMessages);
+      console.log(`💾 Stored ${processedMessages.length} messages in comparison cache: ${comparisonKey}`);
+      
+      // ALSO store in main cache (fallback)
+      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, mainKey], processedMessages);
+      console.log(`💾 Stored ${processedMessages.length} messages in main cache: ${mainKey}`);
       
       // Update latest message
       const latestMessage = processedMessages[processedMessages.length - 1];
@@ -432,18 +439,29 @@ export default function useAddedHelpers({
     [queryParam, queryClient, setLatestMultiMessage, currentIndex, resetSiblingIndex, extractTextContent],
   );
 
-  // ENHANCED MESSAGE RETRIEVAL
+  // ENHANCED MESSAGE RETRIEVAL WITH COMPARISON SUPPORT
   const getMessages = useCallback(() => {
-    const cacheKey = queryParam;
-    const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, cacheKey]);
+    const comparisonKey = `${queryParam}_comparison_${currentIndex}`;
+    const mainKey = queryParam;
+    
+    // Try comparison cache first (for comparison mode)
+    let messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey]);
+    
+    // Fallback to main cache
+    if (!messages || messages.length === 0) {
+      messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, mainKey]);
+      console.log('🔧 [getMessages] Using main cache fallback');
+    }
     
     console.log('🔧 [getMessages] Retrieved messages:', {
       currentIndex,
-      cacheKey,
+      comparisonKey,
+      mainKey,
       messageCount: messages?.length || 0,
       hasMessages: !!messages && messages.length > 0,
       streamingMapSize: streamingContentRef.current.size,
-      streamingKeys: Array.from(streamingContentRef.current.keys())
+      streamingKeys: Array.from(streamingContentRef.current.keys()),
+      usedComparisonCache: !!queryClient.getQueryData<TMessage[]>([QueryKeys.messages, comparisonKey])
     });
     
     return messages || [];
