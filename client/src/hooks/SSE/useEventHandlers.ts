@@ -564,9 +564,18 @@ export default function useEventHandlers({
       }
 
       const isComparison = isAddedRequest === true;
+      
+      // CRITICAL FIX: Use unique cache keys for comparison messages
       const cacheKey = isComparison 
-        ? `${conversation.conversationId}_comparison`
-        : conversation.conversationId;
+        ? [QueryKeys.messages, `${conversation.conversationId}_comparison_${responseMessage?.messageId || Date.now()}`]
+        : [QueryKeys.messages, conversation.conversationId];
+
+      console.log('[EVENT_HANDLERS DEBUG - CACHE KEY]', {
+        isComparison,
+        conversationId: conversation?.conversationId,
+        messageId: responseMessage?.messageId,
+        cacheKey,
+      });
 
       console.log('[EVENT_HANDLERS DEBUG - BEFORE SET MESSAGES]', {
         finalMessagesCount: finalMessages.length,
@@ -583,17 +592,41 @@ export default function useEventHandlers({
       if (finalMessages.length > 0) {
         setMessages(finalMessages);
         
-        // Set messages in query cache with appropriate key
-        queryClient.setQueryData<TMessage[]>(
-          [QueryKeys.messages, cacheKey],
-          finalMessages,
-        );
+        // Set messages with the unique cache key
+        queryClient.setQueryData<TMessage[]>(cacheKey, finalMessages);
+
+        // ALSO store a reference to this comparison
+        if (isComparison && responseMessage?.messageId) {
+          // Get existing comparison message IDs
+          const comparisonRefs = queryClient.getQueryData<string[]>([
+            QueryKeys.messages, 
+            `${conversation.conversationId}_comparison_refs`
+          ]) || [];
+          
+          console.log('[EVENT_HANDLERS DEBUG - COMPARISON REFS]', {
+            existingRefs: comparisonRefs,
+            newMessageId: responseMessage.messageId,
+          });
+          
+          // Add this message ID if not already present
+          if (!comparisonRefs.includes(responseMessage.messageId)) {
+            const updatedRefs = [...comparisonRefs, responseMessage.messageId];
+            queryClient.setQueryData<string[]>(
+              [QueryKeys.messages, `${conversation.conversationId}_comparison_refs`],
+              updatedRefs
+            );
+            
+            console.log('[EVENT_HANDLERS DEBUG - UPDATED REFS]', {
+              updatedRefs,
+            });
+          }
+        }
 
         console.log('[EVENT_HANDLERS DEBUG - AFTER SET MESSAGES]', {
           updatedMessages: getMessages()?.length || 0,
           cacheKey,
           isAddedRequest,
-          cachedMessages: queryClient.getQueryData<TMessage[]>([QueryKeys.messages, cacheKey])?.length || 0,
+          cachedMessages: queryClient.getQueryData<TMessage[]>(cacheKey)?.length || 0,
         });
       } else if (
         isAssistantsEndpoint(submissionConvo.endpoint) &&
@@ -696,8 +729,11 @@ export default function useEventHandlers({
         const finalMessages: TMessage[] = [...messages, userMessage, errorMessage];
         setMessages(finalMessages);
         
-        const cacheKey = isAddedRequest ? `${convoId}_comparison` : convoId;
-        queryClient.setQueryData<TMessage[]>([QueryKeys.messages, cacheKey], finalMessages);
+        const cacheKey = isAddedRequest 
+          ? [QueryKeys.messages, `${convoId}_comparison_${errorMessage.messageId}`]
+          : [QueryKeys.messages, convoId];
+          
+        queryClient.setQueryData<TMessage[]>(cacheKey, finalMessages);
         
         console.log('[EVENT_HANDLERS DEBUG - ERROR MESSAGES SET]', {
           convoId,
@@ -940,34 +976,44 @@ export function useComparisonMessages(conversationId: string | null) {
   return useQuery({
     queryKey: [QueryKeys.messages, `${conversationId}_comparison`],
     queryFn: () => {
-      // First try to get comparison messages
-      const comparisonMessages = queryClient.getQueryData<TMessage[]>(
-        [QueryKeys.messages, `${conversationId}_comparison`]
-      );
+      // Get all comparison message IDs
+      const comparisonRefs = queryClient.getQueryData<string[]>([
+        QueryKeys.messages, 
+        `${conversationId}_comparison_refs`
+      ]) || [];
       
-      console.log('[COMPARISON MESSAGES DEBUG]', {
+      console.log('[COMPARISON MESSAGES DEBUG - REFS]', {
         conversationId,
-        hasComparisonMessages: !!comparisonMessages,
-        comparisonLength: comparisonMessages?.length || 0,
-        lastComparisonMessage: comparisonMessages?.[comparisonMessages.length - 1],
-        lastComparisonText: comparisonMessages?.[comparisonMessages.length - 1]?.text?.substring(0, 100),
+        comparisonRefs,
       });
       
-      if (comparisonMessages && comparisonMessages.length > 0) {
-        return comparisonMessages;
+      // Collect all comparison messages
+      const allComparisonMessages: TMessage[] = [];
+      
+      for (const messageId of comparisonRefs) {
+        const messages = queryClient.getQueryData<TMessage[]>([
+          QueryKeys.messages,
+          `${conversationId}_comparison_${messageId}`
+        ]);
+        
+        if (messages && messages.length > 0) {
+          allComparisonMessages.push(...messages);
+        }
+      }
+      
+      console.log('[COMPARISON MESSAGES DEBUG - COLLECTED]', {
+        totalMessages: allComparisonMessages.length,
+        messageIds: allComparisonMessages.map(m => m.messageId),
+      });
+      
+      if (allComparisonMessages.length > 0) {
+        return allComparisonMessages;
       }
       
       // Fallback to regular messages if no comparison messages yet
-      const regularMessages = queryClient.getQueryData<TMessage[]>(
+      return queryClient.getQueryData<TMessage[]>(
         [QueryKeys.messages, conversationId]
       ) || [];
-      
-      console.log('[COMPARISON MESSAGES DEBUG - FALLBACK]', {
-        regularLength: regularMessages.length,
-        lastRegularMessage: regularMessages[regularMessages.length - 1],
-      });
-      
-      return regularMessages;
     },
     enabled: !!conversationId,
   });
