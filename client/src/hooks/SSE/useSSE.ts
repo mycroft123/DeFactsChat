@@ -236,13 +236,17 @@ export default function useSSE(
   runIndex = 0,
 ): UseSSEReturn {
   
+  // Track connection instances
+  const connectionId = useRef<string>('');
+  
   // Enhanced initialization logging
   debugComparison('useSSE INIT', {
     isAddedRequest,
     runIndex,
     hasSubmission: !!submission,
     submissionEndpoint: submission?.conversation?.endpoint,
-    submissionModel: submission?.conversation?.model
+    submissionModel: submission?.conversation?.model,
+    previousConnectionId: connectionId.current
   });
 
   const genTitle = useGenTitleMutation();
@@ -263,6 +267,7 @@ export default function useSSE(
   // Track delta message accumulation for debugging
   const deltaAccumulator = useRef<{[messageId: string]: string}>({});
   const messageStartTime = useRef<{[messageId: string]: number}>({});
+  const deltaCounter = useRef<{[messageId: string]: number}>({});
 
   const {
     setMessages,
@@ -388,6 +393,10 @@ export default function useSSE(
     userMessage: TMessage,
     attempt: number = 0
   ): SSE => {
+    // Generate unique connection ID
+    const newConnectionId = `${isAddedRequest ? 'COMP' : 'DEFACTS'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    connectionId.current = newConnectionId;
+    
     debugComparison('SSE_CONNECTION_CREATE', {
       attempt: attempt + 1,
       maxRetries: RETRY_CONFIG.maxRetries + 1,
@@ -395,7 +404,8 @@ export default function useSSE(
       runIndex,
       endpoint: payload?.endpoint,
       model: payload?.model,
-      serverUrl: payloadData?.server
+      serverUrl: payloadData?.server,
+      connectionId: newConnectionId
     });
     
     clearTimeouts();
@@ -541,6 +551,11 @@ export default function useSSE(
     sse.addEventListener('message', (e: MessageEvent) => {
       hasReceivedData = true;
       
+      // Log raw events for DeFacts debugging
+      if (!isAddedRequest && runIndex === 0) {
+        console.log(`🔍 [DEFACTS] Raw SSE Event:`, e.data);
+      }
+      
       let data: any;
       try {
         data = JSON.parse(e.data);
@@ -554,6 +569,7 @@ export default function useSSE(
       debugDelta('SSE_MESSAGE_RECEIVED', data, {
         isAddedRequest,
         runIndex,
+        connectionId: connectionId.current,
         messageType: data.final ? 'final' : 
                     data.created ? 'created' :
                     data.event ? 'step' :
@@ -565,6 +581,19 @@ export default function useSSE(
 
       try {
         if (data.final != null) {
+          // Log final accumulated text for DeFacts
+          if (!isAddedRequest && runIndex === 0) {
+            const messageId = data.responseMessage?.messageId || 'unknown';
+            const accumulatedText = deltaAccumulator.current[messageId] || '';
+            console.log(`[DEFACTS FINAL] Total deltas: ${deltaCounter.current[messageId] || 0}`);
+            console.log(`[DEFACTS FINAL] Accumulated text length: ${accumulatedText.length}`);
+            console.log(`[DEFACTS FINAL] Final message text length: ${data.responseMessage?.text?.length || 0}`);
+            if (accumulatedText && !data.responseMessage?.text) {
+              console.log(`[DEFACTS ERROR] Text was accumulated but final message is empty!`);
+              console.log(`[DEFACTS ERROR] Accumulated: "${accumulatedText.substring(0, 100)}..."`);
+            }
+          }
+          
           debugComparison('SSE_FINAL_MESSAGE', {
             isAddedRequest,
             runIndex,
@@ -578,9 +607,11 @@ export default function useSSE(
           (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
           
           // Clear delta accumulator for this message
-          if (data.messageId) {
-            delete deltaAccumulator.current[data.messageId];
-            delete messageStartTime.current[data.messageId];
+          if (data.messageId || data.responseMessage?.messageId) {
+            const messageId = data.messageId || data.responseMessage?.messageId;
+            delete deltaAccumulator.current[messageId];
+            delete messageStartTime.current[messageId];
+            delete deltaCounter.current[messageId];
           }
           
           return;
@@ -620,20 +651,22 @@ export default function useSSE(
           // Extract and track delta text for DeFacts messages
           if (data.event === 'on_message_delta' && !isAddedRequest) {
             const deltaText = extractDeltaText(data);
-            if (deltaText && data.data?.id) {
-              const messageId = data.data.id;
-              if (!deltaAccumulator.current[messageId]) {
-                deltaAccumulator.current[messageId] = '';
-                messageStartTime.current[messageId] = Date.now();
-              }
+            const messageId = data.data?.id || 'unknown';
+            
+            // Initialize counter if needed
+            if (!deltaCounter.current[messageId]) {
+              deltaCounter.current[messageId] = 0;
+              deltaAccumulator.current[messageId] = '';
+              messageStartTime.current[messageId] = Date.now();
+            }
+            
+            // Simple numbered logging
+            if (deltaText) {
+              deltaCounter.current[messageId]++;
               deltaAccumulator.current[messageId] += deltaText;
-              
-              debugDelta('DEFACTS_DELTA_ACCUMULATION', {
-                messageId,
-                newText: safePreview(deltaText, 50),
-                totalLength: deltaAccumulator.current[messageId].length,
-                timeElapsed: Date.now() - messageStartTime.current[messageId]
-              });
+              console.log(`[DEFACTS DELTA] ${deltaCounter.current[messageId]}: "${deltaText}"`);
+            } else {
+              console.log(`[DEFACTS DELTA] ${deltaCounter.current[messageId] + 1}: NO TEXT FOUND`);
             }
           }
           
@@ -798,6 +831,7 @@ export default function useSSE(
       // Clear delta accumulators
       deltaAccumulator.current = {};
       messageStartTime.current = {};
+      deltaCounter.current = {};
     };
   }, []);
 
