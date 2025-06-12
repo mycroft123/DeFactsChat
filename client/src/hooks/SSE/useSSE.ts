@@ -20,6 +20,68 @@ import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
 import store from '~/store';
 
+// Create SSE debugger for deep inspection
+const createSSEDebugger = (model: string, isComparison: boolean) => {
+  const eventLog: any[] = [];
+  
+  return {
+    logRawEvent: (eventType: string, data: any) => {
+      const entry = {
+        timestamp: new Date().toISOString(),
+        model,
+        isComparison,
+        eventType,
+        data,
+        dataString: typeof data === 'string' ? data : JSON.stringify(data),
+      };
+      
+      eventLog.push(entry);
+      
+      // Special logging for DeFacts
+      if (model === 'DeFacts' || model?.toLowerCase().includes('defacts')) {
+        console.log(`🔴 [DEFACTS RAW ${eventType}]:`, data);
+        
+        // Log the structure deeply
+        if (data && typeof data === 'object') {
+          console.log('🔴 [DEFACTS STRUCTURE]:', {
+            keys: Object.keys(data),
+            hasText: 'text' in data,
+            hasContent: 'content' in data,
+            hasResponse: 'response' in data,
+            hasDelta: 'delta' in data,
+            hasMessage: 'message' in data,
+            hasResponseMessage: 'responseMessage' in data,
+            dataPreview: JSON.stringify(data).substring(0, 200),
+          });
+          
+          // Deep inspection of nested structures
+          if (data.delta) {
+            console.log('🔴 [DEFACTS DELTA STRUCTURE]:', {
+              deltaKeys: Object.keys(data.delta),
+              deltaContent: data.delta.content,
+              deltaContentType: typeof data.delta.content,
+            });
+          }
+          
+          if (data.responseMessage) {
+            console.log('🔴 [DEFACTS RESPONSE MESSAGE]:', {
+              hasText: !!data.responseMessage.text,
+              textLength: data.responseMessage.text?.length || 0,
+              hasContent: !!data.responseMessage.content,
+              contentLength: data.responseMessage.content?.length || 0,
+            });
+          }
+        }
+      }
+    },
+    
+    exportLog: () => {
+      console.log('📋 FULL DEFACTS EVENT LOG:', JSON.stringify(eventLog, null, 2));
+      return eventLog;
+    }
+  };
+};
+
 // Get panel name for logging
 const getPanelName = (isAddedRequest: boolean, runIndex: number): string => {
   if (!isAddedRequest && runIndex === 0) return 'DEFACTS';
@@ -75,7 +137,6 @@ const safeGetContent = (obj: any, field: string = 'content'): string => {
   return '';
 };
 
-// Extract text from delta content (handles both old and new formats)
 // Enhanced text extraction that handles more formats
 const extractDeltaText = (data: any): string => {
   // Direct text in delta
@@ -225,7 +286,7 @@ const clearDraft = (conversationId?: string | null): void => {
   }
 };
 
-type ChatHelpers = Pick<
+type ChatHelpers = Pick
   EventHandlerParams,
   | 'setMessages'
   | 'getMessages'
@@ -471,6 +532,30 @@ export default function useSSE(
       throw error;
     }
 
+    // Create debugger for this connection
+    const sseDebugger = createSSEDebugger(
+      payload?.model || submission?.conversation?.model || 'unknown',
+      isAddedRequest
+    );
+    
+    // Track all event types registered
+    const allEventTypes: Set<string> = new Set();
+    
+    // Override addEventListener to capture all event types
+    const originalAddEventListener = sse.addEventListener.bind(sse);
+    sse.addEventListener = function(type: string, listener: any, options?: any) {
+      if (!allEventTypes.has(type)) {
+        allEventTypes.add(type);
+        console.log('🔴 [DEFACTS EVENT TYPE REGISTERED]:', type);
+      }
+      return originalAddEventListener(type, listener, options);
+    };
+    
+    // Log all registered events after 2 seconds
+    setTimeout(() => {
+      console.log('🔴 [DEFACTS ALL REGISTERED EVENT TYPES]:', Array.from(allEventTypes));
+    }, 2000);
+
     currentSSERef.current = sse;
     let textIndex: number | null = null;
     let hasReceivedData = false;
@@ -599,9 +684,10 @@ export default function useSSE(
     sse.addEventListener('message', (e: MessageEvent) => {
       hasReceivedData = true;
       
-      // Log raw events for DeFacts debugging
-      if (!isAddedRequest && runIndex === 0) {
-        console.log(`🔍 [DEFACTS] Raw SSE Event:`, e.data);
+      // Enhanced DeFacts debugging
+      if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
+        console.log(`🔴 [DEFACTS] Raw SSE Event:`, e.data);
+        sseDebugger.logRawEvent('message', e.data);
       }
       
       let data: any;
@@ -610,7 +696,43 @@ export default function useSSE(
       } catch (error) {
         console.error('❌ [useSSE] Error parsing message:', error);
         console.error('Raw message data:', e.data);
-        return;
+        
+        // Try to handle as plain text for DeFacts
+        if (payload?.model === 'DeFacts') {
+          console.log('🔴 [DEFACTS] Attempting plain text handling');
+          data = { text: e.data, type: 'text' };
+        } else {
+          return;
+        }
+      }
+
+      // Deep DeFacts inspection
+      if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
+        sseDebugger.logRawEvent('parsed_message', data);
+        
+        // Check all possible text locations
+        const textLocations = {
+          'data.text': data?.text,
+          'data.content': data?.content,
+          'data.response': data?.response,
+          'data.message': data?.message,
+          'data.responseMessage.text': data?.responseMessage?.text,
+          'data.responseMessage.content': data?.responseMessage?.content,
+          'data.delta.text': data?.delta?.text,
+          'data.delta.content': data?.delta?.content,
+          'data.choices[0].message.content': data?.choices?.[0]?.message?.content,
+          'data.choices[0].text': data?.choices?.[0]?.text,
+          'data.result': data?.result,
+          'data.output': data?.output,
+        };
+        
+        console.log('🔴 [DEFACTS TEXT SEARCH]:', Object.entries(textLocations).map(([path, value]) => ({
+          path,
+          hasValue: !!value,
+          type: typeof value,
+          length: typeof value === 'string' ? value.length : 0,
+          preview: typeof value === 'string' ? value.substring(0, 50) : null,
+        })));
       }
 
       // Enhanced message debugging with better text detection
@@ -629,21 +751,42 @@ export default function useSSE(
 
       try {
         if (data.final != null) {
-          // Log cache state before processing final message
-          logCacheState('BEFORE_FINAL');
-          
-          // Log final accumulated text for DeFacts
-          if (!isAddedRequest && runIndex === 0) {
-            const messageId = data.responseMessage?.messageId || 'unknown';
+          // CRITICAL FIX: Check if we have accumulated text but final message is empty
+          if (payload?.model === 'DeFacts' || !isAddedRequest && runIndex === 0) {
+            const messageId = data.responseMessage?.messageId || data.messageId || 'unknown';
             const accumulatedText = deltaAccumulator.current[messageId] || '';
-            console.log(`[DEFACTS FINAL] Total deltas: ${deltaCounter.current[messageId] || 0}`);
-            console.log(`[DEFACTS FINAL] Accumulated text length: ${accumulatedText.length}`);
-            console.log(`[DEFACTS FINAL] Final message text length: ${data.responseMessage?.text?.length || 0}`);
-            if (accumulatedText && !data.responseMessage?.text) {
-              console.log(`[DEFACTS ERROR] Text was accumulated but final message is empty!`);
-              console.log(`[DEFACTS ERROR] Accumulated: "${accumulatedText.substring(0, 100)}..."`);
+            
+            console.log(`🔴 [DEFACTS FINAL CHECK]:`, {
+              messageId,
+              hasResponseMessage: !!data.responseMessage,
+              responseTextLength: data.responseMessage?.text?.length || 0,
+              accumulatedLength: accumulatedText.length,
+              deltaCount: deltaCounter.current[messageId] || 0,
+              responseMessageStructure: data.responseMessage ? Object.keys(data.responseMessage) : 'no response message',
+            });
+            
+            // FIX: If we accumulated text but final message is empty, inject it
+            if (accumulatedText && data.responseMessage && !data.responseMessage.text) {
+              console.warn(`🔴 [DEFACTS FIX] Injecting accumulated text into empty final message`);
+              data.responseMessage.text = accumulatedText;
+              
+              // Also ensure content array has the text
+              if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
+                data.responseMessage.content = [{
+                  type: 'text',
+                  text: accumulatedText
+                }];
+              }
+            }
+            
+            // Export full debug log for DeFacts
+            if (payload?.model === 'DeFacts') {
+              sseDebugger.exportLog();
             }
           }
+          
+          // Log cache state before processing final message
+          logCacheState('BEFORE_FINAL');
           
           debugComparison('SSE_FINAL_MESSAGE', {
             isAddedRequest,
@@ -833,6 +976,39 @@ export default function useSSE(
       }
     });
 
+    // Catch-all listener for unknown events (especially for DeFacts)
+    if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
+      // Try common event names that DeFacts might use
+      const possibleEventNames = [
+        'data', 'update', 'chunk', 'stream', 'delta', 'text', 
+        'content', 'response', 'completion', 'message_delta',
+        'text_delta', 'assistant_message', 'ai_response'
+      ];
+      
+      possibleEventNames.forEach(eventName => {
+        sse.addEventListener(eventName, (e: any) => {
+          console.log(`🔴 [DEFACTS CUSTOM EVENT: ${eventName}]:`, e.data || e);
+          sseDebugger.logRawEvent(eventName, e.data || e);
+          
+          // Try to handle as message
+          try {
+            const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+            if (data && (data.text || data.content || data.delta)) {
+              console.log(`🔴 [DEFACTS] Processing ${eventName} as message`);
+              // Process as a regular message
+              messageHandler(data.text || data.content || '', { 
+                ...submission, 
+                userMessage,
+                initialResponse: submission?.initialResponse as TMessage
+              } as EventSubmission);
+            }
+          } catch (err) {
+            console.log(`🔴 [DEFACTS] Could not process ${eventName} event:`, err);
+          }
+        });
+      });
+    }
+
     // Add state change listener for debugging
     /* @ts-ignore */
     if (sse.addEventListener) {
@@ -923,7 +1099,9 @@ export default function useSSE(
       retryEnabled: true,
       maxRetries: RETRY_CONFIG.maxRetries,
       serverUrl: payloadData.server,
-      payloadSize: JSON.stringify(payload).length
+      payloadSize: JSON.stringify(payload).length,
+      payloadStructure: Object.keys(payload),
+      isDeFacts: payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts'),
     });
 
     // Reset retry state
