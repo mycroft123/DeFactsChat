@@ -538,3 +538,4 @@ export default function useStepHandler({
     [getMessages, setIsSubmitting, lastAnnouncementTimeRef, announcePolite, setMessages],
   );
 }
+
