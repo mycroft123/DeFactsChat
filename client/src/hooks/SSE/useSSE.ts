@@ -236,8 +236,32 @@ export default function useSSE(
   runIndex = 0,
 ): UseSSEReturn {
   
-  // Track connection instances
+  // Track connection instances and cache state
   const connectionId = useRef<string>('');
+  const previousCacheState = useRef<any>({});
+  
+  // Log cache state changes
+  const logCacheState = (context: string) => {
+    // You'll need to adapt this based on your actual cache implementation
+    // This is just an example - replace with your actual cache access
+    const currentCache = {
+      // Example: check Redux store
+      // messages: store.getState().messages,
+      // Or check local message map
+      // messageMap: messageHandler.messageMap?.current,
+      // Or check conversation state
+      // conversation: getConversation(),
+      timestamp: Date.now()
+    };
+    
+    console.log(`[CACHE STATE - ${context}]`, {
+      previous: previousCacheState.current,
+      current: currentCache,
+      changed: JSON.stringify(previousCacheState.current) !== JSON.stringify(currentCache)
+    });
+    
+    previousCacheState.current = currentCache;
+  };
   
   // Enhanced initialization logging
   debugComparison('useSSE INIT', {
@@ -581,6 +605,9 @@ export default function useSSE(
 
       try {
         if (data.final != null) {
+          // Log cache state before processing final message
+          logCacheState('BEFORE_FINAL');
+          
           // Log final accumulated text for DeFacts
           if (!isAddedRequest && runIndex === 0) {
             const messageId = data.responseMessage?.messageId || 'unknown';
@@ -605,6 +632,9 @@ export default function useSSE(
           const { plugins } = data;
           finalHandler(data, { ...submission, plugins } as EventSubmission);
           (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
+          
+          // Log cache state after processing final message
+          logCacheState('AFTER_FINAL');
           
           // Clear delta accumulator for this message
           if (data.messageId || data.responseMessage?.messageId) {

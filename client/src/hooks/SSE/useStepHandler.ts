@@ -155,7 +155,15 @@ export default function useStepHandler({
       };
     }
 
-    return { ...message, content: updatedContent as TMessageContentParts[] };
+    // IMPORTANT FIX: Update the message text from content if it's text content
+    let messageText = message.text || '';
+    updatedContent.forEach((content) => {
+      if (content?.type === ContentTypes.TEXT && 'text' in content) {
+        messageText = content.text || '';
+      }
+    });
+
+    return { ...message, content: updatedContent as TMessageContentParts[], text: messageText };
   };
 
   return useCallback(
@@ -241,11 +249,27 @@ export default function useStepHandler({
         }
       } else if (event === 'on_message_delta') {
         const messageDelta = data as Agents.MessageDeltaEvent;
+        
+        // ADD CACHE DEBUGGING HERE
+        console.log('[CACHE DEBUG - MESSAGE DELTA]', {
+          messageId: messageDelta.id,
+          hasContent: !!messageDelta.delta?.content,
+          deltaContent: messageDelta.delta?.content,
+          currentMessageMapSize: messageMap.current.size,
+          currentMessageMapKeys: Array.from(messageMap.current.keys()),
+        });
+        // END DEBUG
+        
         const runStep = stepMap.current.get(messageDelta.id);
         const responseMessageId = runStep?.runId ?? '';
 
         if (!runStep || !responseMessageId) {
-          console.warn('No run step or runId found for message delta event');
+          console.warn('No run step or runId found for message delta event', {
+            messageDeltaId: messageDelta.id,
+            hasRunStep: !!runStep,
+            responseMessageId,
+            stepMapKeys: Array.from(stepMap.current.keys()),
+          });
           return;
         }
 
@@ -255,11 +279,42 @@ export default function useStepHandler({
             ? messageDelta.delta.content[0]
             : messageDelta.delta.content;
 
+          // ADD CACHE DEBUGGING HERE
+          console.log('[CACHE DEBUG - UPDATE CONTENT]', {
+            responseMessageId,
+            oldText: response.text?.length || 0,
+            oldContent: response.content?.length || 0,
+            contentPartType: contentPart?.type,
+            contentPartText: contentPart?.text?.substring(0, 50),
+            runStepIndex: runStep.index,
+          });
+          // END DEBUG
+
           const updatedResponse = updateContent(response, runStep.index, contentPart);
+
+          // ADD MORE DEBUGGING
+          console.log('[CACHE DEBUG - AFTER UPDATE]', {
+            responseMessageId,
+            newText: updatedResponse.text?.length || 0,
+            newContent: updatedResponse.content?.length || 0,
+            contentChanged: JSON.stringify(response.content) !== JSON.stringify(updatedResponse.content),
+            textChanged: response.text !== updatedResponse.text,
+            newTextPreview: updatedResponse.text?.substring(0, 100),
+          });
+          // END DEBUG
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
           setMessages([...currentMessages.slice(0, -1), updatedResponse]);
+        } else {
+          // ADD DEBUG FOR MISSING RESPONSE
+          console.warn('[CACHE DEBUG - NO RESPONSE IN MAP]', {
+            hasResponse: !!response,
+            hasDeltaContent: !!messageDelta.delta.content,
+            responseMessageId,
+            messageMapKeys: Array.from(messageMap.current.keys()),
+          });
+          // END DEBUG
         }
       } else if (event === 'on_reasoning_delta') {
         const reasoningDelta = data as Agents.ReasoningDeltaEvent;
@@ -362,6 +417,14 @@ export default function useStepHandler({
       }
 
       return () => {
+        // ADD CLEANUP DEBUG
+        console.log('[CACHE DEBUG - CLEANUP]', {
+          toolCallMapSize: toolCallIdMap.current.size,
+          messageMapSize: messageMap.current.size,
+          stepMapSize: stepMap.current.size,
+        });
+        // END DEBUG
+        
         toolCallIdMap.current.clear();
         messageMap.current.clear();
         stepMap.current.clear();

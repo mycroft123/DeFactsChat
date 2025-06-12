@@ -428,194 +428,152 @@ export default function useEventHandlers({
     ],
   );
 
-  const finalHandler = useCallback(
-    (data: TFinalResData, submission: EventSubmission) => {
-      // FIX: Handle null conversation from Perplexity endpoint
-      if (!data.conversation) {
-        console.warn('⚠️ [finalHandler] No conversation in response, reconstructing from submission');
-        data.conversation = {
-          conversationId: submission.conversation?.conversationId || submission.overrideConvoId || v4(),
-          endpoint: submission.endpoint || submission.conversation?.endpoint,
-          model: submission.model || submission.conversation?.model,
-          title: submission.conversation?.title || 'New Chat',
-          // Copy other fields from submission
-          ...submission.conversation
-        } as TConversation;
-      }
+// Add this to useEventHandlers.ts around line 462 in the finalHandler function
+// Replace the existing finalHandler with this enhanced version:
 
-      const { requestMessage, responseMessage, conversation, runMessages } = data;
-      const {
-        messages,
-        conversation: submissionConvo,
-        isRegenerate = false,
-        isTemporary = false,
-      } = submission;
+const finalHandler = useCallback(
+  (data: TFinalResData, submission: EventSubmission) => {
+    const { requestMessage, responseMessage, conversation, runMessages } = data;
+    const {
+      messages,
+      conversation: submissionConvo,
+      isRegenerate = false,
+      isTemporary = false,
+    } = submission;
 
-      console.log('🔍 [finalHandler] Processing response:', {
-        conversationId: conversation.conversationId,
-        model: conversation.model,
-        endpoint: conversation.endpoint,
-        submissionModel: submissionConvo.model,
-        submissionEndpoint: submissionConvo.endpoint,
-        isAddedRequest,
-        isComparison: submissionConvo.isComparison,
-        _isAddedRequest: submissionConvo._isAddedRequest
-      });
-
-      setShowStopButton(false);
-      setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
-
-      const currentMessages = getMessages();
-      /* Early return if messages are empty; i.e., the user navigated away */
-      if (!currentMessages || currentMessages.length === 0) {
-        setIsSubmitting(false);
-        return;
-      }
-
-      /* a11y announcements */
-      announcePolite({ message: 'end', isStatus: true });
-      announcePolite({ message: getAllContentText(responseMessage) });
-
-      /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
-      let finalMessages: TMessage[] = [];
-      if (runMessages) {
-        finalMessages = [...runMessages];
-      } else if (isRegenerate && responseMessage) {
-        finalMessages = [...messages, responseMessage];
-      } else if (requestMessage != null && responseMessage != null) {
-        finalMessages = [...messages, requestMessage, responseMessage];
-      }
-      
-      // Determine if this is a comparison response
-      const isComparisonSubmission = submissionConvo.isComparison || submissionConvo._isAddedRequest;
-      const isComparisonResponse = (conversation.model !== 'DeFacts' && conversation.endpoint !== 'gptPlugins') || isAddedRequest === true;
-      const isComparison = isComparisonSubmission || isComparisonResponse;
-      
-      // Update messages with appropriate cache key
-      if (finalMessages.length > 0) {
-        setMessages(finalMessages);
-        
-        // Use different cache keys for main vs comparison
-        const cacheKey = isComparison 
-          ? [QueryKeys.messages, `${conversation.conversationId}_comparison`]
-          : [QueryKeys.messages, conversation.conversationId];
-          
-        queryClient.setQueryData<TMessage[]>(cacheKey, finalMessages);
-        
-        // Also update the regular key if it's the main conversation
-        if (!isComparison) {
-          queryClient.setQueryData<TMessage[]>(
-            [QueryKeys.messages, conversation.conversationId],
-            finalMessages
-          );
-        }
-      } else if (
-        isAssistantsEndpoint(submissionConvo.endpoint) &&
-        (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
-      ) {
-        const cacheKey = isComparison 
-          ? [QueryKeys.messages, `${conversation.conversationId}_comparison`]
-          : [QueryKeys.messages, conversation.conversationId];
-          
-        queryClient.setQueryData<TMessage[]>(cacheKey, [...currentMessages]);
-      }
-
-      const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
-      if (isNewConvo) {
-        removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
-      }
-
-      /* Refresh title */
-      if (
-        genTitle &&
-        isNewConvo &&
-        !isTemporary &&
-        requestMessage &&
-        requestMessage.parentMessageId === Constants.NO_PARENT
-      ) {
-        setTimeout(() => {
-          genTitle.mutate({ conversationId: conversation.conversationId as string });
-        }, 2500);
-      }
-
-      /* Handle conversation state updates */
-      if (setConversation) {
-        if (isComparison) {
-          console.log('🛡️ [finalHandler] Comparison detected, updating comparison cache only', {
-            isAddedRequest,
-            isComparisonSubmission,
-            isComparisonResponse,
-            model: conversation.model,
-            endpoint: conversation.endpoint
-          });
-          
-          // Store comparison conversation data separately
-          const comparisonConvo = {
-            ...conversation,
-            isComparison: true,
-            _originalModel: conversation.model,
-            _originalEndpoint: conversation.endpoint
-          };
-          
-          queryClient.setQueryData(
-            [QueryKeys.conversation, `${conversation.conversationId}_comparison`],
-            comparisonConvo
-          );
-          
-          // IMPORTANT: Early return to prevent state contamination
-          setIsSubmitting(false);
-          return; // <-- CRITICAL: This prevents state contamination
-        } else {
-          // This is a main conversation response (DeFacts)
-          console.log('✅ [finalHandler] Updating main conversation state', {
-            model: conversation.model || submissionConvo.model,
-            endpoint: conversation.endpoint || submissionConvo.endpoint
-          });
-          
-          setConversation((prevState) => {
-            const update = {
-              ...prevState,
-              ...(conversation as TConversation),
-            };
-            
-            // Ensure DeFacts remains for main conversation
-            if (prevState?.model === 'DeFacts' || update.model === 'DeFacts') {
-              update.model = 'DeFacts';
-              update.endpoint = 'gptPlugins';
-            }
-            
-            // Cache the main conversation
-            queryClient.setQueryData(
-              [QueryKeys.conversation, conversation.conversationId],
-              update
-            );
-            
-            return update;
-          });
-          
-          if (location.pathname === '/c/new') {
-            navigate(`/c/${conversation.conversationId}`, { replace: true });
-          }
-        }
-      }
-
-      setIsSubmitting(false);
-    },
-    [
-      setShowStopButton,
-      setCompleted,
-      getMessages,
-      announcePolite,
-      genTitle,
-      setConversation,
+    // ADD CACHE DEBUGGING HERE - START
+    console.log('[CACHE DEBUG - FINAL HANDLER START]', {
       isAddedRequest,
-      setIsSubmitting,
-      setMessages,
-      queryClient,
-      location.pathname,
-      navigate,
-    ],
-  );
+      messageId: responseMessage?.messageId,
+      hasText: !!responseMessage?.text,
+      textLength: responseMessage?.text?.length || 0,
+      conversationId: conversation?.conversationId,
+      currentMessages: getMessages()?.length || 0,
+      model: submissionConvo?.model,
+      endpoint: submissionConvo?.endpoint,
+      runMessages: runMessages?.length || 0,
+    });
+    // END DEBUG
+
+    setShowStopButton(false);
+    setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
+
+    const currentMessages = getMessages();
+    /* Early return if messages are empty; i.e., the user navigated away */
+    if (!currentMessages || currentMessages.length === 0) {
+      setIsSubmitting(false);
+      return;
+    }
+
+    /* a11y announcements */
+    announcePolite({ message: 'end', isStatus: true });
+    announcePolite({ message: getAllContentText(responseMessage) });
+
+    /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
+    let finalMessages: TMessage[] = [];
+    if (runMessages) {
+      finalMessages = [...runMessages];
+    } else if (isRegenerate && responseMessage) {
+      finalMessages = [...messages, responseMessage];
+    } else if (requestMessage != null && responseMessage != null) {
+      finalMessages = [...messages, requestMessage, responseMessage];
+    }
+
+    // ADD CACHE DEBUGGING HERE - BEFORE SET
+    const isComparison = isAddedRequest === true;
+    console.log('[CACHE DEBUG - BEFORE SET MESSAGES]', {
+      finalMessagesCount: finalMessages.length,
+      lastMessage: finalMessages[finalMessages.length - 1],
+      lastMessageText: finalMessages[finalMessages.length - 1]?.text?.substring(0, 100),
+      lastMessageModel: finalMessages[finalMessages.length - 1]?.model,
+      isComparison,
+      conversationId: conversation?.conversationId,
+    });
+    // END DEBUG
+
+    if (finalMessages.length > 0) {
+      setMessages(finalMessages);
+      
+      // ADD CACHE DEBUGGING HERE - AFTER SET
+      console.log('[CACHE DEBUG - AFTER SET MESSAGES]', {
+        updatedMessages: getMessages()?.length || 0,
+        cacheKey: conversation?.conversationId,
+        isAddedRequest,
+      });
+      // END DEBUG
+      
+      queryClient.setQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId],
+        finalMessages,
+      );
+    } else if (
+      isAssistantsEndpoint(submissionConvo.endpoint) &&
+      (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
+    ) {
+      queryClient.setQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId],
+        [...currentMessages],
+      );
+    }
+
+    const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
+    if (isNewConvo) {
+      removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
+    }
+
+    /* Refresh title */
+    if (
+      genTitle &&
+      isNewConvo &&
+      !isTemporary &&
+      requestMessage &&
+      requestMessage.parentMessageId === Constants.NO_PARENT
+    ) {
+      setTimeout(() => {
+        genTitle.mutate({ conversationId: conversation.conversationId as string });
+      }, 2500);
+    }
+
+    if (setConversation && isAddedRequest !== true) {
+      setConversation((prevState) => {
+        const update = {
+          ...prevState,
+          ...(conversation as TConversation),
+        };
+        if (prevState?.model != null && prevState.model !== submissionConvo.model) {
+          update.model = prevState.model;
+        }
+        const cachedConvo = queryClient.getQueryData<TConversation>([
+          QueryKeys.conversation,
+          conversation.conversationId,
+        ]);
+        if (!cachedConvo) {
+          queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
+        }
+        return update;
+      });
+      if (location.pathname === '/c/new') {
+        navigate(`/c/${conversation.conversationId}`, { replace: true });
+      }
+    }
+
+    setIsSubmitting(false);
+  },
+  [
+    setShowStopButton,
+    setCompleted,
+    getMessages,
+    announcePolite,
+    genTitle,
+    setConversation,
+    isAddedRequest,
+    setIsSubmitting,
+    setMessages,
+    queryClient,
+    location.pathname,
+    navigate,
+  ],
+);
 
   const errorHandler = useCallback(
     ({ data, submission }: { data?: TResData; submission: EventSubmission }) => {
