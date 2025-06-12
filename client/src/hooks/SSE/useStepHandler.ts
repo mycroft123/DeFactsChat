@@ -79,9 +79,8 @@ export default function useStepHandler({
       return message;
     }
 
-    const updatedContent = [...(message.content || [])] as Array
-      Partial<TMessageContentParts> | undefined
-    >;
+    const updatedContent = [...(message.content || [])] as Array<Partial<TMessageContentParts> | undefined>;
+    
     if (!updatedContent[index]) {
       updatedContent[index] = { type: contentPart.type as AllContentTypes };
     }
