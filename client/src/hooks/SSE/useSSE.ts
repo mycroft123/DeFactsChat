@@ -286,7 +286,7 @@ const clearDraft = (conversationId?: string | null): void => {
   }
 };
 
-type ChatHelpers = Pick
+type ChatHelpers = Pick <
   EventHandlerParams,
   | 'setMessages'
   | 'getMessages'
