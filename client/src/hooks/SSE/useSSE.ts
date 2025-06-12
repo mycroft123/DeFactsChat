@@ -20,9 +20,19 @@ import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
 import store from '~/store';
 
+// Get panel name for logging
+const getPanelName = (isAddedRequest: boolean, runIndex: number): string => {
+  if (!isAddedRequest && runIndex === 0) return 'DEFACTS';
+  if (isAddedRequest && runIndex === 1) return 'COMPARISON';
+  return `PANEL_${runIndex}`;
+};
+
 // Enhanced debug utility for delta messages
 const debugDelta = (context: string, data: any, metadata?: any) => {
-  console.group(`🔄 DELTA DEBUG [${context}]`);
+  const panelName = metadata?.isAddedRequest !== undefined ? 
+    getPanelName(metadata.isAddedRequest, metadata.runIndex || 0) : 'UNKNOWN';
+  
+  console.group(`🔄 [${panelName}] DELTA DEBUG [${context}]`);
   console.log('⏰ Timestamp:', new Date().toISOString());
   console.log('📊 Data:', data);
   if (metadata) {
@@ -116,12 +126,16 @@ const safePreview = (content: any, length: number = 100): string => {
 
 // Side-by-side comparison debug
 const debugComparison = (context: string, data: any) => {
-  console.group(`🔗 COMPARISON DEBUG [${context}]`);
+  const panelName = data?.isAddedRequest !== undefined ? 
+    getPanelName(data.isAddedRequest, data.runIndex || 0) : 'UNKNOWN';
+  
+  console.group(`🔗 [${panelName}] DEBUG [${context}]`);
   console.log('⏰ Timestamp:', new Date().toISOString());
   console.log('📊 Data:', data);
   
   if (data?.isAddedRequest !== undefined) {
-    console.log('🎯 Is comparison request:', data.isAddedRequest);
+    console.log('🎯 Panel:', panelName);
+    console.log('📍 Is comparison request:', data.isAddedRequest);
   }
   
   if (data?.runIndex !== undefined) {
