@@ -54,6 +54,8 @@ export default function useStepHandler({
   const toolCallIdMap = useRef(new Map<string, string | undefined>());
   const messageMap = useRef(new Map<string, TMessage>());
   const stepMap = useRef(new Map<string, Agents.RunStep>());
+  const deltaCountRef = useRef(0);
+  const totalTextLengthRef = useRef(0);
 
   const updateContent = (
     message: TMessage,
@@ -61,13 +63,23 @@ export default function useStepHandler({
     contentPart: Agents.MessageContentComplex,
     finalUpdate = false,
   ) => {
+    console.log('[STEP_HANDLER DEBUG - updateContent]', {
+      messageId: message.messageId,
+      index,
+      contentType: contentPart.type,
+      finalUpdate,
+      hasText: 'text' in contentPart,
+      textLength: 'text' in contentPart ? (contentPart.text as string)?.length : 0,
+      currentMessageText: message.text?.substring(0, 50),
+    });
+
     const contentType = contentPart.type ?? '';
     if (!contentType) {
-      console.warn('No content type found in content part');
+      console.warn('[STEP_HANDLER WARNING] No content type found in content part', contentPart);
       return message;
     }
 
-    const updatedContent = [...(message.content || [])] as Array<
+    const updatedContent = [...(message.content || [])] as Array
       Partial<TMessageContentParts> | undefined
     >;
     if (!updatedContent[index]) {
@@ -80,15 +92,25 @@ export default function useStepHandler({
       typeof contentPart.text === 'string'
     ) {
       const currentContent = updatedContent[index] as MessageDeltaUpdate;
+      const previousText = currentContent.text || '';
+      const newText = contentPart.text;
       const update: MessageDeltaUpdate = {
         type: ContentTypes.TEXT,
-        text: (currentContent.text || '') + contentPart.text,
+        text: previousText + newText,
       };
 
       if (contentPart.tool_call_ids != null) {
         update.tool_call_ids = contentPart.tool_call_ids;
       }
       updatedContent[index] = update;
+
+      console.log('[STEP_HANDLER DEBUG - TEXT UPDATE]', {
+        index,
+        previousTextLength: previousText.length,
+        newTextLength: newText.length,
+        totalTextLength: update.text.length,
+        textPreview: update.text.substring(0, 100),
+      });
     } else if (
       contentType.startsWith(ContentTypes.AGENT_UPDATE) &&
       ContentTypes.AGENT_UPDATE in contentPart &&
@@ -100,6 +122,7 @@ export default function useStepHandler({
       };
 
       updatedContent[index] = update;
+      console.log('[STEP_HANDLER DEBUG - AGENT UPDATE]', { index, update });
     } else if (
       contentType.startsWith(ContentTypes.THINK) &&
       ContentTypes.THINK in contentPart &&
@@ -112,6 +135,10 @@ export default function useStepHandler({
       };
 
       updatedContent[index] = update;
+      console.log('[STEP_HANDLER DEBUG - THINK UPDATE]', {
+        index,
+        thinkLength: update.think.length,
+      });
     } else if (contentType === ContentTypes.IMAGE_URL && 'image_url' in contentPart) {
       const currentContent = updatedContent[index] as {
         type: ContentTypes.IMAGE_URL;
@@ -120,11 +147,11 @@ export default function useStepHandler({
       updatedContent[index] = {
         ...currentContent,
       };
+      console.log('[STEP_HANDLER DEBUG - IMAGE URL]', { index });
     } else if (contentType === ContentTypes.TOOL_CALL && 'tool_call' in contentPart) {
       const existingContent = updatedContent[index] as Agents.ToolCallContent | undefined;
       const existingToolCall = existingContent?.tool_call;
       const toolCallArgs = (contentPart.tool_call as Agents.ToolCall).args;
-      /** When args are a valid object, they are likely already invoked */
       const args =
         finalUpdate ||
         typeof existingToolCall?.args === 'object' ||
@@ -153,21 +180,58 @@ export default function useStepHandler({
         type: ContentTypes.TOOL_CALL,
         tool_call: newToolCall,
       };
+
+      console.log('[STEP_HANDLER DEBUG - TOOL CALL]', {
+        index,
+        toolCallId: id,
+        toolCallName: name,
+        finalUpdate,
+      });
     }
 
     // IMPORTANT FIX: Update the message text from content if it's text content
     let messageText = message.text || '';
-    updatedContent.forEach((content) => {
+    let textContentFound = false;
+    updatedContent.forEach((content, idx) => {
       if (content?.type === ContentTypes.TEXT && 'text' in content) {
         messageText = content.text || '';
+        textContentFound = true;
+        console.log('[STEP_HANDLER DEBUG - TEXT EXTRACTION]', {
+          contentIndex: idx,
+          extractedTextLength: messageText.length,
+          extractedTextPreview: messageText.substring(0, 100),
+        });
       }
     });
 
-    return { ...message, content: updatedContent as TMessageContentParts[], text: messageText };
+    const updatedMessage = { 
+      ...message, 
+      content: updatedContent as TMessageContentParts[], 
+      text: messageText 
+    };
+
+    console.log('[STEP_HANDLER DEBUG - FINAL MESSAGE UPDATE]', {
+      messageId: updatedMessage.messageId,
+      originalTextLength: message.text?.length || 0,
+      updatedTextLength: updatedMessage.text?.length || 0,
+      textContentFound,
+      contentCount: updatedContent.length,
+      textPreview: updatedMessage.text?.substring(0, 100),
+    });
+
+    return updatedMessage;
   };
 
   return useCallback(
     ({ event, data }: TStepEvent, submission: EventSubmission) => {
+      console.log('[STEP_HANDLER DEBUG - EVENT]', {
+        event,
+        dataType: data?.constructor?.name,
+        submissionModel: submission.conversation?.model,
+        submissionEndpoint: submission.conversation?.endpoint,
+        timestamp: new Date().toISOString(),
+      });
+
       const messages = getMessages() || [];
       const { userMessage } = submission;
       setIsSubmitting(true);
@@ -181,8 +245,17 @@ export default function useStepHandler({
       if (event === 'on_run_step') {
         const runStep = data as Agents.RunStep;
         const responseMessageId = runStep.runId ?? '';
+        
+        console.log('[STEP_HANDLER DEBUG - RUN STEP]', {
+          runStepId: runStep.id,
+          runId: runStep.runId,
+          stepType: runStep.stepDetails.type,
+          index: runStep.index,
+          messageMapSize: messageMap.current.size,
+        });
+
         if (!responseMessageId) {
-          console.warn('No message id found in run step event');
+          console.warn('[STEP_HANDLER WARNING] No message id found in run step event');
           return;
         }
 
@@ -202,6 +275,11 @@ export default function useStepHandler({
 
           messageMap.current.set(responseMessageId, response);
           setMessages([...messages.slice(0, -1), response]);
+
+          console.log('[STEP_HANDLER DEBUG - NEW RESPONSE CREATED]', {
+            responseMessageId,
+            parentMessageId: userMessage.messageId,
+          });
         }
 
         // Store tool call IDs if present
@@ -235,8 +313,14 @@ export default function useStepHandler({
       } else if (event === 'on_agent_update') {
         const { agent_update } = data as Agents.AgentUpdate;
         const responseMessageId = agent_update.runId || '';
+        
+        console.log('[STEP_HANDLER DEBUG - AGENT UPDATE]', {
+          runId: agent_update.runId,
+          index: agent_update.index,
+        });
+
         if (!responseMessageId) {
-          console.warn('No message id found in agent update event');
+          console.warn('[STEP_HANDLER WARNING] No message id found in agent update event');
           return;
         }
 
@@ -248,27 +332,32 @@ export default function useStepHandler({
           setMessages([...currentMessages.slice(0, -1), updatedResponse]);
         }
       } else if (event === 'on_message_delta') {
+        deltaCountRef.current++;
         const messageDelta = data as Agents.MessageDeltaEvent;
         
-        // ADD CACHE DEBUGGING HERE
-        console.log('[CACHE DEBUG - MESSAGE DELTA]', {
-          messageId: messageDelta.id,
+        console.log('[STEP_HANDLER DEBUG - MESSAGE DELTA]', {
+          deltaCount: deltaCountRef.current,
+          messageDeltaId: messageDelta.id,
+          hasDelta: !!messageDelta.delta,
           hasContent: !!messageDelta.delta?.content,
           deltaContent: messageDelta.delta?.content,
-          currentMessageMapSize: messageMap.current.size,
-          currentMessageMapKeys: Array.from(messageMap.current.keys()),
+          contentType: Array.isArray(messageDelta.delta?.content) 
+            ? messageDelta.delta.content[0]?.type 
+            : messageDelta.delta?.content?.type,
+          stepMapSize: stepMap.current.size,
+          messageMapSize: messageMap.current.size,
         });
-        // END DEBUG
         
         const runStep = stepMap.current.get(messageDelta.id);
         const responseMessageId = runStep?.runId ?? '';
 
         if (!runStep || !responseMessageId) {
-          console.warn('No run step or runId found for message delta event', {
+          console.warn('[STEP_HANDLER WARNING] No run step or runId found for message delta event', {
             messageDeltaId: messageDelta.id,
             hasRunStep: !!runStep,
             responseMessageId,
             stepMapKeys: Array.from(stepMap.current.keys()),
+            messageMapKeys: Array.from(messageMap.current.keys()),
           });
           return;
         }
@@ -279,50 +368,55 @@ export default function useStepHandler({
             ? messageDelta.delta.content[0]
             : messageDelta.delta.content;
 
-          // ADD CACHE DEBUGGING HERE
-          console.log('[CACHE DEBUG - UPDATE CONTENT]', {
+          console.log('[STEP_HANDLER DEBUG - DELTA CONTENT]', {
             responseMessageId,
-            oldText: response.text?.length || 0,
-            oldContent: response.content?.length || 0,
-            contentPartType: contentPart?.type,
-            contentPartText: contentPart?.text?.substring(0, 50),
             runStepIndex: runStep.index,
+            contentPartType: contentPart?.type,
+            hasText: 'text' in (contentPart || {}),
+            textLength: 'text' in (contentPart || {}) ? (contentPart.text as string)?.length : 0,
+            textPreview: 'text' in (contentPart || {}) ? (contentPart.text as string)?.substring(0, 50) : '',
           });
-          // END DEBUG
 
+          const beforeUpdateText = response.text || '';
           const updatedResponse = updateContent(response, runStep.index, contentPart);
+          const afterUpdateText = updatedResponse.text || '';
 
-          // ADD MORE DEBUGGING
-          console.log('[CACHE DEBUG - AFTER UPDATE]', {
+          if ('text' in (contentPart || {})) {
+            totalTextLengthRef.current += (contentPart.text as string)?.length || 0;
+          }
+
+          console.log('[STEP_HANDLER DEBUG - DELTA RESULT]', {
             responseMessageId,
-            newText: updatedResponse.text?.length || 0,
-            newContent: updatedResponse.content?.length || 0,
+            beforeTextLength: beforeUpdateText.length,
+            afterTextLength: afterUpdateText.length,
+            textAdded: afterUpdateText.length - beforeUpdateText.length,
+            totalTextAccumulated: totalTextLengthRef.current,
             contentChanged: JSON.stringify(response.content) !== JSON.stringify(updatedResponse.content),
-            textChanged: response.text !== updatedResponse.text,
-            newTextPreview: updatedResponse.text?.substring(0, 100),
           });
-          // END DEBUG
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
           setMessages([...currentMessages.slice(0, -1), updatedResponse]);
         } else {
-          // ADD DEBUG FOR MISSING RESPONSE
-          console.warn('[CACHE DEBUG - NO RESPONSE IN MAP]', {
+          console.warn('[STEP_HANDLER WARNING - NO RESPONSE OR CONTENT]', {
             hasResponse: !!response,
             hasDeltaContent: !!messageDelta.delta.content,
             responseMessageId,
             messageMapKeys: Array.from(messageMap.current.keys()),
           });
-          // END DEBUG
         }
       } else if (event === 'on_reasoning_delta') {
         const reasoningDelta = data as Agents.ReasoningDeltaEvent;
         const runStep = stepMap.current.get(reasoningDelta.id);
         const responseMessageId = runStep?.runId ?? '';
 
+        console.log('[STEP_HANDLER DEBUG - REASONING DELTA]', {
+          reasoningDeltaId: reasoningDelta.id,
+          hasContent: !!reasoningDelta.delta.content,
+        });
+
         if (!runStep || !responseMessageId) {
-          console.warn('No run step or runId found for reasoning delta event');
+          console.warn('[STEP_HANDLER WARNING] No run step or runId found for reasoning delta event');
           return;
         }
 
@@ -343,8 +437,13 @@ export default function useStepHandler({
         const runStep = stepMap.current.get(runStepDelta.id);
         const responseMessageId = runStep?.runId ?? '';
 
+        console.log('[STEP_HANDLER DEBUG - RUN STEP DELTA]', {
+          runStepDeltaId: runStepDelta.id,
+          deltaType: runStepDelta.delta.type,
+        });
+
         if (!runStep || !responseMessageId) {
-          console.warn('No run step or runId found for run step delta event');
+          console.warn('[STEP_HANDLER WARNING] No run step or runId found for run step delta event');
           return;
         }
 
@@ -388,11 +487,16 @@ export default function useStepHandler({
 
         const { id: stepId } = result;
 
+        console.log('[STEP_HANDLER DEBUG - RUN STEP COMPLETED]', {
+          stepId,
+          toolCallName: result.tool_call?.name,
+        });
+
         const runStep = stepMap.current.get(stepId);
         const responseMessageId = runStep?.runId ?? '';
 
         if (!runStep || !responseMessageId) {
-          console.warn('No run step or runId found for completed tool call event');
+          console.warn('[STEP_HANDLER WARNING] No run step or runId found for completed tool call event');
           return;
         }
 
@@ -417,17 +521,19 @@ export default function useStepHandler({
       }
 
       return () => {
-        // ADD CLEANUP DEBUG
-        console.log('[CACHE DEBUG - CLEANUP]', {
+        console.log('[STEP_HANDLER DEBUG - CLEANUP]', {
           toolCallMapSize: toolCallIdMap.current.size,
           messageMapSize: messageMap.current.size,
           stepMapSize: stepMap.current.size,
+          totalDeltas: deltaCountRef.current,
+          totalTextLength: totalTextLengthRef.current,
         });
-        // END DEBUG
         
         toolCallIdMap.current.clear();
         messageMap.current.clear();
         stepMap.current.clear();
+        deltaCountRef.current = 0;
+        totalTextLengthRef.current = 0;
       };
     },
     [getMessages, setIsSubmitting, lastAnnouncementTimeRef, announcePolite, setMessages],

@@ -69,6 +69,13 @@ const createErrorMessage = ({
   submission: EventSubmission;
   error?: Error | unknown;
 }) => {
+  console.log('[EVENT_HANDLERS DEBUG - createErrorMessage]', {
+    hasErrorMetadata: !!errorMetadata,
+    errorType: error?.constructor?.name,
+    errorMessage: (error as Error)?.message,
+    submissionModel: submission.conversation?.model,
+  });
+
   const currentMessages = getMessages();
   const latestMessage = currentMessages?.[currentMessages.length - 1];
   let errorMessage: TMessage;
@@ -180,6 +187,15 @@ export default function useEventHandlers({
   const { conversationId: paramId } = useParams();
   const { token } = useAuthContext();
 
+  // Debug ref to track handler calls
+  const handlerCallsRef = useRef({
+    messageHandler: 0,
+    syncHandler: 0,
+    createdHandler: 0,
+    finalHandler: 0,
+    errorHandler: 0,
+  });
+
   const contentHandler = useContentHandler({ setMessages, getMessages });
   const stepHandler = useStepHandler({
     setMessages,
@@ -192,6 +208,18 @@ export default function useEventHandlers({
 
   const messageHandler = useCallback(
     (data: string | undefined, submission: EventSubmission) => {
+      handlerCallsRef.current.messageHandler++;
+      console.log('[EVENT_HANDLERS DEBUG - messageHandler]', {
+        callCount: handlerCallsRef.current.messageHandler,
+        dataLength: data?.length || 0,
+        isAddedRequest,
+        model: submission.conversation?.model,
+        endpoint: submission.conversation?.endpoint,
+        isRegenerate: submission.isRegenerate,
+        hasPlugin: !!submission.plugin,
+        hasPlugins: !!submission.plugins?.length,
+      });
+
       const {
         messages,
         userMessage,
@@ -209,34 +237,39 @@ export default function useEventHandlers({
         lastAnnouncementTimeRef.current = currentTime;
       }
 
+      const responseMessage = {
+        ...initialResponse,
+        text,
+        plugin: plugin ?? null,
+        plugins: plugins ?? [],
+      };
+
+      console.log('[EVENT_HANDLERS DEBUG - messageHandler response]', {
+        responseMessageId: responseMessage.messageId,
+        textLength: text.length,
+        textPreview: text.substring(0, 100),
+      });
+
       if (isRegenerate) {
-        setMessages([
-          ...messages,
-          {
-            ...initialResponse,
-            text,
-            plugin: plugin ?? null,
-            plugins: plugins ?? [],
-          },
-        ]);
+        setMessages([...messages, responseMessage]);
       } else {
-        setMessages([
-          ...messages,
-          userMessage,
-          {
-            ...initialResponse,
-            text,
-            plugin: plugin ?? null,
-            plugins: plugins ?? [],
-          },
-        ]);
+        setMessages([...messages, userMessage, responseMessage]);
       }
     },
-    [setMessages, announcePolite, setIsSubmitting],
+    [setMessages, announcePolite, setIsSubmitting, isAddedRequest],
   );
 
   const cancelHandler = useCallback(
     (data: TResData, submission: EventSubmission) => {
+      console.log('[EVENT_HANDLERS DEBUG - cancelHandler]', {
+        hasRequestMessage: !!data.requestMessage,
+        hasResponseMessage: !!data.responseMessage,
+        responseText: data.responseMessage?.text?.substring(0, 100),
+        hasConversation: !!data.conversation,
+        isAddedRequest,
+        model: submission.conversation?.model,
+      });
+
       const { requestMessage, responseMessage, conversation } = data;
       const { messages, isRegenerate = false } = submission;
       const convoUpdate =
@@ -281,6 +314,17 @@ export default function useEventHandlers({
 
   const syncHandler = useCallback(
     (data: TSyncData, submission: EventSubmission) => {
+      handlerCallsRef.current.syncHandler++;
+      console.log('[EVENT_HANDLERS DEBUG - syncHandler]', {
+        callCount: handlerCallsRef.current.syncHandler,
+        conversationId: data.conversationId,
+        threadId: data.thread_id,
+        hasResponseMessage: !!data.responseMessage,
+        responseText: data.responseMessage?.text?.substring(0, 100),
+        isAddedRequest,
+        model: submission.conversation?.model,
+      });
+
       const { conversationId, thread_id, responseMessage, requestMessage } = data;
       const { initialResponse, messages: _messages, userMessage } = submission;
       const messages = _messages.filter((msg) => msg.messageId !== userMessage.messageId);
@@ -354,12 +398,32 @@ export default function useEventHandlers({
 
   const createdHandler = useCallback(
     (data: TResData, submission: EventSubmission) => {
+      handlerCallsRef.current.createdHandler++;
+      console.log('[EVENT_HANDLERS DEBUG - createdHandler]', {
+        callCount: handlerCallsRef.current.createdHandler,
+        conversationId: submission.userMessage.conversationId,
+        isAddedRequest,
+        isRegenerate: submission.isRegenerate,
+        isTemporary: submission.isTemporary,
+        model: submission.conversation?.model,
+        endpoint: submission.conversation?.endpoint,
+        parentMessageId: submission.userMessage.parentMessageId,
+      });
+
       const { messages, userMessage, isRegenerate = false, isTemporary = false } = submission;
       const initialResponse = {
         ...submission.initialResponse,
         parentMessageId: userMessage.messageId,
         messageId: userMessage.messageId + '_',
       };
+
+      console.log('[EVENT_HANDLERS DEBUG - createdHandler initialResponse]', {
+        messageId: initialResponse.messageId,
+        parentMessageId: initialResponse.parentMessageId,
+        hasText: !!initialResponse.text,
+        textLength: initialResponse.text?.length || 0,
+      });
+
       if (isRegenerate) {
         setMessages([...messages, initialResponse]);
       } else {
@@ -428,155 +492,200 @@ export default function useEventHandlers({
     ],
   );
 
-// Add this to useEventHandlers.ts around line 462 in the finalHandler function
-// Replace the existing finalHandler with this enhanced version:
+  const finalHandler = useCallback(
+    (data: TFinalResData, submission: EventSubmission) => {
+      handlerCallsRef.current.finalHandler++;
+      const { requestMessage, responseMessage, conversation, runMessages } = data;
+      const {
+        messages,
+        conversation: submissionConvo,
+        isRegenerate = false,
+        isTemporary = false,
+      } = submission;
 
-const finalHandler = useCallback(
-  (data: TFinalResData, submission: EventSubmission) => {
-    const { requestMessage, responseMessage, conversation, runMessages } = data;
-    const {
-      messages,
-      conversation: submissionConvo,
-      isRegenerate = false,
-      isTemporary = false,
-    } = submission;
+      console.log('[EVENT_HANDLERS DEBUG - FINAL HANDLER START]', {
+        callCount: handlerCallsRef.current.finalHandler,
+        isAddedRequest,
+        model: submissionConvo?.model,
+        endpoint: submissionConvo?.endpoint,
+        messageId: responseMessage?.messageId,
+        hasResponseMessage: !!responseMessage,
+        hasRequestMessage: !!requestMessage,
+        hasText: !!responseMessage?.text,
+        textLength: responseMessage?.text?.length || 0,
+        textPreview: responseMessage?.text?.substring(0, 100),
+        conversationId: conversation?.conversationId,
+        currentMessages: getMessages()?.length || 0,
+        runMessages: runMessages?.length || 0,
+        hasContent: !!responseMessage?.content?.length,
+        contentTypes: responseMessage?.content?.map(c => c.type),
+      });
 
-    // ADD CACHE DEBUGGING HERE - START
-    console.log('[CACHE DEBUG - FINAL HANDLER START]', {
-      isAddedRequest,
-      messageId: responseMessage?.messageId,
-      hasText: !!responseMessage?.text,
-      textLength: responseMessage?.text?.length || 0,
-      conversationId: conversation?.conversationId,
-      currentMessages: getMessages()?.length || 0,
-      model: submissionConvo?.model,
-      endpoint: submissionConvo?.endpoint,
-      runMessages: runMessages?.length || 0,
-    });
-    // END DEBUG
+      // Check for empty response from DeFacts or other models
+      if (responseMessage && !responseMessage.text && (!responseMessage.content || responseMessage.content.length === 0)) {
+        console.warn('[EVENT_HANDLERS WARNING - EMPTY RESPONSE]', {
+          messageId: responseMessage.messageId,
+          model: submissionConvo?.model,
+          endpoint: submissionConvo?.endpoint,
+          conversationId: conversation?.conversationId,
+        });
+        
+        // Add error content to empty response
+        responseMessage.content = [{
+          type: ContentTypes.ERROR,
+          error: `No response received from ${submissionConvo?.model || 'AI'}`,
+        }];
+        responseMessage.error = true;
+      }
 
-    setShowStopButton(false);
-    setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
+      setShowStopButton(false);
+      setCompleted((prev) => new Set(prev.add(submission.initialResponse.messageId)));
 
-    const currentMessages = getMessages();
-    /* Early return if messages are empty; i.e., the user navigated away */
-    if (!currentMessages || currentMessages.length === 0) {
+      const currentMessages = getMessages();
+      /* Early return if messages are empty; i.e., the user navigated away */
+      if (!currentMessages || currentMessages.length === 0) {
+        console.log('[EVENT_HANDLERS DEBUG - EARLY RETURN] No current messages');
+        setIsSubmitting(false);
+        return;
+      }
+
+      /* a11y announcements */
+      announcePolite({ message: 'end', isStatus: true });
+      announcePolite({ message: getAllContentText(responseMessage) });
+
+      /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
+      let finalMessages: TMessage[] = [];
+      if (runMessages) {
+        finalMessages = [...runMessages];
+      } else if (isRegenerate && responseMessage) {
+        finalMessages = [...messages, responseMessage];
+      } else if (requestMessage != null && responseMessage != null) {
+        finalMessages = [...messages, requestMessage, responseMessage];
+      }
+
+      const isComparison = isAddedRequest === true;
+      const cacheKey = isComparison 
+        ? `${conversation.conversationId}_comparison`
+        : conversation.conversationId;
+
+      console.log('[EVENT_HANDLERS DEBUG - BEFORE SET MESSAGES]', {
+        finalMessagesCount: finalMessages.length,
+        lastMessage: finalMessages[finalMessages.length - 1],
+        lastMessageId: finalMessages[finalMessages.length - 1]?.messageId,
+        lastMessageText: finalMessages[finalMessages.length - 1]?.text?.substring(0, 100),
+        lastMessageModel: finalMessages[finalMessages.length - 1]?.model,
+        lastMessageContent: finalMessages[finalMessages.length - 1]?.content,
+        isComparison,
+        conversationId: conversation?.conversationId,
+        cacheKey,
+      });
+
+      if (finalMessages.length > 0) {
+        setMessages(finalMessages);
+        
+        // Set messages in query cache with appropriate key
+        queryClient.setQueryData<TMessage[]>(
+          [QueryKeys.messages, cacheKey],
+          finalMessages,
+        );
+
+        console.log('[EVENT_HANDLERS DEBUG - AFTER SET MESSAGES]', {
+          updatedMessages: getMessages()?.length || 0,
+          cacheKey,
+          isAddedRequest,
+          cachedMessages: queryClient.getQueryData<TMessage[]>([QueryKeys.messages, cacheKey])?.length || 0,
+        });
+      } else if (
+        isAssistantsEndpoint(submissionConvo.endpoint) &&
+        (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
+      ) {
+        queryClient.setQueryData<TMessage[]>(
+          [QueryKeys.messages, conversation.conversationId],
+          [...currentMessages],
+        );
+      }
+
+      const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
+      if (isNewConvo) {
+        console.log('[EVENT_HANDLERS DEBUG - NEW CONVO]', {
+          oldConvoId: submissionConvo.conversationId,
+          newConvoId: conversation.conversationId,
+        });
+        removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
+      }
+
+      /* Refresh title */
+      if (
+        genTitle &&
+        isNewConvo &&
+        !isTemporary &&
+        requestMessage &&
+        requestMessage.parentMessageId === Constants.NO_PARENT
+      ) {
+        setTimeout(() => {
+          genTitle.mutate({ conversationId: conversation.conversationId as string });
+        }, 2500);
+      }
+
+      if (setConversation && isAddedRequest !== true) {
+        setConversation((prevState) => {
+          const update = {
+            ...prevState,
+            ...(conversation as TConversation),
+          };
+          if (prevState?.model != null && prevState.model !== submissionConvo.model) {
+            update.model = prevState.model;
+          }
+          const cachedConvo = queryClient.getQueryData<TConversation>([
+            QueryKeys.conversation,
+            conversation.conversationId,
+          ]);
+          if (!cachedConvo) {
+            queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
+          }
+          return update;
+        });
+        if (location.pathname === '/c/new') {
+          navigate(`/c/${conversation.conversationId}`, { replace: true });
+        }
+      }
+
       setIsSubmitting(false);
-      return;
-    }
 
-    /* a11y announcements */
-    announcePolite({ message: 'end', isStatus: true });
-    announcePolite({ message: getAllContentText(responseMessage) });
-
-    /* Update messages; if assistants endpoint, client doesn't receive responseMessage */
-    let finalMessages: TMessage[] = [];
-    if (runMessages) {
-      finalMessages = [...runMessages];
-    } else if (isRegenerate && responseMessage) {
-      finalMessages = [...messages, responseMessage];
-    } else if (requestMessage != null && responseMessage != null) {
-      finalMessages = [...messages, requestMessage, responseMessage];
-    }
-
-    // ADD CACHE DEBUGGING HERE - BEFORE SET
-    const isComparison = isAddedRequest === true;
-    console.log('[CACHE DEBUG - BEFORE SET MESSAGES]', {
-      finalMessagesCount: finalMessages.length,
-      lastMessage: finalMessages[finalMessages.length - 1],
-      lastMessageText: finalMessages[finalMessages.length - 1]?.text?.substring(0, 100),
-      lastMessageModel: finalMessages[finalMessages.length - 1]?.model,
-      isComparison,
-      conversationId: conversation?.conversationId,
-    });
-    // END DEBUG
-
-    if (finalMessages.length > 0) {
-      setMessages(finalMessages);
-      
-      // ADD CACHE DEBUGGING HERE - AFTER SET
-      console.log('[CACHE DEBUG - AFTER SET MESSAGES]', {
-        updatedMessages: getMessages()?.length || 0,
-        cacheKey: conversation?.conversationId,
+      console.log('[EVENT_HANDLERS DEBUG - FINAL HANDLER END]', {
+        handlerCalls: handlerCallsRef.current,
+        finalConversationId: conversation.conversationId,
         isAddedRequest,
       });
-      // END DEBUG
-      
-      queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, conversation.conversationId],
-        finalMessages,
-      );
-    } else if (
-      isAssistantsEndpoint(submissionConvo.endpoint) &&
-      (!submissionConvo.conversationId || submissionConvo.conversationId === Constants.NEW_CONVO)
-    ) {
-      queryClient.setQueryData<TMessage[]>(
-        [QueryKeys.messages, conversation.conversationId],
-        [...currentMessages],
-      );
-    }
-
-    const isNewConvo = conversation.conversationId !== submissionConvo.conversationId;
-    if (isNewConvo) {
-      removeConvoFromAllQueries(queryClient, submissionConvo.conversationId as string);
-    }
-
-    /* Refresh title */
-    if (
-      genTitle &&
-      isNewConvo &&
-      !isTemporary &&
-      requestMessage &&
-      requestMessage.parentMessageId === Constants.NO_PARENT
-    ) {
-      setTimeout(() => {
-        genTitle.mutate({ conversationId: conversation.conversationId as string });
-      }, 2500);
-    }
-
-    if (setConversation && isAddedRequest !== true) {
-      setConversation((prevState) => {
-        const update = {
-          ...prevState,
-          ...(conversation as TConversation),
-        };
-        if (prevState?.model != null && prevState.model !== submissionConvo.model) {
-          update.model = prevState.model;
-        }
-        const cachedConvo = queryClient.getQueryData<TConversation>([
-          QueryKeys.conversation,
-          conversation.conversationId,
-        ]);
-        if (!cachedConvo) {
-          queryClient.setQueryData([QueryKeys.conversation, conversation.conversationId], update);
-        }
-        return update;
-      });
-      if (location.pathname === '/c/new') {
-        navigate(`/c/${conversation.conversationId}`, { replace: true });
-      }
-    }
-
-    setIsSubmitting(false);
-  },
-  [
-    setShowStopButton,
-    setCompleted,
-    getMessages,
-    announcePolite,
-    genTitle,
-    setConversation,
-    isAddedRequest,
-    setIsSubmitting,
-    setMessages,
-    queryClient,
-    location.pathname,
-    navigate,
-  ],
-);
+    },
+    [
+      setShowStopButton,
+      setCompleted,
+      getMessages,
+      announcePolite,
+      genTitle,
+      setConversation,
+      isAddedRequest,
+      setIsSubmitting,
+      setMessages,
+      queryClient,
+      location.pathname,
+      navigate,
+    ],
+  );
 
   const errorHandler = useCallback(
     ({ data, submission }: { data?: TResData; submission: EventSubmission }) => {
+      handlerCallsRef.current.errorHandler++;
+      console.log('[EVENT_HANDLERS DEBUG - errorHandler]', {
+        callCount: handlerCallsRef.current.errorHandler,
+        hasData: !!data,
+        errorMessage: data?.responseMessage?.text || data?.text,
+        model: submission.conversation?.model,
+        endpoint: submission.conversation?.endpoint,
+        isAddedRequest,
+      });
+
       const { messages, userMessage, initialResponse } = submission;
       setCompleted((prev) => new Set(prev.add(initialResponse.messageId)));
 
@@ -586,7 +695,16 @@ const finalHandler = useCallback(
       const setErrorMessages = (convoId: string, errorMessage: TMessage) => {
         const finalMessages: TMessage[] = [...messages, userMessage, errorMessage];
         setMessages(finalMessages);
-        queryClient.setQueryData<TMessage[]>([QueryKeys.messages, convoId], finalMessages);
+        
+        const cacheKey = isAddedRequest ? `${convoId}_comparison` : convoId;
+        queryClient.setQueryData<TMessage[]>([QueryKeys.messages, cacheKey], finalMessages);
+        
+        console.log('[EVENT_HANDLERS DEBUG - ERROR MESSAGES SET]', {
+          convoId,
+          cacheKey,
+          errorMessageText: errorMessage.text,
+          finalMessagesCount: finalMessages.length,
+        });
       };
 
       const parseErrorResponse = (data: TResData | Partial<TMessage>) => {
@@ -673,11 +791,20 @@ const finalHandler = useCallback(
       setIsSubmitting,
       getMessages,
       queryClient,
+      isAddedRequest,
     ],
   );
 
   const abortConversation = useCallback(
     async (conversationId = '', submission: EventSubmission, messages?: TMessage[]) => {
+      console.log('[EVENT_HANDLERS DEBUG - abortConversation]', {
+        conversationId,
+        model: submission.conversation?.model,
+        endpoint: submission.conversation?.endpoint,
+        messagesLength: messages?.length,
+        isAddedRequest,
+      });
+
       const runAbortKey = `${conversationId}:${messages?.[messages.length - 1]?.messageId ?? ''}`;
       const { endpoint: _endpoint, endpointType } =
         (submission.conversation as TConversation | null) ?? {};
@@ -739,6 +866,12 @@ const finalHandler = useCallback(
         const contentType = response.headers.get('content-type');
         if (contentType != null && contentType.includes('application/json')) {
           const data = await response.json();
+          console.log('[EVENT_HANDLERS DEBUG - abort response]', {
+            status: response.status,
+            hasFinal: data.final === true,
+            hasResponseMessage: !!data.responseMessage,
+          });
+          
           if (response.status === 404) {
             setIsSubmitting(false);
             return;
@@ -759,6 +892,7 @@ const finalHandler = useCallback(
           );
         }
       } catch (error) {
+        console.error('[EVENT_HANDLERS ERROR - abortConversation]', error);
         const errorResponse = createErrorMessage({
           getMessages,
           submission,
@@ -782,6 +916,7 @@ const finalHandler = useCallback(
       cancelHandler,
       getMessages,
       setMessages,
+      isAddedRequest,
     ],
   );
 
@@ -810,14 +945,29 @@ export function useComparisonMessages(conversationId: string | null) {
         [QueryKeys.messages, `${conversationId}_comparison`]
       );
       
+      console.log('[COMPARISON MESSAGES DEBUG]', {
+        conversationId,
+        hasComparisonMessages: !!comparisonMessages,
+        comparisonLength: comparisonMessages?.length || 0,
+        lastComparisonMessage: comparisonMessages?.[comparisonMessages.length - 1],
+        lastComparisonText: comparisonMessages?.[comparisonMessages.length - 1]?.text?.substring(0, 100),
+      });
+      
       if (comparisonMessages && comparisonMessages.length > 0) {
         return comparisonMessages;
       }
       
       // Fallback to regular messages if no comparison messages yet
-      return queryClient.getQueryData<TMessage[]>(
+      const regularMessages = queryClient.getQueryData<TMessage[]>(
         [QueryKeys.messages, conversationId]
       ) || [];
+      
+      console.log('[COMPARISON MESSAGES DEBUG - FALLBACK]', {
+        regularLength: regularMessages.length,
+        lastRegularMessage: regularMessages[regularMessages.length - 1],
+      });
+      
+      return regularMessages;
     },
     enabled: !!conversationId,
   });

@@ -76,26 +76,50 @@ const safeGetContent = (obj: any, field: string = 'content'): string => {
 };
 
 // Extract text from delta content (handles both old and new formats)
+// Enhanced text extraction that handles more formats
 const extractDeltaText = (data: any): string => {
-  // Check for direct text in delta
+  // Direct text in delta
   if (data?.delta?.text) {
     return data.delta.text;
   }
   
-  // Check for content array format (DeFacts uses this)
-  if (data?.delta?.content && Array.isArray(data.delta.content)) {
-    const textContent = data.delta.content.find((item: any) => item?.type === 'text');
-    if (textContent?.text) {
-      return textContent.text;
+  // Content array format (DeFacts uses this)
+  if (data?.delta?.content) {
+    if (Array.isArray(data.delta.content)) {
+      const textContent = data.delta.content.find((item: any) => item?.type === 'text');
+      if (textContent?.text) {
+        return textContent.text;
+      }
+    } else if (typeof data.delta.content === 'string') {
+      // Sometimes content might be a direct string
+      return data.delta.content;
     }
   }
   
-  // Check if data itself has the delta structure (for step events)
-  if (data?.data?.delta?.content && Array.isArray(data.data.delta.content)) {
-    const textContent = data.data.delta.content.find((item: any) => item?.type === 'text');
-    if (textContent?.text) {
-      return textContent.text;
+  // Check nested data structure
+  if (data?.data?.delta?.content) {
+    if (Array.isArray(data.data.delta.content)) {
+      const textContent = data.data.delta.content.find((item: any) => item?.type === 'text');
+      if (textContent?.text) {
+        return textContent.text;
+      }
+    } else if (typeof data.data.delta.content === 'string') {
+      return data.data.delta.content;
     }
+  }
+  
+  // Check for message_delta event structure
+  if (data?.data?.delta?.text) {
+    return data.data.delta.text;
+  }
+  
+  // DeFacts might use different field names
+  if (data?.content && typeof data.content === 'string') {
+    return data.content;
+  }
+  
+  if (data?.message && typeof data.message === 'string') {
+    return data.message;
   }
   
   return '';
