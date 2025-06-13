@@ -60,17 +60,34 @@ function ChatView({ index = 0 }: { index?: number }) {
   // Add a failsafe to clear stuck submissions after a timeout
   const clearStuckSubmissions = useCallback(() => {
     const now = Date.now();
-    const stuckThreshold = 60000; // 60 seconds
+    const stuckThreshold = 30000; // Reduced to 30 seconds (was 60)
+    let hasStuckSubmissions = false;
     
-    activeSubmissions.current.forEach(submissionId => {
-      const [, timestamp] = submissionId.split('-');
-      if (now - parseInt(timestamp) > stuckThreshold) {
-        console.warn(`⚠️ [SUBMISSION STUCK] Clearing stuck submission: ${submissionId}`);
-        activeSubmissions.current.delete(submissionId);
+    // Don't use timestamp-based logic since our IDs don't have timestamps anymore
+    // Instead, track submission start times separately
+    if (activeSubmissions.current.size > 0) {
+      // Check if we've been stuck for too long
+      const timeSinceCheck = now - (window as any).__lastSubmissionCheck || 0;
+      if (timeSinceCheck > stuckThreshold) {
+        hasStuckSubmissions = true;
+        console.warn(`⚠️ [SUBMISSION STUCK] Clearing ${activeSubmissions.current.size} stuck submissions after ${stuckThreshold/1000}s`);
+        
+        // Clear all stuck submissions
+        activeSubmissions.current.forEach(submissionId => {
+          const timeout = submissionTimeouts.current.get(submissionId);
+          if (timeout) {
+            clearTimeout(timeout);
+            submissionTimeouts.current.delete(submissionId);
+          }
+        });
+        
+        activeSubmissions.current.clear();
       }
-    });
+    }
     
-    if (activeSubmissions.current.size === 0) {
+    (window as any).__lastSubmissionCheck = now;
+    
+    if (hasStuckSubmissions && activeSubmissions.current.size === 0) {
       console.log('🔓 [FAILSAFE] Clearing isSubmitting state');
       chatHelpers.setIsSubmitting(false);
       addedChatHelpers.setIsSubmitting(false);
@@ -79,7 +96,7 @@ function ChatView({ index = 0 }: { index?: number }) {
 
   // Run failsafe check periodically
   useEffect(() => {
-    const interval = setInterval(clearStuckSubmissions, 5000); // Check every 5 seconds
+    const interval = setInterval(clearStuckSubmissions, 1000); // Check every 1 second instead of 5
     return () => clearInterval(interval);
   }, [clearStuckSubmissions]);
 
@@ -113,15 +130,25 @@ function ChatView({ index = 0 }: { index?: number }) {
 
   // Create unique submission IDs
   const getSubmissionId = (submission: any, isAdded: boolean) => {
-    if (!submission) return null;
-    const timestamp = submission.timestamp || Date.now();
+    if (!submission || !submission.userMessage?.text) return null;
+    // Use a more stable ID based on the actual submission content and conversation
+    const conversationId = submission.conversation?.conversationId || 'new';
+    const messageId = submission.userMessage?.messageId || submission.initialResponse?.messageId || '';
     const text = submission.userMessage?.text || '';
-    return `${isAdded ? 'added' : 'root'}-${timestamp}-${text.substring(0, 20)}`;
+    return `${isAdded ? 'added' : 'root'}-${conversationId}-${messageId}-${text.substring(0, 20).replace(/\s/g, '_')}`;
   };
 
   // Track when submissions start and complete
-  const trackSubmission = (submissionId: string, isStarting: boolean) => {
+  const trackSubmission = useCallback((submissionId: string, isStarting: boolean) => {
+    if (!submissionId) return;
+    
     if (isStarting) {
+      // Only add if not already tracking
+      if (activeSubmissions.current.has(submissionId)) {
+        console.log(`⚠️ [SUBMISSION TRACKING] Already tracking: ${submissionId}`);
+        return;
+      }
+      
       activeSubmissions.current.add(submissionId);
       
       // Set a timeout to auto-clear this submission if it gets stuck
@@ -136,7 +163,7 @@ function ChatView({ index = 0 }: { index?: number }) {
             addedChatHelpers.setIsSubmitting(false);
           }
         }
-      }, 120000); // 2 minute timeout
+      }, 60000); // Reduced to 1 minute (was 2 minutes)
       
       submissionTimeouts.current.set(submissionId, timeout);
       
@@ -145,6 +172,12 @@ function ChatView({ index = 0 }: { index?: number }) {
         activeSubmissions: Array.from(activeSubmissions.current)
       });
     } else {
+      // Only delete if we're tracking it
+      if (!activeSubmissions.current.has(submissionId)) {
+        console.log(`⚠️ [SUBMISSION TRACKING] Not tracking: ${submissionId}`);
+        return;
+      }
+      
       activeSubmissions.current.delete(submissionId);
       
       // Clear the timeout for this submission
@@ -159,10 +192,13 @@ function ChatView({ index = 0 }: { index?: number }) {
         activeSubmissions: Array.from(activeSubmissions.current)
       });
     }
-  };
+  }, [chatHelpers, addedChatHelpers]);
 
   // Create panel-specific chat helpers with submission tracking
-  const createPanelHelpers = (baseHelpers: any, isAdded: boolean) => {
+  const createPanelHelpers = useCallback((baseHelpers: any, isAdded: boolean) => {
+    // Track last submission ID to prevent duplicates
+    let lastSubmissionId: string | null = null;
+    
     return {
       ...baseHelpers,
       setIsSubmitting: (value: boolean) => {
@@ -172,17 +208,22 @@ function ChatView({ index = 0 }: { index?: number }) {
 
         console.log(`🎯 [PANEL ${isAdded ? 'RIGHT' : 'LEFT'}] setIsSubmitting(${value})`, {
           submissionId: currentSubmissionId,
+          lastSubmissionId,
           activeCount: activeSubmissions.current.size
         });
 
         if (value && currentSubmissionId) {
-          // Starting a new submission
-          trackSubmission(currentSubmissionId, true);
+          // Only track if it's a new submission
+          if (currentSubmissionId !== lastSubmissionId) {
+            lastSubmissionId = currentSubmissionId;
+            trackSubmission(currentSubmissionId, true);
+          }
           baseHelpers.setIsSubmitting(true);
         } else if (!value) {
           // Completing a submission
-          if (currentSubmissionId) {
-            trackSubmission(currentSubmissionId, false);
+          if (lastSubmissionId) {
+            trackSubmission(lastSubmissionId, false);
+            lastSubmissionId = null;
           }
 
           // In comparison mode, check if all submissions are done
@@ -206,11 +247,11 @@ function ChatView({ index = 0 }: { index?: number }) {
         }
       }
     };
-  };
+  }, [rootSubmission, addedSubmission, isComparisonMode, trackSubmission]);
 
   // Create the panel-specific helpers
-  const leftChatHelpers = createPanelHelpers(chatHelpers, false);
-  const rightChatHelpers = createPanelHelpers(addedChatHelpers, true);
+  const leftChatHelpers = useMemo(() => createPanelHelpers(chatHelpers, false), [chatHelpers, createPanelHelpers]);
+  const rightChatHelpers = useMemo(() => createPanelHelpers(addedChatHelpers, true), [addedChatHelpers, createPanelHelpers]);
 
   // Detect comparison mode
   useEffect(() => {
