@@ -392,165 +392,198 @@ async function handleChatCompletion(req, res) {
     ];
     
     // Make the API call with retry logic
-    if (stream) {
-      // Streaming response with retries
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('Access-Control-Allow-Origin', '*');
+// Replace the streaming section in handleChatCompletion with this improved version:
+
+if (stream) {
+  // Streaming response with improved retry logic
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  
+  let finalSuccess = false;
+  let lastError = null;
+  
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    if (attempt > 0) {
+      console.log(`[DeFacts Plugin] Retry attempt ${attempt}/${RETRY_CONFIG.maxRetries} for ${model}`);
+      const delay = getRetryDelay(attempt - 1);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    
+    try {
+      console.log(`[DeFacts Plugin] Starting stream attempt ${attempt + 1} for ${model}...`);
+      const streamStartTime = Date.now();
       
-      let streamStarted = false;
+      // Create a timeout for this specific attempt
+      let streamTimeout;
+      let streamTimedOut = false;
       
-      try {
-        await retryableApiCall(async () => {
-          console.log(`[DeFacts Plugin] Starting stream for ${model}...`);
-          const streamStartTime = Date.now();
-          
-          const streamResponse = await client.chat.completions.create({
-            messages: enhancedMessages,
-            model: config.model,
-            temperature: config.temperature,
-            max_tokens: config.max_tokens,
-            stream: true,
-            ...otherParams,
-          });
-          
-          let chunkCount = 0;
-          let totalContent = '';
-          let lastChunkTime = Date.now();
-          let hasError = false;
-          
-          for await (const chunk of streamResponse) {
-            // Mark that we've started receiving data
-            if (!streamStarted) {
-              streamStarted = true;
-              console.log(`[DeFacts Plugin] Stream started successfully for ${model}`);
-            }
-            
-            chunkCount++;
-            
-            // Track content accumulation
-            if (chunk.choices?.[0]?.delta?.content) {
-              totalContent += chunk.choices[0].delta.content;
-            }
-            
-            // Log progress
-            if (chunkCount % 10 === 0) {
-              console.log(`[DeFacts Plugin] Stream progress: ${chunkCount} chunks, ${totalContent.length} chars`);
-            }
-            
-            // Detect long delays between chunks
-            const currentTime = Date.now();
-            const chunkDelay = currentTime - lastChunkTime;
-            if (chunkDelay > 5000) {
-              console.warn(`[DeFacts Plugin] Long delay between chunks: ${chunkDelay}ms`);
-            }
-            lastChunkTime = currentTime;
-            
-            // Keep the original model name in the response
-            const modifiedChunk = {
-              ...chunk,
-              model: model, // Keep DeFacts/DeNews/DeResearch
-            };
-            
-            // Write with error handling
-            try {
-              res.write(`data: ${JSON.stringify(modifiedChunk)}\n\n`);
-            } catch (writeError) {
-              console.error('[DeFacts Plugin] Error writing chunk:', writeError);
-              hasError = true;
-              throw new Error('Stream write failed');
-            }
-          }
-          
-          const streamDuration = Date.now() - streamStartTime;
-          console.log(`[DeFacts Plugin] Streaming completed:`, {
-            model,
-            chunks: chunkCount,
-            contentLength: totalContent.length,
-            duration: `${streamDuration}ms`,
-            preview: totalContent.substring(0, 100) + '...',
-            hasError
-          });
-          
-          // Check if we got any content
-          if (totalContent.length === 0 && !hasError) {
-            console.error('[DeFacts Plugin] WARNING: Stream completed but no content received!');
-            // Send error as a message chunk, not an error
-            const errorChunk = {
-              id: 'error-' + Date.now(),
-              object: 'chat.completion.chunk',
-              created: Math.floor(Date.now() / 1000),
-              model: model,
-              choices: [{
-                index: 0,
-                delta: {
-                  content: '[Error: The model returned an empty response. Please try again.]'
-                },
-                finish_reason: null
-              }]
-            };
-            res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
-          }
-          
-          res.write('data: [DONE]\n\n');
-          res.end();
-          
-        }, model, 'Streaming');
+      streamTimeout = setTimeout(() => {
+        streamTimedOut = true;
+        console.error(`[DeFacts Plugin] Stream timeout for ${model} after 30s`);
+      }, 30000); // 30 second timeout for stream
+      
+      const streamResponse = await client.chat.completions.create({
+        messages: enhancedMessages,
+        model: config.model,
+        temperature: config.temperature,
+        max_tokens: config.max_tokens,
+        stream: true,
+        ...otherParams,
+      });
+      
+      let chunkCount = 0;
+      let totalContent = '';
+      let lastChunkTime = Date.now();
+      let hasReceivedContent = false;
+      
+      for await (const chunk of streamResponse) {
+        // Check if we've timed out
+        if (streamTimedOut) {
+          throw new Error('Stream timeout - no response from model');
+        }
         
-      } catch (streamError) {
-        console.error('[DeFacts Plugin] Streaming error after retries:', {
-          error: streamError.message,
-          stack: streamError.stack,
-          response: streamError.response?.data,
-          status: streamError.response?.status,
-          model: model,
-          actualModel: config.model,
-          client: config.client,
-          streamStarted
-        });
+        chunkCount++;
         
-        // Only send error if we haven't started streaming yet
-        if (!streamStarted) {
-          // Check for specific error types
-          let errorMessage = streamError.message;
-          let errorType = 'stream_error';
-          
-          if (streamError.response?.status === 429 || streamError.status === 429) {
-            errorMessage = 'Rate limit exceeded. Please try again in a few moments.';
-            errorType = 'rate_limit_error';
-          } else if (streamError.response?.status === 401 || streamError.status === 401) {
-            errorMessage = 'Authentication failed. Check API key configuration.';
-            errorType = 'auth_error';
-          } else if (streamError.code === 'ETIMEDOUT' || streamError.code === 'ECONNABORTED') {
-            errorMessage = 'Request timed out. The model took too long to respond.';
-            errorType = 'timeout_error';
-          }
-          
-          // Send error in stream format
+        // Track content accumulation
+        if (chunk.choices?.[0]?.delta?.content) {
+          totalContent += chunk.choices[0].delta.content;
+          hasReceivedContent = true;
+        }
+        
+        // Log progress
+        if (chunkCount % 10 === 0) {
+          console.log(`[DeFacts Plugin] Stream progress: ${chunkCount} chunks, ${totalContent.length} chars`);
+        }
+        
+        // Detect long delays between chunks
+        const currentTime = Date.now();
+        const chunkDelay = currentTime - lastChunkTime;
+        if (chunkDelay > 5000 && !hasReceivedContent) {
+          console.warn(`[DeFacts Plugin] Long delay without content: ${chunkDelay}ms`);
+        }
+        lastChunkTime = currentTime;
+        
+        // Keep the original model name in the response
+        const modifiedChunk = {
+          ...chunk,
+          model: model, // Keep DeFacts/DeNews/DeResearch
+        };
+        
+        // Only write if we haven't failed
+        if (!streamTimedOut) {
           try {
-            res.write(`data: ${JSON.stringify({ 
-              error: { 
-                message: errorMessage,
-                type: errorType,
-                details: {
-                  model: model,
-                  actualModel: config.model,
-                  client: config.client,
-                  timestamp: new Date().toISOString()
-                }
-              } 
-            })}\n\n`);
-            res.write('data: [DONE]\n\n');
+            res.write(`data: ${JSON.stringify(modifiedChunk)}\n\n`);
           } catch (writeError) {
-            console.error('[DeFacts Plugin] Could not write error to stream:', writeError);
+            console.error('[DeFacts Plugin] Error writing chunk:', writeError);
+            clearTimeout(streamTimeout);
+            throw new Error('Stream write failed');
           }
-          
-          res.end();
         }
       }
       
-    } else {
+      // Clear the timeout since we completed successfully
+      clearTimeout(streamTimeout);
+      
+      const streamDuration = Date.now() - streamStartTime;
+      console.log(`[DeFacts Plugin] Stream attempt ${attempt + 1} completed:`, {
+        model,
+        chunks: chunkCount,
+        contentLength: totalContent.length,
+        duration: `${streamDuration}ms`,
+        hasContent: totalContent.length > 0
+      });
+      
+      // Check if we got any content
+      if (totalContent.length === 0) {
+        console.error(`[DeFacts Plugin] WARNING: Stream completed but no content received! Attempt ${attempt + 1}`);
+        
+        // If we haven't exhausted retries, throw error to trigger retry
+        if (attempt < RETRY_CONFIG.maxRetries) {
+          throw new Error('Empty response from model');
+        }
+        
+        // On final attempt, send error message in stream
+        const errorChunk = {
+          id: 'error-' + Date.now(),
+          object: 'chat.completion.chunk',
+          created: Math.floor(Date.now() / 1000),
+          model: model,
+          choices: [{
+            index: 0,
+            delta: {
+              content: '[Error: The model returned an empty response after multiple attempts. Please try again.]'
+            },
+            finish_reason: null
+          }]
+        };
+        res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+      }
+      
+      // Success! Close the stream
+      res.write('data: [DONE]\n\n');
+      res.end();
+      finalSuccess = true;
+      
+      if (attempt > 0) {
+        console.log(`[DeFacts Plugin] Successfully recovered after ${attempt} retries`);
+      }
+      
+      break; // Exit retry loop on success
+      
+    } catch (streamError) {
+      lastError = streamError;
+      console.error(`[DeFacts Plugin] Stream attempt ${attempt + 1} failed:`, {
+        error: streamError.message,
+        model: model,
+        attempt: attempt + 1,
+        willRetry: attempt < RETRY_CONFIG.maxRetries && isRetryableError(streamError)
+      });
+      
+      // If this isn't retryable or we're out of retries, break
+      if (!isRetryableError(streamError) || attempt === RETRY_CONFIG.maxRetries) {
+        break;
+      }
+      
+      // Otherwise, continue to next retry attempt
+    }
+  }
+  
+  // If we failed all attempts, send error
+  if (!finalSuccess) {
+    console.error('[DeFacts Plugin] All stream attempts failed', {
+      model,
+      attempts: RETRY_CONFIG.maxRetries + 1,
+      lastError: lastError?.message
+    });
+    
+    // Determine error message based on last error
+    let errorMessage = 'Failed to get response from model after multiple attempts';
+    if (lastError?.message?.includes('timeout')) {
+      errorMessage = 'Model response timed out. Please try again with a simpler query.';
+    } else if (lastError?.status === 429) {
+      errorMessage = 'Rate limit exceeded. Please wait a moment and try again.';
+    }
+    
+    // Send error in stream format if stream hasn't ended
+    if (!res.headersSent) {
+      res.write(`data: ${JSON.stringify({ 
+        error: { 
+          message: errorMessage,
+          type: 'stream_error',
+          details: {
+            model: model,
+            attempts: RETRY_CONFIG.maxRetries + 1,
+            timestamp: new Date().toISOString()
+          }
+        } 
+      })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  }
+} else {
       // Non-streaming response with retries
       try {
         const completion = await retryableApiCall(async () => {
