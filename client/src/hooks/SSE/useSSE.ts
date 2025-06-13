@@ -596,15 +596,6 @@ const RETRY_CONFIG = {
   connectionTimeoutMs: 30000,
 };
 
-// Add isComparisonMode to props
-interface UseSSEProps {
-  submission: TSubmission | null;
-  chatHelpers: ChatHelpers;
-  isAddedRequest?: boolean;
-  runIndex?: number;
-  isComparisonMode?: boolean;
-}
-
 // Return type interface for better TypeScript support
 interface UseSSEReturn {
   isRetrying: boolean;
@@ -613,13 +604,13 @@ interface UseSSEReturn {
   RetryStatusComponent: () => React.ReactElement | null;
 }
 
-export default function useSSE({
-  submission,
-  chatHelpers,
+export default function useSSE(
+  submission: TSubmission | null,
+  chatHelpers: ChatHelpers,
   isAddedRequest = false,
   runIndex = 0,
   isComparisonMode = false,
-}: UseSSEProps): UseSSEReturn {
+): UseSSEReturn {
   
   // Track connection instances and cache state
   const connectionId = useRef<string>('');
