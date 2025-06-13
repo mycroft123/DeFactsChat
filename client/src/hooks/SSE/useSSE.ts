@@ -612,6 +612,10 @@ export default function useSSE(
   isComparisonMode = false,
 ): UseSSEReturn {
   
+  // Auto-detect comparison mode if not explicitly passed
+  const detectedComparisonMode = isComparisonMode || 
+    (typeof document !== 'undefined' && document.querySelectorAll('[data-panel]').length > 1);
+  
   // Track connection instances and cache state
   const connectionId = useRef<string>('');
   const previousCacheState = useRef<any>({});
@@ -637,6 +641,7 @@ export default function useSSE(
     isAddedRequest,
     runIndex,
     isComparisonMode,
+    detectedComparisonMode,
     hasSubmission: !!submission,
     submissionEndpoint: submission?.conversation?.endpoint,
     submissionModel: submission?.conversation?.model,
@@ -1118,8 +1123,8 @@ export default function useSSE(
             console.log('🏁 [MESSAGE CREATED]', {
               requestId: currentRequestId.current,
               messageId,
-              panel: !isComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
-              mode: isComparisonMode ? 'comparison' : 'single'
+              panel: !detectedComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
+              mode: detectedComparisonMode ? 'comparison' : 'single'
             });
           }
           
@@ -1373,7 +1378,7 @@ export default function useSSE(
       submission, 
       isAddedRequest, 
       runIndex,
-      isComparisonMode
+      detectedComparisonMode
     );
     currentRequestId.current = requestId;
 
@@ -1399,8 +1404,8 @@ export default function useSSE(
       endpoint: payload?.endpoint,
       isAddedRequest,
       runIndex,
-      panel: !isComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
-      mode: isComparisonMode ? 'comparison' : 'single',
+      panel: !detectedComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
+      mode: detectedComparisonMode ? 'comparison' : 'single',
       conversationId: submission?.conversation?.conversationId,
       userMessage: userMessage?.text,
       retryEnabled: true,
@@ -1409,6 +1414,8 @@ export default function useSSE(
       payloadSize: JSON.stringify(payload).length,
       payloadStructure: Object.keys(payload),
       isDeFacts: payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts'),
+      comparisonModeDetected: detectedComparisonMode,
+      originalComparisonMode: isComparisonMode,
     });
 
     setRetryCount(0);
