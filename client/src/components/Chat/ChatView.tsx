@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, useEffect } from 'react';
+import { memo, useCallback, useState, useEffect, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
@@ -35,9 +35,8 @@ function ChatView({ index = 0 }: { index?: number }) {
   const addedSubmission = useRecoilValue(store.submissionByIndex(index + 1));
   const centerFormOnLanding = useRecoilValue(store.centerFormOnLanding);
 
-  // Add state to track which panels are active
-  const [leftPanelActive, setLeftPanelActive] = useState(true);
-  const [rightPanelActive, setRightPanelActive] = useState(true);
+  // Track active submissions instead of permanent panel states
+  const activeSubmissions = useRef<Set<string>>(new Set());
   const [isComparisonMode, setIsComparisonMode] = useState(false);
 
   const fileMap = useFileMapContext();
@@ -56,50 +55,82 @@ function ChatView({ index = 0 }: { index?: number }) {
   const chatHelpers = useChatHelpers(index, conversationId);
   const addedChatHelpers = useAddedResponse({ rootIndex: index });
 
-  // Create panel-specific chat helpers with isolated state management
-  const leftChatHelpers = {
-    ...chatHelpers,
-    setIsSubmitting: (value: boolean) => {
-      if (!value) {
-        setLeftPanelActive(false);
-      }
-      // Only set global isSubmitting false when both panels are done
-      if (!value && !rightPanelActive) {
-        chatHelpers.setIsSubmitting(false);
-      } else if (value) {
-        setLeftPanelActive(true);
-        chatHelpers.setIsSubmitting(true);
-      }
+  // Create unique submission IDs
+  const getSubmissionId = (submission: any, isAdded: boolean) => {
+    if (!submission) return null;
+    const timestamp = submission.timestamp || Date.now();
+    const text = submission.userMessage?.text || '';
+    return `${isAdded ? 'added' : 'root'}-${timestamp}-${text.substring(0, 20)}`;
+  };
+
+  // Track when submissions start and complete
+  const trackSubmission = (submissionId: string, isStarting: boolean) => {
+    if (isStarting) {
+      activeSubmissions.current.add(submissionId);
+      console.log(`📊 [SUBMISSION TRACKING] Started: ${submissionId}`, {
+        activeCount: activeSubmissions.current.size,
+        activeSubmissions: Array.from(activeSubmissions.current)
+      });
+    } else {
+      activeSubmissions.current.delete(submissionId);
+      console.log(`📊 [SUBMISSION TRACKING] Completed: ${submissionId}`, {
+        activeCount: activeSubmissions.current.size,
+        activeSubmissions: Array.from(activeSubmissions.current)
+      });
     }
   };
 
-  const rightChatHelpers = {
-    ...addedChatHelpers,
-    setIsSubmitting: (value: boolean) => {
-      if (!value) {
-        setRightPanelActive(false);
+  // Create panel-specific chat helpers with submission tracking
+  const createPanelHelpers = (baseHelpers: any, isAdded: boolean) => {
+    const currentSubmissionId = isAdded ? 
+      getSubmissionId(addedSubmission, true) : 
+      getSubmissionId(rootSubmission, false);
+
+    return {
+      ...baseHelpers,
+      setIsSubmitting: (value: boolean) => {
+        if (currentSubmissionId) {
+          trackSubmission(currentSubmissionId, value);
+        }
+
+        // In comparison mode, only set global isSubmitting false when all submissions are done
+        if (!value && isComparisonMode) {
+          // Check if there are any active submissions left
+          if (activeSubmissions.current.size === 0) {
+            baseHelpers.setIsSubmitting(false);
+          }
+          // Don't set global isSubmitting to false yet if there are active submissions
+        } else {
+          // In single mode or when starting a submission, pass through
+          baseHelpers.setIsSubmitting(value);
+        }
       }
-      // Only set global isSubmitting false when both panels are done
-      if (!value && !leftPanelActive) {
-        addedChatHelpers.setIsSubmitting(false);
-      } else if (value) {
-        setRightPanelActive(true);
-        addedChatHelpers.setIsSubmitting(true);
-      }
-    }
+    };
   };
+
+  // Create the panel-specific helpers
+  const leftChatHelpers = createPanelHelpers(chatHelpers, false);
+  const rightChatHelpers = createPanelHelpers(addedChatHelpers, true);
 
   // Detect comparison mode
   useEffect(() => {
-    const hasComparison = !!(rootSubmission && addedSubmission);
+    const hasComparison = !!(rootSubmission && addedSubmission && 
+                           Object.keys(rootSubmission).length > 0 && 
+                           Object.keys(addedSubmission).length > 0);
     setIsComparisonMode(hasComparison);
     
-    // Reset panel states when entering/exiting comparison mode
-    if (!hasComparison) {
-      setLeftPanelActive(true);
-      setRightPanelActive(true);
-    }
+    console.log(`🔄 [COMPARISON MODE] ${hasComparison ? 'ENABLED' : 'DISABLED'}`, {
+      hasRootSubmission: !!(rootSubmission && Object.keys(rootSubmission).length > 0),
+      hasAddedSubmission: !!(addedSubmission && Object.keys(addedSubmission).length > 0)
+    });
   }, [rootSubmission, addedSubmission]);
+
+  // Clean up active submissions on unmount
+  useEffect(() => {
+    return () => {
+      activeSubmissions.current.clear();
+    };
+  }, []);
 
   // Use the modified helpers for SSE connections
   useSSE(rootSubmission, leftChatHelpers, false, index, isComparisonMode);
