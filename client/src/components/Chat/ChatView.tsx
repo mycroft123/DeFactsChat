@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState, useEffect } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
@@ -35,6 +35,11 @@ function ChatView({ index = 0 }: { index?: number }) {
   const addedSubmission = useRecoilValue(store.submissionByIndex(index + 1));
   const centerFormOnLanding = useRecoilValue(store.centerFormOnLanding);
 
+  // Add state to track which panels are active
+  const [leftPanelActive, setLeftPanelActive] = useState(true);
+  const [rightPanelActive, setRightPanelActive] = useState(true);
+  const [isComparisonMode, setIsComparisonMode] = useState(false);
+
   const fileMap = useFileMapContext();
 
   const { data: messagesTree = null, isLoading } = useGetMessagesByConvoId(conversationId ?? '', {
@@ -51,8 +56,54 @@ function ChatView({ index = 0 }: { index?: number }) {
   const chatHelpers = useChatHelpers(index, conversationId);
   const addedChatHelpers = useAddedResponse({ rootIndex: index });
 
-  useSSE(rootSubmission, chatHelpers, false);
-  useSSE(addedSubmission, addedChatHelpers, true);
+  // Create panel-specific chat helpers with isolated state management
+  const leftChatHelpers = {
+    ...chatHelpers,
+    setIsSubmitting: (value: boolean) => {
+      if (!value) {
+        setLeftPanelActive(false);
+      }
+      // Only set global isSubmitting false when both panels are done
+      if (!value && !rightPanelActive) {
+        chatHelpers.setIsSubmitting(false);
+      } else if (value) {
+        setLeftPanelActive(true);
+        chatHelpers.setIsSubmitting(true);
+      }
+    }
+  };
+
+  const rightChatHelpers = {
+    ...addedChatHelpers,
+    setIsSubmitting: (value: boolean) => {
+      if (!value) {
+        setRightPanelActive(false);
+      }
+      // Only set global isSubmitting false when both panels are done
+      if (!value && !leftPanelActive) {
+        addedChatHelpers.setIsSubmitting(false);
+      } else if (value) {
+        setRightPanelActive(true);
+        addedChatHelpers.setIsSubmitting(true);
+      }
+    }
+  };
+
+  // Detect comparison mode
+  useEffect(() => {
+    const hasComparison = !!(rootSubmission && addedSubmission);
+    setIsComparisonMode(hasComparison);
+    
+    // Reset panel states when entering/exiting comparison mode
+    if (!hasComparison) {
+      setLeftPanelActive(true);
+      setRightPanelActive(true);
+    }
+  }, [rootSubmission, addedSubmission]);
+
+  // Use the modified helpers for SSE connections
+  useSSE(rootSubmission, leftChatHelpers, false, index, isComparisonMode);
+  useSSE(addedSubmission, rightChatHelpers, true, index + 1, isComparisonMode);
 
   const methods = useForm<ChatFormValues>({
     defaultValues: { text: '' },
