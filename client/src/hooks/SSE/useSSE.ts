@@ -20,6 +20,307 @@ import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
 import store from '~/store';
 
+// Enhanced tracking system with single/comparison mode support
+interface TrackedRequest {
+  id: string;
+  questionNumber: number;
+  question: string;
+  model: string;
+  isComparison: boolean;
+  panel: 'LEFT' | 'RIGHT' | 'SINGLE';
+  conversationId: string;
+  startTime: number;
+  messageId?: string;
+  status: 'pending' | 'success' | 'failed';
+  responseLength?: number;
+  error?: string;
+  duration?: number;
+  mode: 'single' | 'comparison';
+  relatedRequestId?: string;
+}
+
+const REQUEST_TRACKER = {
+  activeRequests: new Map<string, TrackedRequest>(),
+  completedRequests: new Map<string, TrackedRequest>(),
+  questionCounter: new Map<string, number>(),
+  comparisonPairs: new Map<string, string[]>(),
+  
+  startRequest(submission: any, isAddedRequest: boolean, runIndex: number, comparisonMode: boolean = false): string {
+    const conversationId = submission.conversation?.conversationId || 'unknown';
+    const isComparison = isAddedRequest && comparisonMode;
+    
+    const requestId = `${isComparison ? 'COMP' : (comparisonMode ? 'MAIN' : 'SINGLE')}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    let panel: 'LEFT' | 'RIGHT' | 'SINGLE';
+    if (!comparisonMode) {
+      panel = 'SINGLE';
+    } else {
+      panel = isComparison ? 'RIGHT' : 'LEFT';
+    }
+    
+    let questionNumber: number;
+    if (!isAddedRequest || !comparisonMode) {
+      const currentCount = this.questionCounter.get(conversationId) || 0;
+      questionNumber = currentCount + 1;
+      this.questionCounter.set(conversationId, questionNumber);
+    } else {
+      const lastMainRequest = Array.from(this.activeRequests.values())
+        .concat(Array.from(this.completedRequests.values()))
+        .filter(r => r.conversationId === conversationId && r.panel === 'LEFT')
+        .sort((a, b) => b.startTime - a.startTime)[0];
+      questionNumber = lastMainRequest?.questionNumber || 1;
+    }
+    
+    const request: TrackedRequest = {
+      id: requestId,
+      questionNumber,
+      question: submission.userMessage?.text || 'unknown',
+      model: submission.conversation?.model || 'unknown',
+      isComparison,
+      panel,
+      conversationId,
+      startTime: Date.now(),
+      messageId: submission.initialResponse?.messageId,
+      status: 'pending',
+      mode: comparisonMode ? 'comparison' : 'single'
+    };
+    
+    this.activeRequests.set(requestId, request);
+    
+    if (comparisonMode) {
+      const pairKey = `${conversationId}-Q${questionNumber}`;
+      if (!this.comparisonPairs.has(pairKey)) {
+        this.comparisonPairs.set(pairKey, []);
+      }
+      this.comparisonPairs.get(pairKey)!.push(requestId);
+      
+      const relatedRequests = this.comparisonPairs.get(pairKey)!;
+      if (relatedRequests.length > 1) {
+        request.relatedRequestId = relatedRequests[0];
+        const firstRequest = this.activeRequests.get(relatedRequests[0]) || 
+                           this.completedRequests.get(relatedRequests[0]);
+        if (firstRequest) {
+          firstRequest.relatedRequestId = requestId;
+        }
+      }
+    }
+    
+    console.log(`🚀 [REQUEST START] #${questionNumber} - ${panel} ${comparisonMode ? 'Mode' : 'Panel'}`, {
+      requestId,
+      model: request.model,
+      question: request.question,
+      mode: request.mode,
+      panel: request.panel,
+      isComparison: request.isComparison,
+      activeRequests: this.activeRequests.size,
+      relatedRequestId: request.relatedRequestId
+    });
+    
+    this.showCurrentState();
+    
+    return requestId;
+  },
+  
+  updateRequest(requestId: string, updates: Partial<TrackedRequest>) {
+    const request = this.activeRequests.get(requestId) || this.completedRequests.get(requestId);
+    if (!request) {
+      console.warn(`⚠️ [REQUEST TRACKER] Unknown request ID: ${requestId}`);
+      return;
+    }
+    
+    Object.assign(request, updates);
+    
+    console.log(`📝 [REQUEST UPDATE] #${request.questionNumber} - ${request.panel} ${request.mode === 'single' ? 'Mode' : 'Panel'}`, {
+      requestId,
+      updates,
+      currentStatus: request.status,
+      mode: request.mode
+    });
+  },
+  
+  completeRequest(requestId: string, success: boolean, responseLength: number = 0, error?: string) {
+    const request = this.activeRequests.get(requestId);
+    if (!request) {
+      console.warn(`⚠️ [REQUEST TRACKER] Cannot complete unknown request: ${requestId}`);
+      return;
+    }
+    
+    request.status = success ? 'success' : 'failed';
+    request.responseLength = responseLength;
+    request.error = error;
+    request.duration = Date.now() - request.startTime;
+    
+    this.activeRequests.delete(requestId);
+    this.completedRequests.set(requestId, request);
+    
+    const emoji = success ? '✅' : '❌';
+    const modeText = request.mode === 'single' ? 'SINGLE MODE' : `${request.panel} Panel`;
+    
+    console.log(`${emoji} [REQUEST COMPLETE] #${request.questionNumber} - ${modeText}`, {
+      requestId,
+      model: request.model,
+      question: request.question.substring(0, 50),
+      success,
+      responseLength,
+      duration: `${request.duration}ms`,
+      error,
+      mode: request.mode,
+      relatedRequestId: request.relatedRequestId
+    });
+    
+    if (request.mode === 'comparison' && request.relatedRequestId) {
+      const relatedRequest = this.completedRequests.get(request.relatedRequestId);
+      if (relatedRequest) {
+        this.logComparisonComplete(request, relatedRequest);
+      }
+    }
+    
+    this.showCurrentState();
+    this.showSummary();
+  },
+  
+  logComparisonComplete(req1: TrackedRequest, req2: TrackedRequest) {
+    const leftReq = req1.panel === 'LEFT' ? req1 : req2;
+    const rightReq = req1.panel === 'RIGHT' ? req1 : req2;
+    
+    console.log(`🔄 [COMPARISON COMPLETE] Question #${leftReq.questionNumber}`, {
+      question: leftReq.question.substring(0, 50),
+      LEFT: {
+        model: leftReq.model,
+        success: leftReq.status === 'success',
+        responseLength: leftReq.responseLength,
+        duration: leftReq.duration
+      },
+      RIGHT: {
+        model: rightReq.model,
+        success: rightReq.status === 'success',
+        responseLength: rightReq.responseLength,
+        duration: rightReq.duration
+      }
+    });
+  },
+  
+  findRequestByMessageId(messageId: string): TrackedRequest | undefined {
+    for (const [id, request] of this.activeRequests) {
+      if (request.messageId === messageId) {
+        return request;
+      }
+    }
+    for (const [id, request] of this.completedRequests) {
+      if (request.messageId === messageId) {
+        return request;
+      }
+    }
+    return undefined;
+  },
+  
+  showCurrentState() {
+    const active = Array.from(this.activeRequests.values());
+    const singleMode = active.filter(r => r.mode === 'single');
+    const comparisonMode = active.filter(r => r.mode === 'comparison');
+    
+    console.log('📊 [CURRENT STATE]', {
+      totalActive: this.activeRequests.size,
+      singleMode: singleMode.map(r => ({
+        model: r.model,
+        question: r.question.substring(0, 30),
+        status: r.status
+      })),
+      comparisonMode: {
+        left: comparisonMode.filter(r => r.panel === 'LEFT').map(r => ({
+          model: r.model,
+          question: r.question.substring(0, 30),
+          status: r.status
+        })),
+        right: comparisonMode.filter(r => r.panel === 'RIGHT').map(r => ({
+          model: r.model,
+          question: r.question.substring(0, 30),
+          status: r.status
+        }))
+      }
+    });
+  },
+  
+  showSummary() {
+    const completed = Array.from(this.completedRequests.values());
+    const singleRequests = completed.filter(r => r.mode === 'single');
+    const comparisonRequests = completed.filter(r => r.mode === 'comparison');
+    
+    console.log('📈 [SESSION SUMMARY]', {
+      totalQuestions: this.questionCounter.size > 0 ? 
+        Math.max(...Array.from(this.questionCounter.values())) : 0,
+      singleMode: {
+        total: singleRequests.length,
+        successful: singleRequests.filter(r => r.status === 'success').length,
+        failed: singleRequests.filter(r => r.status === 'failed').length,
+        models: [...new Set(singleRequests.map(r => r.model))]
+      },
+      comparisonMode: {
+        totalPairs: this.comparisonPairs.size,
+        LEFT: {
+          total: comparisonRequests.filter(r => r.panel === 'LEFT').length,
+          successful: comparisonRequests.filter(r => r.panel === 'LEFT' && r.status === 'success').length,
+          failed: comparisonRequests.filter(r => r.panel === 'LEFT' && r.status === 'failed').length,
+          models: [...new Set(comparisonRequests.filter(r => r.panel === 'LEFT').map(r => r.model))]
+        },
+        RIGHT: {
+          total: comparisonRequests.filter(r => r.panel === 'RIGHT').length,
+          successful: comparisonRequests.filter(r => r.panel === 'RIGHT' && r.status === 'success').length,
+          failed: comparisonRequests.filter(r => r.panel === 'RIGHT' && r.status === 'failed').length,
+          models: [...new Set(comparisonRequests.filter(r => r.panel === 'RIGHT').map(r => r.model))]
+        }
+      }
+    });
+    
+    console.log('📜 [DETAILED HISTORY]');
+    
+    const byQuestion = new Map<number, TrackedRequest[]>();
+    completed.forEach(req => {
+      if (!byQuestion.has(req.questionNumber)) {
+        byQuestion.set(req.questionNumber, []);
+      }
+      byQuestion.get(req.questionNumber)!.push(req);
+    });
+    
+    Array.from(byQuestion.entries())
+      .sort(([a], [b]) => a - b)
+      .forEach(([qNum, requests]) => {
+        console.log(`\n  Question #${qNum}:`);
+        requests.sort((a, b) => a.startTime - b.startTime).forEach(req => {
+          const status = req.status === 'success' ? '✅' : '❌';
+          const modeText = req.mode === 'single' ? 'SINGLE' : req.panel;
+          console.log(`    ${status} [${modeText}] ${req.model}: "${req.question.substring(0, 30)}..." → ${req.responseLength || 0} chars (${req.duration}ms)`);
+        });
+      });
+  },
+  
+  isInComparisonMode(): boolean {
+    const activeRequests = Array.from(this.activeRequests.values());
+    return activeRequests.some(r => r.mode === 'comparison');
+  },
+  
+  getRelatedRequest(requestId: string): TrackedRequest | undefined {
+    const request = this.activeRequests.get(requestId) || this.completedRequests.get(requestId);
+    if (!request || !request.relatedRequestId) return undefined;
+    
+    return this.activeRequests.get(request.relatedRequestId) || 
+           this.completedRequests.get(request.relatedRequestId);
+  },
+  
+  clear() {
+    this.activeRequests.clear();
+    this.completedRequests.clear();
+    this.questionCounter.clear();
+    this.comparisonPairs.clear();
+    console.log('🧹 [REQUEST TRACKER] All tracking data cleared');
+  }
+};
+
+// Make it globally accessible for debugging
+if (typeof window !== 'undefined') {
+  (window as any).REQUEST_TRACKER = REQUEST_TRACKER;
+}
+
 // Create SSE debugger for deep inspection
 const createSSEDebugger = (model: string, isComparison: boolean) => {
   const eventLog: any[] = [];
@@ -37,11 +338,9 @@ const createSSEDebugger = (model: string, isComparison: boolean) => {
       
       eventLog.push(entry);
       
-      // Special logging for DeFacts
       if (model === 'DeFacts' || model?.toLowerCase().includes('defacts')) {
         console.log(`🔴 [DEFACTS RAW ${eventType}]:`, data);
         
-        // Log the structure deeply
         if (data && typeof data === 'object') {
           console.log('🔴 [DEFACTS STRUCTURE]:', {
             keys: Object.keys(data),
@@ -54,7 +353,6 @@ const createSSEDebugger = (model: string, isComparison: boolean) => {
             dataPreview: JSON.stringify(data).substring(0, 200),
           });
           
-          // Deep inspection of nested structures
           if (data.delta) {
             console.log('🔴 [DEFACTS DELTA STRUCTURE]:', {
               deltaKeys: Object.keys(data.delta),
@@ -101,7 +399,6 @@ const debugDelta = (context: string, data: any, metadata?: any) => {
     console.log('🔍 Metadata:', metadata);
   }
   
-  // Special handling for delta content
   if (data?.delta) {
     console.log('📝 Delta content detected:', {
       hasContent: !!data.delta.content,
@@ -112,7 +409,6 @@ const debugDelta = (context: string, data: any, metadata?: any) => {
     });
   }
   
-  // Track message building
   if (data?.text || data?.content) {
     console.log('📝 Message content:', {
       textType: typeof data.text,
@@ -139,12 +435,10 @@ const safeGetContent = (obj: any, field: string = 'content'): string => {
 
 // Enhanced text extraction that handles more formats
 const extractDeltaText = (data: any): string => {
-  // Direct text in delta
   if (data?.delta?.text) {
     return data.delta.text;
   }
   
-  // Content array format (DeFacts uses this)
   if (data?.delta?.content) {
     if (Array.isArray(data.delta.content)) {
       const textContent = data.delta.content.find((item: any) => item?.type === 'text');
@@ -152,12 +446,10 @@ const extractDeltaText = (data: any): string => {
         return textContent.text;
       }
     } else if (typeof data.delta.content === 'string') {
-      // Sometimes content might be a direct string
       return data.delta.content;
     }
   }
   
-  // Check nested data structure
   if (data?.data?.delta?.content) {
     if (Array.isArray(data.data.delta.content)) {
       const textContent = data.data.delta.content.find((item: any) => item?.type === 'text');
@@ -169,12 +461,10 @@ const extractDeltaText = (data: any): string => {
     }
   }
   
-  // Check for message_delta event structure
   if (data?.data?.delta?.text) {
     return data.data.delta.text;
   }
   
-  // DeFacts might use different field names
   if (data?.content && typeof data.content === 'string') {
     return data.content;
   }
@@ -299,12 +589,21 @@ type ChatHelpers = Pick <
 // Retry configuration
 const RETRY_CONFIG = {
   maxRetries: 3,
-  baseDelay: 1000, // 1 second
-  maxDelay: 10000, // 10 seconds
+  baseDelay: 1000,
+  maxDelay: 10000,
   backoffFactor: 2,
   retryableStatuses: [0, 408, 429, 500, 502, 503, 504],
-  connectionTimeoutMs: 30000, // 30 seconds
+  connectionTimeoutMs: 30000,
 };
+
+// Add isComparisonMode to props
+interface UseSSEProps {
+  submission: TSubmission | null;
+  chatHelpers: ChatHelpers;
+  isAddedRequest?: boolean;
+  runIndex?: number;
+  isComparisonMode?: boolean;
+}
 
 // Return type interface for better TypeScript support
 interface UseSSEReturn {
@@ -314,28 +613,22 @@ interface UseSSEReturn {
   RetryStatusComponent: () => React.ReactElement | null;
 }
 
-export default function useSSE(
-  submission: TSubmission | null,
-  chatHelpers: ChatHelpers,
+export default function useSSE({
+  submission,
+  chatHelpers,
   isAddedRequest = false,
   runIndex = 0,
-): UseSSEReturn {
+  isComparisonMode = false,
+}: UseSSEProps): UseSSEReturn {
   
   // Track connection instances and cache state
   const connectionId = useRef<string>('');
   const previousCacheState = useRef<any>({});
+  const currentRequestId = useRef<string>('');
   
   // Log cache state changes
   const logCacheState = (context: string) => {
-    // You'll need to adapt this based on your actual cache implementation
-    // This is just an example - replace with your actual cache access
     const currentCache = {
-      // Example: check Redux store
-      // messages: store.getState().messages,
-      // Or check local message map
-      // messageMap: messageHandler.messageMap?.current,
-      // Or check conversation state
-      // conversation: getConversation(),
       timestamp: Date.now()
     };
     
@@ -352,6 +645,7 @@ export default function useSSE(
   debugComparison('useSSE INIT', {
     isAddedRequest,
     runIndex,
+    isComparisonMode,
     hasSubmission: !!submission,
     submissionEndpoint: submission?.conversation?.endpoint,
     submissionModel: submission?.conversation?.model,
@@ -366,7 +660,7 @@ export default function useSSE(
   const setAbortScroll = useSetRecoilState(store.abortScrollFamily(runIndex));
   const setShowStopButton = useSetRecoilState(store.showStopButtonByIndex(runIndex));
 
-  // Add retry state - using any type for maximum compatibility
+  // Add retry state
   const [retryCount, setRetryCount] = useState<number>(0);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const retryTimeoutRef = useRef<any>(null);
@@ -439,7 +733,7 @@ export default function useSSE(
     }
   };
 
-  // Handle retry logic - defined before createSSEConnection
+  // Handle retry logic
   const handleRetry = (
     errorReason: string, 
     currentAttempt: number,
@@ -461,7 +755,6 @@ export default function useSSE(
       setIsRetrying(false);
       setIsSubmitting(false);
       
-      // Show user-friendly error message
       const errorData = {
         message: 'Connection failed after multiple attempts. Please try again.',
         type: 'connection_error',
@@ -502,7 +795,6 @@ export default function useSSE(
     userMessage: TMessage,
     attempt: number = 0
   ): SSE => {
-    // Generate unique connection ID
     const newConnectionId = `${isAddedRequest ? 'COMP' : 'DEFACTS'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     connectionId.current = newConnectionId;
     
@@ -514,7 +806,8 @@ export default function useSSE(
       endpoint: payload?.endpoint,
       model: payload?.model,
       serverUrl: payloadData?.server,
-      connectionId: newConnectionId
+      connectionId: newConnectionId,
+      requestId: currentRequestId.current
     });
     
     clearTimeouts();
@@ -532,16 +825,13 @@ export default function useSSE(
       throw error;
     }
 
-    // Create debugger for this connection
     const sseDebugger = createSSEDebugger(
       payload?.model || submission?.conversation?.model || 'unknown',
       isAddedRequest
     );
     
-    // Track all event types registered
     const allEventTypes: Set<string> = new Set();
     
-    // Override addEventListener to capture all event types
     const originalAddEventListener = sse.addEventListener.bind(sse);
     sse.addEventListener = function(type: string, listener: any, options?: any) {
       if (!allEventTypes.has(type)) {
@@ -551,7 +841,6 @@ export default function useSSE(
       return originalAddEventListener(type, listener, options);
     };
     
-    // Log all registered events after 2 seconds
     setTimeout(() => {
       console.log('🔴 [DEFACTS ALL REGISTERED EVENT TYPES]:', Array.from(allEventTypes));
     }, 2000);
@@ -560,7 +849,6 @@ export default function useSSE(
     let textIndex: number | null = null;
     let hasReceivedData = false;
 
-    // Connection timeout
     connectionTimeoutRef.current = setTimeout(() => {
       console.warn('⏰ [useSSE] Connection timeout reached');
       if (sse.readyState === 0 || sse.readyState === 1) {
@@ -573,7 +861,6 @@ export default function useSSE(
       }
     }, RETRY_CONFIG.connectionTimeoutMs);
 
-    // Handle successful connection
     sse.addEventListener('open', () => {
       debugComparison('SSE_CONNECTION_OPEN', {
         isAddedRequest,
@@ -589,7 +876,6 @@ export default function useSSE(
       hasReceivedData = false;
     });
 
-    // Enhanced error handling with retry logic
     sse.addEventListener('error', async (e: MessageEvent) => {
       debugComparison('SSE_ERROR', {
         isAddedRequest,
@@ -608,7 +894,6 @@ export default function useSSE(
       /* @ts-ignore */
       const errorStatus = e.responseCode || e.statusCode || e.status;
       
-      // Handle 401 errors (token refresh)
       /* @ts-ignore */
       if (e.responseCode === 401) {
         console.log('🔑 [useSSE] 401 error - attempting token refresh');
@@ -619,7 +904,6 @@ export default function useSSE(
             throw new Error('Token refresh failed.');
           }
           
-          // Update headers and retry
           sse.headers = {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${newToken}`,
@@ -630,18 +914,15 @@ export default function useSSE(
           return;
         } catch (error) {
           console.error('❌ [useSSE] Token refresh failed:', error);
-          // Fall through to normal error handling
         }
       }
 
-      // Check if error is retryable
       if (!hasReceivedData && isRetryableError(e)) {
         console.log('🔄 [useSSE] Error is retryable, attempting retry');
         handleRetry(`Error ${errorStatus}`, attempt, payloadData, payload, userMessage);
         return;
       }
 
-      // Non-retryable error or max retries reached
       console.error('❌ [useSSE] Non-retryable error or max retries reached');
       setIsRetrying(false);
       (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
@@ -664,7 +945,6 @@ export default function useSSE(
       }
     });
 
-    // All other event listeners with enhanced debugging
     sse.addEventListener('attachment', (e: MessageEvent) => {
       hasReceivedData = true;
       debugComparison('SSE_ATTACHMENT', {
@@ -684,7 +964,6 @@ export default function useSSE(
     sse.addEventListener('message', (e: MessageEvent) => {
       hasReceivedData = true;
       
-      // Enhanced DeFacts debugging
       if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
         console.log(`🔴 [DEFACTS] Raw SSE Event:`, e.data);
         sseDebugger.logRawEvent('message', e.data);
@@ -697,7 +976,6 @@ export default function useSSE(
         console.error('❌ [useSSE] Error parsing message:', error);
         console.error('Raw message data:', e.data);
         
-        // Try to handle as plain text for DeFacts
         if (payload?.model === 'DeFacts') {
           console.log('🔴 [DEFACTS] Attempting plain text handling');
           data = { text: e.data, type: 'text' };
@@ -706,11 +984,9 @@ export default function useSSE(
         }
       }
 
-      // Deep DeFacts inspection
       if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
         sseDebugger.logRawEvent('parsed_message', data);
         
-        // Check all possible text locations
         const textLocations = {
           'data.text': data?.text,
           'data.content': data?.content,
@@ -735,7 +1011,6 @@ export default function useSSE(
         })));
       }
 
-      // Enhanced message debugging with better text detection
       debugDelta('SSE_MESSAGE_RECEIVED', data, {
         isAddedRequest,
         runIndex,
@@ -751,7 +1026,6 @@ export default function useSSE(
 
       try {
         if (data.final != null) {
-          // CRITICAL FIX: Check if we have accumulated text but final message is empty
           if (payload?.model === 'DeFacts' || !isAddedRequest && runIndex === 0) {
             const messageId = data.responseMessage?.messageId || data.messageId || 'unknown';
             const accumulatedText = deltaAccumulator.current[messageId] || '';
@@ -765,12 +1039,10 @@ export default function useSSE(
               responseMessageStructure: data.responseMessage ? Object.keys(data.responseMessage) : 'no response message',
             });
             
-            // FIX: If we accumulated text but final message is empty, inject it
             if (accumulatedText && data.responseMessage && !data.responseMessage.text) {
               console.warn(`🔴 [DEFACTS FIX] Injecting accumulated text into empty final message`);
               data.responseMessage.text = accumulatedText;
               
-              // Also ensure content array has the text
               if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
                 data.responseMessage.content = [{
                   type: 'text',
@@ -779,13 +1051,45 @@ export default function useSSE(
               }
             }
             
-            // Export full debug log for DeFacts
             if (payload?.model === 'DeFacts') {
               sseDebugger.exportLog();
             }
           }
           
-          // Log cache state before processing final message
+          // Track request completion
+          const messageId = data.responseMessage?.messageId || data.messageId;
+          const hasText = !!(data.responseMessage?.text);
+          const responseLength = data.responseMessage?.text?.length || 0;
+          
+          const request = REQUEST_TRACKER.findRequestByMessageId(messageId) || 
+                          (currentRequestId.current ? REQUEST_TRACKER.activeRequests.get(currentRequestId.current) : null);
+          
+          if (request) {
+            REQUEST_TRACKER.completeRequest(
+              request.id,
+              hasText,
+              responseLength,
+              !hasText ? 'Empty response from backend' : undefined
+            );
+          } else {
+            console.warn('⚠️ [REQUEST TRACKER] Could not find request for final message', {
+              messageId,
+              currentRequestId: currentRequestId.current
+            });
+          }
+          
+          if (payload?.model === 'DeFacts' && !hasText) {
+            console.error(`🔴 [DEFACTS FAILURE]`, {
+              request: request ? {
+                questionNumber: request.questionNumber,
+                panel: request.panel,
+                question: request.question
+              } : 'Request not found',
+              messageId,
+              responseMessage: data.responseMessage
+            });
+          }
+          
           logCacheState('BEFORE_FINAL');
           
           debugComparison('SSE_FINAL_MESSAGE', {
@@ -800,10 +1104,8 @@ export default function useSSE(
           finalHandler(data, { ...submission, plugins } as EventSubmission);
           (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
           
-          // Log cache state after processing final message
           logCacheState('AFTER_FINAL');
           
-          // Clear delta accumulator for this message
           if (data.messageId || data.responseMessage?.messageId) {
             const messageId = data.messageId || data.responseMessage?.messageId;
             delete deltaAccumulator.current[messageId];
@@ -813,6 +1115,23 @@ export default function useSSE(
           
           return;
         } else if (data.created != null) {
+          // Track message creation
+          const messageId = data.message?.messageId;
+          
+          if (currentRequestId.current && messageId) {
+            REQUEST_TRACKER.updateRequest(currentRequestId.current, {
+              messageId: messageId,
+              status: 'pending'
+            });
+            
+            console.log('🏁 [MESSAGE CREATED]', {
+              requestId: currentRequestId.current,
+              messageId,
+              panel: !isComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
+              mode: isComparisonMode ? 'comparison' : 'single'
+            });
+          }
+          
           debugComparison('SSE_CREATED_EVENT', {
             isAddedRequest,
             runIndex,
@@ -822,13 +1141,11 @@ export default function useSSE(
           const runId = v4();
           setActiveRunId(runId);
           
-          // Track message start time
           if (data.messageId) {
             messageStartTime.current[data.messageId] = Date.now();
             deltaAccumulator.current[data.messageId] = '';
           }
           
-          // Don't mutate userMessage directly
           const updatedUserMessage = {
             ...userMessage,
             ...data.message,
@@ -845,19 +1162,16 @@ export default function useSSE(
             hasDeltaContent: !!(data.data?.delta?.content)
           });
           
-          // Extract and track delta text for DeFacts messages
           if (data.event === 'on_message_delta' && !isAddedRequest) {
             const deltaText = extractDeltaText(data);
             const messageId = data.data?.id || 'unknown';
             
-            // Initialize counter if needed
             if (!deltaCounter.current[messageId]) {
               deltaCounter.current[messageId] = 0;
               deltaAccumulator.current[messageId] = '';
               messageStartTime.current[messageId] = Date.now();
             }
             
-            // Simple numbered logging
             if (deltaText) {
               deltaCounter.current[messageId]++;
               deltaAccumulator.current[messageId] += deltaText;
@@ -879,7 +1193,6 @@ export default function useSSE(
           setActiveRunId(runId);
           syncHandler(data, { ...submission, userMessage } as EventSubmission);
         } else if (data.type != null) {
-          // This is likely a delta/streaming content message
           debugDelta('SSE_CONTENT_EVENT', data, {
             isAddedRequest,
             runIndex,
@@ -894,7 +1207,6 @@ export default function useSSE(
             textIndex = index;
           }
 
-          // Track delta accumulation
           if (data.messageId && data.text) {
             const safeText = safeGetContent(data, 'text');
             deltaAccumulator.current[data.messageId] = 
@@ -976,9 +1288,7 @@ export default function useSSE(
       }
     });
 
-    // Catch-all listener for unknown events (especially for DeFacts)
     if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
-      // Try common event names that DeFacts might use
       const possibleEventNames = [
         'data', 'update', 'chunk', 'stream', 'delta', 'text', 
         'content', 'response', 'completion', 'message_delta',
@@ -990,12 +1300,10 @@ export default function useSSE(
           console.log(`🔴 [DEFACTS CUSTOM EVENT: ${eventName}]:`, e.data || e);
           sseDebugger.logRawEvent(eventName, e.data || e);
           
-          // Try to handle as message
           try {
             const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
             if (data && (data.text || data.content || data.delta)) {
               console.log(`🔴 [DEFACTS] Processing ${eventName} as message`);
-              // Process as a regular message
               messageHandler(data.text || data.content || '', { 
                 ...submission, 
                 userMessage,
@@ -1009,7 +1317,6 @@ export default function useSSE(
       });
     }
 
-    // Add state change listener for debugging
     /* @ts-ignore */
     if (sse.addEventListener) {
       sse.addEventListener('readystatechange', () => {
@@ -1040,7 +1347,6 @@ export default function useSSE(
     return sse;
   };
 
-  // Cleanup on component unmount
   useEffect(() => {
     return () => {
       debugComparison('SSE_CLEANUP', {
@@ -1058,7 +1364,6 @@ export default function useSSE(
         currentSSERef.current = null;
       }
       
-      // Clear delta accumulators
       deltaAccumulator.current = {};
       messageStartTime.current = {};
       deltaCounter.current = {};
@@ -1071,6 +1376,15 @@ export default function useSSE(
     }
 
     const { userMessage } = submission;
+
+    // Start tracking this request
+    const requestId = REQUEST_TRACKER.startRequest(
+      submission, 
+      isAddedRequest, 
+      runIndex,
+      isComparisonMode
+    );
+    currentRequestId.current = requestId;
 
     let payloadData: any;
     let payload: TPayload;
@@ -1088,14 +1402,16 @@ export default function useSSE(
       return;
     }
 
-    // Enhanced debugging
     debugComparison('SSE_REQUEST_START', {
+      requestId,
       model: payload?.model,
       endpoint: payload?.endpoint,
       isAddedRequest,
       runIndex,
+      panel: !isComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
+      mode: isComparisonMode ? 'comparison' : 'single',
       conversationId: submission?.conversation?.conversationId,
-      userMessagePreview: userMessage?.text?.substring(0, 50) + '...',
+      userMessage: userMessage?.text,
       retryEnabled: true,
       maxRetries: RETRY_CONFIG.maxRetries,
       serverUrl: payloadData.server,
@@ -1104,11 +1420,9 @@ export default function useSSE(
       isDeFacts: payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts'),
     });
 
-    // Reset retry state
     setRetryCount(0);
     setIsRetrying(false);
 
-    // Create initial connection
     let sse: SSE;
     try {
       sse = createSSEConnection(payloadData, payload, userMessage, 0);
@@ -1150,7 +1464,6 @@ export default function useSSE(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submission]);
 
-  // Return retry state and component for UI
   return {
     isRetrying,
     retryCount,
