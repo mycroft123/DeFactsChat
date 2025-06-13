@@ -316,7 +316,7 @@ export default function useChatFunctions({
         responseMessageId,
         overrideParentMessageId: isRegenerate ? messageId : null,
       },
-      messages: currentMessages,
+      messages: index > 0 ? currentMessages.slice(-2) : currentMessages,
       isEdited: isEditOrContinue,
       isContinued,
       isRegenerate,
