@@ -253,18 +253,30 @@ function ChatView({ index = 0 }: { index?: number }) {
   const leftChatHelpers = useMemo(() => createPanelHelpers(chatHelpers, false), [chatHelpers, createPanelHelpers]);
   const rightChatHelpers = useMemo(() => createPanelHelpers(addedChatHelpers, true), [addedChatHelpers, createPanelHelpers]);
 
-  // Detect comparison mode
+  // Detect comparison mode - use a more stable detection
   useEffect(() => {
-    const hasComparison = !!(rootSubmission && addedSubmission && 
-                           Object.keys(rootSubmission).length > 0 && 
-                           Object.keys(addedSubmission).length > 0);
-    setIsComparisonMode(hasComparison);
+    // Check if we have any comparison submissions in the current conversation
+    const hasRootSubmission = !!(rootSubmission && Object.keys(rootSubmission).length > 0);
+    const hasAddedSubmission = !!(addedSubmission && Object.keys(addedSubmission).length > 0);
     
-    console.log(`🔄 [COMPARISON MODE] ${hasComparison ? 'ENABLED' : 'DISABLED'}`, {
-      hasRootSubmission: !!(rootSubmission && Object.keys(rootSubmission).length > 0),
-      hasAddedSubmission: !!(addedSubmission && Object.keys(addedSubmission).length > 0)
-    });
-  }, [rootSubmission, addedSubmission]);
+    // Once in comparison mode, stay in comparison mode for this conversation
+    // Only switch back if explicitly changed by user
+    if (hasRootSubmission && hasAddedSubmission && !isComparisonMode) {
+      setIsComparisonMode(true);
+      console.log(`🔄 [COMPARISON MODE] ENABLED`, {
+        hasRootSubmission,
+        hasAddedSubmission
+      });
+    }
+    // Don't automatically disable comparison mode just because one panel is empty
+    // This prevents UI from switching back to single panel
+    else if (isComparisonMode && hasRootSubmission) {
+      console.log(`🔄 [COMPARISON MODE] MAINTAINED (waiting for comparison panel)`, {
+        hasRootSubmission,
+        hasAddedSubmission
+      });
+    }
+  }, [rootSubmission, addedSubmission, isComparisonMode]);
 
   // Clean up active submissions on unmount
   useEffect(() => {
