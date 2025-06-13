@@ -35,13 +35,30 @@ function ChatView({ index = 0 }: { index?: number }) {
   const addedSubmission = useRecoilValue(store.submissionByIndex(index + 1));
   const centerFormOnLanding = useRecoilValue(store.centerFormOnLanding);
 
+  const fileMap = useFileMapContext();
+
+  const { data: messagesTree = null, isLoading } = useGetMessagesByConvoId(conversationId ?? '', {
+    select: useCallback(
+      (data: TMessage[]) => {
+        const dataTree = buildTree({ messages: data, fileMap });
+        return dataTree?.length === 0 ? null : (dataTree ?? null);
+      },
+      [fileMap],
+    ),
+    enabled: !!fileMap,
+  });
+
+  // IMPORTANT: Declare these BEFORE using them
+  const chatHelpers = useChatHelpers(index, conversationId);
+  const addedChatHelpers = useAddedResponse({ rootIndex: index });
+
   // Track active submissions instead of permanent panel states
   const activeSubmissions = useRef<Set<string>>(new Set());
   const [isComparisonMode, setIsComparisonMode] = useState(false);
   const submissionTimeouts = useRef<Map<string, any>>(new Map());
 
   // Add a failsafe to clear stuck submissions after a timeout
-  const clearStuckSubmissions = () => {
+  const clearStuckSubmissions = useCallback(() => {
     const now = Date.now();
     const stuckThreshold = 60000; // 60 seconds
     
@@ -58,9 +75,15 @@ function ChatView({ index = 0 }: { index?: number }) {
       chatHelpers.setIsSubmitting(false);
       addedChatHelpers.setIsSubmitting(false);
     }
-  };
+  }, [chatHelpers, addedChatHelpers]);
 
-  // Add a global method to force reset (for debugging)
+  // Run failsafe check periodically
+  useEffect(() => {
+    const interval = setInterval(clearStuckSubmissions, 5000); // Check every 5 seconds
+    return () => clearInterval(interval);
+  }, [clearStuckSubmissions]);
+
+  // Add debug methods to window
   useEffect(() => {
     (window as any).forceResetSubmissions = () => {
       console.log('🔧 [FORCE RESET] Clearing all submissions');
@@ -70,27 +93,23 @@ function ChatView({ index = 0 }: { index?: number }) {
       chatHelpers.setIsSubmitting(false);
       addedChatHelpers.setIsSubmitting(false);
     };
+
+    (window as any).debugSubmissions = () => {
+      console.log('🔍 [DEBUG] Current submission state:', {
+        activeSubmissions: Array.from(activeSubmissions.current),
+        activeCount: activeSubmissions.current.size,
+        isComparisonMode,
+        rootSubmission: !!rootSubmission,
+        addedSubmission: !!addedSubmission,
+        timeouts: submissionTimeouts.current.size
+      });
+    };
     
     return () => {
       delete (window as any).forceResetSubmissions;
+      delete (window as any).debugSubmissions;
     };
-  }, [chatHelpers, addedChatHelpers]);
-
-  const fileMap = useFileMapContext();
-
-  const { data: messagesTree = null, isLoading } = useGetMessagesByConvoId(conversationId ?? '', {
-    select: useCallback(
-      (data: TMessage[]) => {
-        const dataTree = buildTree({ messages: data, fileMap });
-        return dataTree?.length === 0 ? null : (dataTree ?? null);
-      },
-      [fileMap],
-    ),
-    enabled: !!fileMap,
-  });
-
-  const chatHelpers = useChatHelpers(index, conversationId);
-  const addedChatHelpers = useAddedResponse({ rootIndex: index });
+  }, [chatHelpers, addedChatHelpers, isComparisonMode, rootSubmission, addedSubmission]);
 
   // Create unique submission IDs
   const getSubmissionId = (submission: any, isAdded: boolean) => {
@@ -150,6 +169,11 @@ function ChatView({ index = 0 }: { index?: number }) {
         const currentSubmissionId = isAdded ? 
           getSubmissionId(addedSubmission, true) : 
           getSubmissionId(rootSubmission, false);
+
+        console.log(`🎯 [PANEL ${isAdded ? 'RIGHT' : 'LEFT'}] setIsSubmitting(${value})`, {
+          submissionId: currentSubmissionId,
+          activeCount: activeSubmissions.current.size
+        });
 
         if (value && currentSubmissionId) {
           // Starting a new submission
