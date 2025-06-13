@@ -11,6 +11,16 @@ import type { SetterOrUpdater } from 'recoil';
 import type { AnnounceOptions } from '~/common';
 import { MESSAGE_UPDATE_INTERVAL } from '~/common';
 
+// Optional debug import - only if debug-utils.ts exists
+let useLibreChatDebug: any = null;
+try {
+  const debugUtils = require('~/utils/debug-utils');
+  useLibreChatDebug = debugUtils.useLibreChatDebug;
+} catch (e) {
+  // Debug utils not available, continue without debugging
+  console.log('[STEP_HANDLER] Debug utils not available, continuing without debugging');
+}
+
 type TUseStepHandler = {
   announcePolite: (options: AnnounceOptions) => void;
   setMessages: (messages: TMessage[]) => void;
@@ -56,6 +66,9 @@ export default function useStepHandler({
   const stepMap = useRef(new Map<string, Agents.RunStep>());
   const deltaCountRef = useRef(0);
   const totalTextLengthRef = useRef(0);
+
+  // Optional debug hook - only if available
+  const debug = useLibreChatDebug ? useLibreChatDebug() : null;
 
   const updateContent = (
     message: TMessage,
@@ -223,12 +236,26 @@ export default function useStepHandler({
 
   return useCallback(
     ({ event, data }: TStepEvent, submission: EventSubmission) => {
+      // Determine panel type - check for _isAddedRequest in submission
+      const panelType = (submission as any)._isAddedRequest ? 'right' : 'single';
+      
+      // Optional debug logging
+      if (debug) {
+        try {
+          debug.logSSEEvent(event, data, panelType);
+        } catch (e) {
+          console.warn('[STEP_HANDLER] Debug logging failed:', e);
+        }
+      }
+
       console.log('[STEP_HANDLER DEBUG - EVENT]', {
         event,
         dataType: data?.constructor?.name,
         submissionModel: submission.conversation?.model,
         submissionEndpoint: submission.conversation?.endpoint,
         timestamp: new Date().toISOString(),
+        panelType,
+        isAddedRequest: (submission as any)._isAddedRequest,
       });
 
       const messages = getMessages() || [];
@@ -251,10 +278,18 @@ export default function useStepHandler({
           stepType: runStep.stepDetails.type,
           index: runStep.index,
           messageMapSize: messageMap.current.size,
+          panelType,
         });
 
         if (!responseMessageId) {
           console.warn('[STEP_HANDLER WARNING] No message id found in run step event');
+          if (debug) {
+            try {
+              debug.logError(new Error('No message id found in run step event'), 'RUN_STEP_NO_ID', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug error logging failed:', e);
+            }
+          }
           return;
         }
 
@@ -273,11 +308,23 @@ export default function useStepHandler({
           };
 
           messageMap.current.set(responseMessageId, response);
-          setMessages([...messages.slice(0, -1), response]);
+          const finalMessages = [...messages.slice(0, -1), response];
+          
+          // Optional debug logging
+          if (debug) {
+            try {
+              debug.logMessages(finalMessages, 'RUN_STEP_NEW_RESPONSE', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug message logging failed:', e);
+            }
+          }
+          
+          setMessages(finalMessages);
 
           console.log('[STEP_HANDLER DEBUG - NEW RESPONSE CREATED]', {
             responseMessageId,
             parentMessageId: userMessage.messageId,
+            panelType,
           });
         }
 
@@ -307,6 +354,15 @@ export default function useStepHandler({
             msg.messageId === runStep.runId ? updatedResponse : msg,
           );
 
+          // Optional debug logging
+          if (debug) {
+            try {
+              debug.logMessages(updatedMessages, 'RUN_STEP_TOOL_CALLS', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug message logging failed:', e);
+            }
+          }
+
           setMessages(updatedMessages);
         }
       } else if (event === 'on_agent_update') {
@@ -316,10 +372,18 @@ export default function useStepHandler({
         console.log('[STEP_HANDLER DEBUG - AGENT UPDATE]', {
           runId: agent_update.runId,
           index: agent_update.index,
+          panelType,
         });
 
         if (!responseMessageId) {
           console.warn('[STEP_HANDLER WARNING] No message id found in agent update event');
+          if (debug) {
+            try {
+              debug.logError(new Error('No message id found in agent update event'), 'AGENT_UPDATE_NO_ID', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug error logging failed:', e);
+            }
+          }
           return;
         }
 
@@ -328,7 +392,18 @@ export default function useStepHandler({
           const updatedResponse = updateContent(response, agent_update.index, data);
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
-          setMessages([...currentMessages.slice(0, -1), updatedResponse]);
+          const finalMessages = [...currentMessages.slice(0, -1), updatedResponse];
+          
+          // Optional debug logging
+          if (debug) {
+            try {
+              debug.logMessages(finalMessages, 'AGENT_UPDATE', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug message logging failed:', e);
+            }
+          }
+          
+          setMessages(finalMessages);
         }
       } else if (event === 'on_message_delta') {
         deltaCountRef.current++;
@@ -345,6 +420,7 @@ export default function useStepHandler({
             : messageDelta.delta?.content?.type,
           stepMapSize: stepMap.current.size,
           messageMapSize: messageMap.current.size,
+          panelType,
         });
         
         const runStep = stepMap.current.get(messageDelta.id);
@@ -357,7 +433,20 @@ export default function useStepHandler({
             responseMessageId,
             stepMapKeys: Array.from(stepMap.current.keys()),
             messageMapKeys: Array.from(messageMap.current.keys()),
+            panelType,
           });
+          
+          if (debug) {
+            try {
+              debug.logError(
+                new Error(`No run step or runId found for message delta: ${messageDelta.id}`),
+                'MESSAGE_DELTA_NO_STEP',
+                panelType
+              );
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug error logging failed:', e);
+            }
+          }
           return;
         }
 
@@ -374,11 +463,33 @@ export default function useStepHandler({
             hasText: 'text' in (contentPart || {}),
             textLength: 'text' in (contentPart || {}) ? (contentPart.text as string)?.length : 0,
             textPreview: 'text' in (contentPart || {}) ? (contentPart.text as string)?.substring(0, 50) : '',
+            panelType,
           });
 
           const beforeUpdateText = response.text || '';
           const updatedResponse = updateContent(response, runStep.index, contentPart);
           const afterUpdateText = updatedResponse.text || '';
+
+          // Optional debug logging for delta
+          if (debug) {
+            try {
+              const storageKey = debug.generateStorageKey(
+                submission.userMessage?.conversationId || 'unknown',
+                panelType
+              );
+              debug.logDelta({
+                messageId: responseMessageId,
+                deltaType: 'message_delta',
+                content: contentPart,
+                textLength: afterUpdateText.length - beforeUpdateText.length,
+                panelType,
+                timestamp: new Date().toISOString(),
+                storageKey
+              });
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug delta logging failed:', e);
+            }
+          }
 
           if ('text' in (contentPart || {})) {
             totalTextLengthRef.current += (contentPart.text as string)?.length || 0;
@@ -391,18 +502,43 @@ export default function useStepHandler({
             textAdded: afterUpdateText.length - beforeUpdateText.length,
             totalTextAccumulated: totalTextLengthRef.current,
             contentChanged: JSON.stringify(response.content) !== JSON.stringify(updatedResponse.content),
+            panelType,
           });
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
-          setMessages([...currentMessages.slice(0, -1), updatedResponse]);
+          const finalMessages = [...currentMessages.slice(0, -1), updatedResponse];
+          
+          // Optional debug logging
+          if (debug) {
+            try {
+              debug.logMessages(finalMessages, 'MESSAGE_DELTA_UPDATE', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug message logging failed:', e);
+            }
+          }
+          
+          setMessages(finalMessages);
         } else {
           console.warn('[STEP_HANDLER WARNING - NO RESPONSE OR CONTENT]', {
             hasResponse: !!response,
             hasDeltaContent: !!messageDelta.delta.content,
             responseMessageId,
             messageMapKeys: Array.from(messageMap.current.keys()),
+            panelType,
           });
+          
+          if (debug) {
+            try {
+              debug.logError(
+                new Error(`No response or delta content for message delta: ${messageDelta.id}`),
+                'MESSAGE_DELTA_NO_CONTENT',
+                panelType
+              );
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug error logging failed:', e);
+            }
+          }
         }
       } else if (event === 'on_reasoning_delta') {
         const reasoningDelta = data as Agents.ReasoningDeltaEvent;
@@ -412,10 +548,22 @@ export default function useStepHandler({
         console.log('[STEP_HANDLER DEBUG - REASONING DELTA]', {
           reasoningDeltaId: reasoningDelta.id,
           hasContent: !!reasoningDelta.delta.content,
+          panelType,
         });
 
         if (!runStep || !responseMessageId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for reasoning delta event');
+          if (debug) {
+            try {
+              debug.logError(
+                new Error(`No run step or runId found for reasoning delta: ${reasoningDelta.id}`),
+                'REASONING_DELTA_NO_STEP',
+                panelType
+              );
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug error logging failed:', e);
+            }
+          }
           return;
         }
 
@@ -429,7 +577,18 @@ export default function useStepHandler({
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
-          setMessages([...currentMessages.slice(0, -1), updatedResponse]);
+          const finalMessages = [...currentMessages.slice(0, -1), updatedResponse];
+          
+          // Optional debug logging
+          if (debug) {
+            try {
+              debug.logMessages(finalMessages, 'REASONING_DELTA_UPDATE', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug message logging failed:', e);
+            }
+          }
+          
+          setMessages(finalMessages);
         }
       } else if (event === 'on_run_step_delta') {
         const runStepDelta = data as Agents.RunStepDeltaEvent;
@@ -439,10 +598,22 @@ export default function useStepHandler({
         console.log('[STEP_HANDLER DEBUG - RUN STEP DELTA]', {
           runStepDeltaId: runStepDelta.id,
           deltaType: runStepDelta.delta.type,
+          panelType,
         });
 
         if (!runStep || !responseMessageId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for run step delta event');
+          if (debug) {
+            try {
+              debug.logError(
+                new Error(`No run step or runId found for run step delta: ${runStepDelta.id}`),
+                'RUN_STEP_DELTA_NO_STEP',
+                panelType
+              );
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug error logging failed:', e);
+            }
+          }
           return;
         }
 
@@ -479,6 +650,15 @@ export default function useStepHandler({
             msg.messageId === runStep.runId ? updatedResponse : msg,
           );
 
+          // Optional debug logging
+          if (debug) {
+            try {
+              debug.logMessages(updatedMessages, 'RUN_STEP_DELTA_UPDATE', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug message logging failed:', e);
+            }
+          }
+
           setMessages(updatedMessages);
         }
       } else if (event === 'on_run_step_completed') {
@@ -489,6 +669,7 @@ export default function useStepHandler({
         console.log('[STEP_HANDLER DEBUG - RUN STEP COMPLETED]', {
           stepId,
           toolCallName: result.tool_call?.name,
+          panelType,
         });
 
         const runStep = stepMap.current.get(stepId);
@@ -496,6 +677,17 @@ export default function useStepHandler({
 
         if (!runStep || !responseMessageId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for completed tool call event');
+          if (debug) {
+            try {
+              debug.logError(
+                new Error(`No run step or runId found for completed tool call: ${stepId}`),
+                'RUN_STEP_COMPLETED_NO_STEP',
+                panelType
+              );
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug error logging failed:', e);
+            }
+          }
           return;
         }
 
@@ -515,6 +707,15 @@ export default function useStepHandler({
             msg.messageId === runStep.runId ? updatedResponse : msg,
           );
 
+          // Optional debug logging
+          if (debug) {
+            try {
+              debug.logMessages(updatedMessages, 'RUN_STEP_COMPLETED_UPDATE', panelType);
+            } catch (e) {
+              console.warn('[STEP_HANDLER] Debug message logging failed:', e);
+            }
+          }
+
           setMessages(updatedMessages);
         }
       }
@@ -526,7 +727,23 @@ export default function useStepHandler({
           stepMapSize: stepMap.current.size,
           totalDeltas: deltaCountRef.current,
           totalTextLength: totalTextLengthRef.current,
+          panelType,
         });
+        
+        // Optional debug logging for cleanup
+        if (debug) {
+          try {
+            debug.logStorageOperation('clear', 'step_handler_cleanup', panelType, {
+              toolCallMapSize: toolCallIdMap.current.size,
+              messageMapSize: messageMap.current.size,
+              stepMapSize: stepMap.current.size,
+              totalDeltas: deltaCountRef.current,
+              totalTextLength: totalTextLengthRef.current,
+            });
+          } catch (e) {
+            console.warn('[STEP_HANDLER] Debug cleanup logging failed:', e);
+          }
+        }
         
         toolCallIdMap.current.clear();
         messageMap.current.clear();
@@ -535,7 +752,6 @@ export default function useStepHandler({
         totalTextLengthRef.current = 0;
       };
     },
-    [getMessages, setIsSubmitting, lastAnnouncementTimeRef, announcePolite, setMessages],
+    [getMessages, setIsSubmitting, lastAnnouncementTimeRef, announcePolite, setMessages, debug],
   );
 }
-
