@@ -38,6 +38,43 @@ function ChatView({ index = 0 }: { index?: number }) {
   // Track active submissions instead of permanent panel states
   const activeSubmissions = useRef<Set<string>>(new Set());
   const [isComparisonMode, setIsComparisonMode] = useState(false);
+  const submissionTimeouts = useRef<Map<string, any>>(new Map());
+
+  // Add a failsafe to clear stuck submissions after a timeout
+  const clearStuckSubmissions = () => {
+    const now = Date.now();
+    const stuckThreshold = 60000; // 60 seconds
+    
+    activeSubmissions.current.forEach(submissionId => {
+      const [, timestamp] = submissionId.split('-');
+      if (now - parseInt(timestamp) > stuckThreshold) {
+        console.warn(`⚠️ [SUBMISSION STUCK] Clearing stuck submission: ${submissionId}`);
+        activeSubmissions.current.delete(submissionId);
+      }
+    });
+    
+    if (activeSubmissions.current.size === 0) {
+      console.log('🔓 [FAILSAFE] Clearing isSubmitting state');
+      chatHelpers.setIsSubmitting(false);
+      addedChatHelpers.setIsSubmitting(false);
+    }
+  };
+
+  // Add a global method to force reset (for debugging)
+  useEffect(() => {
+    (window as any).forceResetSubmissions = () => {
+      console.log('🔧 [FORCE RESET] Clearing all submissions');
+      activeSubmissions.current.clear();
+      submissionTimeouts.current.forEach(timeout => clearTimeout(timeout));
+      submissionTimeouts.current.clear();
+      chatHelpers.setIsSubmitting(false);
+      addedChatHelpers.setIsSubmitting(false);
+    };
+    
+    return () => {
+      delete (window as any).forceResetSubmissions;
+    };
+  }, [chatHelpers, addedChatHelpers]);
 
   const fileMap = useFileMapContext();
 
@@ -67,12 +104,37 @@ function ChatView({ index = 0 }: { index?: number }) {
   const trackSubmission = (submissionId: string, isStarting: boolean) => {
     if (isStarting) {
       activeSubmissions.current.add(submissionId);
+      
+      // Set a timeout to auto-clear this submission if it gets stuck
+      const timeout = setTimeout(() => {
+        if (activeSubmissions.current.has(submissionId)) {
+          console.warn(`⏰ [TIMEOUT] Auto-clearing submission: ${submissionId}`);
+          activeSubmissions.current.delete(submissionId);
+          
+          // Force clear isSubmitting if no active submissions
+          if (activeSubmissions.current.size === 0) {
+            chatHelpers.setIsSubmitting(false);
+            addedChatHelpers.setIsSubmitting(false);
+          }
+        }
+      }, 120000); // 2 minute timeout
+      
+      submissionTimeouts.current.set(submissionId, timeout);
+      
       console.log(`📊 [SUBMISSION TRACKING] Started: ${submissionId}`, {
         activeCount: activeSubmissions.current.size,
         activeSubmissions: Array.from(activeSubmissions.current)
       });
     } else {
       activeSubmissions.current.delete(submissionId);
+      
+      // Clear the timeout for this submission
+      const timeout = submissionTimeouts.current.get(submissionId);
+      if (timeout) {
+        clearTimeout(timeout);
+        submissionTimeouts.current.delete(submissionId);
+      }
+      
       console.log(`📊 [SUBMISSION TRACKING] Completed: ${submissionId}`, {
         activeCount: activeSubmissions.current.size,
         activeSubmissions: Array.from(activeSubmissions.current)
@@ -82,27 +144,41 @@ function ChatView({ index = 0 }: { index?: number }) {
 
   // Create panel-specific chat helpers with submission tracking
   const createPanelHelpers = (baseHelpers: any, isAdded: boolean) => {
-    const currentSubmissionId = isAdded ? 
-      getSubmissionId(addedSubmission, true) : 
-      getSubmissionId(rootSubmission, false);
-
     return {
       ...baseHelpers,
       setIsSubmitting: (value: boolean) => {
-        if (currentSubmissionId) {
-          trackSubmission(currentSubmissionId, value);
-        }
+        const currentSubmissionId = isAdded ? 
+          getSubmissionId(addedSubmission, true) : 
+          getSubmissionId(rootSubmission, false);
 
-        // In comparison mode, only set global isSubmitting false when all submissions are done
-        if (!value && isComparisonMode) {
-          // Check if there are any active submissions left
-          if (activeSubmissions.current.size === 0) {
+        if (value && currentSubmissionId) {
+          // Starting a new submission
+          trackSubmission(currentSubmissionId, true);
+          baseHelpers.setIsSubmitting(true);
+        } else if (!value) {
+          // Completing a submission
+          if (currentSubmissionId) {
+            trackSubmission(currentSubmissionId, false);
+          }
+
+          // In comparison mode, check if all submissions are done
+          if (isComparisonMode) {
+            // Small delay to ensure both panels have time to update
+            setTimeout(() => {
+              if (activeSubmissions.current.size === 0) {
+                console.log('✅ [SUBMISSION COMPLETE] All panels done, enabling submit button');
+                baseHelpers.setIsSubmitting(false);
+              } else {
+                console.log('⏳ [SUBMISSION PARTIAL] Still waiting for other panel(s)', {
+                  remaining: activeSubmissions.current.size,
+                  active: Array.from(activeSubmissions.current)
+                });
+              }
+            }, 100);
+          } else {
+            // Single mode - immediately set to false
             baseHelpers.setIsSubmitting(false);
           }
-          // Don't set global isSubmitting to false yet if there are active submissions
-        } else {
-          // In single mode or when starting a submission, pass through
-          baseHelpers.setIsSubmitting(value);
         }
       }
     };
@@ -129,6 +205,9 @@ function ChatView({ index = 0 }: { index?: number }) {
   useEffect(() => {
     return () => {
       activeSubmissions.current.clear();
+      // Clear all timeouts
+      submissionTimeouts.current.forEach(timeout => clearTimeout(timeout));
+      submissionTimeouts.current.clear();
     };
   }, []);
 
