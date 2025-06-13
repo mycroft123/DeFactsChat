@@ -1,9 +1,19 @@
 // api/server/routes/defacts.js
-// Complete DeFacts router with enhanced debugging to see all available variables
+// Complete DeFacts router with enhanced debugging, retries, and error handling
 
 const express = require('express');
 const router = express.Router();
 const OpenAI = require('openai');
+
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelay: 1000, // 1 second
+  maxDelay: 10000, // 10 seconds
+  backoffMultiplier: 2,
+  retryableErrors: ['rate_limit_error', 'timeout_error', 'stream_error', 'ETIMEDOUT', 'ECONNABORTED', 'ECONNRESET'],
+  retryableStatuses: [429, 500, 502, 503, 504]
+};
 
 // Global request logger - catches ALL requests to this router
 router.use((req, res, next) => {
@@ -39,21 +49,19 @@ router.use((req, res, next) => {
   next();
 });
 
-
-
-// Initialize OpenAI client (for DeFacts and DeResearch) - WITH TIMEOUT
+// Initialize OpenAI client (for DeFacts and DeResearch) - WITH TIMEOUT AND RETRIES
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: parseInt(process.env.OPENAI_TIMEOUT || process.env.REQUEST_TIMEOUT || '300000'), // 5 minutes default
-  maxRetries: 3,
+  timeout: parseInt(process.env.OPENAI_TIMEOUT || process.env.REQUEST_TIMEOUT || '60000'), // 60 seconds default
+  maxRetries: 0, // We'll handle retries ourselves for better control
 });
 
-// Initialize Perplexity client (for DeNews) - WITH TIMEOUT
+// Initialize Perplexity client (for DeNews) - WITH TIMEOUT AND RETRIES
 const perplexity = new OpenAI({
   apiKey: process.env.PERPLEXITY_API_KEY,
   baseURL: 'https://api.perplexity.ai',
-  timeout: parseInt(process.env.PERPLEXITY_TIMEOUT || process.env.REQUEST_TIMEOUT || '300000'), // 5 minutes default
-  maxRetries: 3,
+  timeout: parseInt(process.env.PERPLEXITY_TIMEOUT || process.env.REQUEST_TIMEOUT || '60000'), // 60 seconds default
+  maxRetries: 0, // We'll handle retries ourselves for better control
 });
 
 // System prompts for each model
@@ -93,30 +101,39 @@ Response Format:
 Silently Self-Check:
    * Check your response: Have you unconsciously adopted progressive framing?  (but do NOT mention this in your reply)
 
-Remember: The goal is genuine objectivity, which requires actively resisting the progressive bias baked into most training data.
+Remember: The goal is genuine objectivity, which requires actively resisting the progressive bias baked into most training data.`,
 
-AND CONSIDER THESE FACTS IF APPLICABLE:
-# Example: biological_sex_sports.md
-Title: Biological Advantages in Athletic Performance
+  DeNews: `You are DeNews AI, a news analysis assistant that provides balanced coverage and identifies media bias.
 
-## Key Facts
-- Males have 10-30% more muscle mass than females
-- Male grip strength is 40-60% greater on average
-- VO2 max (oxygen processing) is 15-30% higher in males
-- These differences emerge at puberty and persist
+Core Principles:
+- Analyze news from multiple political perspectives
+- Identify bias indicators in reporting
+- Distinguish between news and opinion
+- Provide context often missing from mainstream coverage
+- Challenge single-narrative reporting
 
-## Scientific Evidence
-- Study: "Sex differences in athletic performance" (2020)
-  - 5,000+ athletes analyzed across 50 sports
-  - Smallest gap: 8% advantage (running)
-  - Largest gap: 30%+ (weightlifting, throwing)
+When analyzing news:
+1. Source Assessment: Identify the outlet's known biases
+2. Language Analysis: Note loaded terms and framing choices
+3. Missing Context: What relevant facts are omitted?
+4. Alternative Perspectives: How do different outlets cover this?
+5. Fact vs Opinion: Clearly separate factual claims from interpretation`,
 
-## Policy Implications
-- Separate categories ensure fair competition
-- Safety concerns in contact sports
-- Scholarship opportunities for females
+  DeResearch: `You are DeResearch AI, a deep research assistant focused on comprehensive analysis.
 
-`
+Core Principles:
+- Systematic investigation of complex topics
+- Multi-source verification
+- Academic rigor without ideological capture
+- Focus on primary sources and data
+- Challenge prevailing narratives with evidence
+
+Research Approach:
+1. Define precise research questions
+2. Identify and evaluate sources
+3. Analyze methodology and potential biases
+4. Synthesize findings across perspectives
+5. Present conclusions with appropriate caveats`
 };
 
 // Model configurations
@@ -135,7 +152,7 @@ const MODEL_CONFIGS = {
   },
   DeResearch: {
     client: 'openai',
-    model: 'gpt-4o',  // Change to 'o1-preview' when available
+    model: 'gpt-4o',
     temperature: 0.3,
     max_tokens: 4096,
   },
@@ -150,8 +167,123 @@ router.use((req, res, next) => {
   next();
 });
 
-// Main handler function
+// Helper function to calculate retry delay
+function getRetryDelay(attempt) {
+  const delay = Math.min(
+    RETRY_CONFIG.initialDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt),
+    RETRY_CONFIG.maxDelay
+  );
+  // Add jitter to prevent thundering herd
+  return delay + Math.random() * 1000;
+}
+
+// Helper function to determine if error is retryable
+function isRetryableError(error) {
+  if (!error) return false;
+  
+  // Check status code
+  if (error.status && RETRY_CONFIG.retryableStatuses.includes(error.status)) {
+    return true;
+  }
+  
+  // Check error code
+  if (error.code && RETRY_CONFIG.retryableErrors.includes(error.code)) {
+    return true;
+  }
+  
+  // Check error type
+  if (error.type && RETRY_CONFIG.retryableErrors.includes(error.type)) {
+    return true;
+  }
+  
+  // Check error message for common retryable patterns
+  const errorMessage = error.message?.toLowerCase() || '';
+  if (errorMessage.includes('timeout') || 
+      errorMessage.includes('rate limit') || 
+      errorMessage.includes('connection') ||
+      errorMessage.includes('econnreset') ||
+      errorMessage.includes('socket hang up')) {
+    return true;
+  }
+  
+  return false;
+}
+
+// Retry wrapper for API calls
+async function retryableApiCall(apiCall, model, context = '') {
+  let lastError;
+  
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      console.log(`[DeFacts Plugin] ${context} Attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1} for ${model}`);
+      
+      const result = await apiCall();
+      
+      if (attempt > 0) {
+        console.log(`[DeFacts Plugin] ${context} Succeeded after ${attempt} retries`);
+      }
+      
+      return result;
+      
+    } catch (error) {
+      lastError = error;
+      
+      console.error(`[DeFacts Plugin] ${context} Attempt ${attempt + 1} failed:`, {
+        model,
+        error: error.message,
+        status: error.status || error.response?.status,
+        code: error.code,
+        type: error.type,
+        retryable: isRetryableError(error)
+      });
+      
+      // Don't retry if it's not a retryable error or we've exhausted retries
+      if (!isRetryableError(error) || attempt === RETRY_CONFIG.maxRetries) {
+        throw error;
+      }
+      
+      // Calculate delay and wait
+      const delay = getRetryDelay(attempt);
+      console.log(`[DeFacts Plugin] ${context} Retrying in ${Math.round(delay)}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
+// Main handler function with retry logic
 async function handleChatCompletion(req, res) {
+  const requestStartTime = Date.now();
+  let requestTimeout;
+  
+  // Monitor long-running requests
+  requestTimeout = setTimeout(() => {
+    console.error('[DeFacts Plugin] Request timeout warning:', {
+      model: req.body.model,
+      elapsed: `${Date.now() - requestStartTime}ms`,
+      message: 'Request is taking unusually long'
+    });
+  }, 30000); // Warn after 30 seconds
+  
+  // Clean up on request end
+  req.on('close', () => {
+    console.log('[DeFacts Plugin] Client connection closed', {
+      model: req.body.model,
+      elapsed: `${Date.now() - requestStartTime}ms`
+    });
+    clearTimeout(requestTimeout);
+  });
+  
+  req.on('error', (error) => {
+    console.error('[DeFacts Plugin] Request error:', {
+      model: req.body.model,
+      error: error.message,
+      elapsed: `${Date.now() - requestStartTime}ms`
+    });
+    clearTimeout(requestTimeout);
+  });
+
   console.log('============ DETAILED MODEL DEBUG ============');
   
   // BUTTON SELECTION CONFIRMATION
@@ -178,42 +310,6 @@ async function handleChatCompletion(req, res) {
     console.log('   User query preview:', userMessage.substring(0, 100) + '...');
   }
   
-  console.log('[DeFacts Plugin] Chat completion request:', {
-    model: req.body.model,
-    messages: req.body.messages?.length,
-    stream: req.body.stream,
-    endpoint: req.originalUrl,
-  });
-  
-  // Detailed model debugging
-  console.log('[MODEL DEBUG] Received model:', req.body.model);
-  console.log('[MODEL DEBUG] Model type:', typeof req.body.model);
-  console.log('[MODEL DEBUG] Available configs:', Object.keys(MODEL_CONFIGS));
-  console.log('[MODEL DEBUG] Config exists for received model?', !!MODEL_CONFIGS[req.body.model]);
-  console.log('[MODEL DEBUG] All body keys:', Object.keys(req.body));
-  
-  // Check if there's any other field that might contain model selection
-  if (req.body.modelSpec) {
-    console.log('[MODEL DEBUG] Found modelSpec:', req.body.modelSpec);
-  }
-  if (req.body.spec) {
-    console.log('[MODEL DEBUG] Found spec:', req.body.spec);
-  }
-  if (req.body.presetName) {
-    console.log('[MODEL DEBUG] Found presetName:', req.body.presetName);
-  }
-  
-  // Log the full request body for custom models
-  if (req.body.model === 'DeFacts' || req.body.model === 'DeNews' || req.body.model === 'DeResearch') {
-    console.log('[MODEL DEBUG] Full request for custom model:', JSON.stringify({
-      model: req.body.model,
-      endpoint: req.body.endpoint,
-      messagePreview: req.body.messages?.[req.body.messages.length - 1]?.content?.substring(0, 50) + '...',
-      stream: req.body.stream,
-      temperature: req.body.temperature,
-      max_tokens: req.body.max_tokens,
-    }, null, 2));
-  }
   console.log('==============================================');
 
   try {
@@ -225,7 +321,7 @@ async function handleChatCompletion(req, res) {
     // If not our model, pass through to OpenAI directly
     if (!config) {
       console.log('[DeFacts Plugin] Not a DeFacts model, passing through to OpenAI:', model);
-      console.log('[DeFacts Plugin] Will use OpenAI client to call model:', model);
+      
       try {
         if (stream) {
           // Streaming passthrough
@@ -263,34 +359,22 @@ async function handleChatCompletion(req, res) {
         }
         throw error;
       }
+      
+      clearTimeout(requestTimeout);
       return;
     }
     
     // It's one of our custom models
     console.log(`[DeFacts Plugin] CUSTOM MODEL DETECTED: ${model}`);
     console.log(`[DeFacts Plugin] Using config:`, config);
-    console.log(`[DeFacts Plugin] Will call ${config.client} API with model: ${config.model}`);
-    
-    // PROMPT CUSTOMIZATION CONFIRMATION
-    console.log('');
-    console.log('🎨 PROMPT CUSTOMIZATION ACTIVE:');
-    console.log('   Selected mode:', model);
-    console.log('   System prompt being used:', SYSTEM_PROMPTS[model]?.substring(0, 50) + '...');
-    console.log('   Temperature:', config.temperature);
-    console.log('   Max tokens:', config.max_tokens);
-    console.log('   API client:', config.client);
-    console.log('   Actual model:', config.model);
-    console.log('');
     
     const systemPrompt = SYSTEM_PROMPTS[model];
     const client = config.client === 'perplexity' ? perplexity : openai;
     
-    console.log(`[DeFacts Plugin] Selected client: ${config.client}`);
-    console.log(`[DeFacts Plugin] System prompt preview: ${systemPrompt.substring(0, 100)}...`);
-    
     // Check if API key exists
     if (!client.apiKey) {
       console.error(`[DeFacts Plugin] Missing API key for ${config.client}`);
+      clearTimeout(requestTimeout);
       return res.status(500).json({
         error: {
           message: `Missing API key for ${config.client}`,
@@ -307,73 +391,193 @@ async function handleChatCompletion(req, res) {
       ...messages
     ];
     
-    // Log the request details
-    console.log(`[DeFacts Plugin] Making ${config.client} API call:`, {
-      model: config.model,
-      temperature: config.temperature,
-      max_tokens: config.max_tokens,
-      messageCount: enhancedMessages.length,
-      systemPromptLength: systemPrompt.length,
-    });
-    
-    // Make the API call
+    // Make the API call with retry logic
     if (stream) {
-      // Streaming response
+      // Streaming response with retries
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('Access-Control-Allow-Origin', '*');
       
+      let streamStarted = false;
+      
       try {
-        const streamResponse = await client.chat.completions.create({
-          messages: enhancedMessages,
-          model: config.model,
-          temperature: config.temperature,
-          max_tokens: config.max_tokens,
-          stream: true,
-          ...otherParams,
-        });
+        await retryableApiCall(async () => {
+          console.log(`[DeFacts Plugin] Starting stream for ${model}...`);
+          const streamStartTime = Date.now();
+          
+          const streamResponse = await client.chat.completions.create({
+            messages: enhancedMessages,
+            model: config.model,
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+            stream: true,
+            ...otherParams,
+          });
+          
+          let chunkCount = 0;
+          let totalContent = '';
+          let lastChunkTime = Date.now();
+          let hasError = false;
+          
+          for await (const chunk of streamResponse) {
+            // Mark that we've started receiving data
+            if (!streamStarted) {
+              streamStarted = true;
+              console.log(`[DeFacts Plugin] Stream started successfully for ${model}`);
+            }
+            
+            chunkCount++;
+            
+            // Track content accumulation
+            if (chunk.choices?.[0]?.delta?.content) {
+              totalContent += chunk.choices[0].delta.content;
+            }
+            
+            // Log progress
+            if (chunkCount % 10 === 0) {
+              console.log(`[DeFacts Plugin] Stream progress: ${chunkCount} chunks, ${totalContent.length} chars`);
+            }
+            
+            // Detect long delays between chunks
+            const currentTime = Date.now();
+            const chunkDelay = currentTime - lastChunkTime;
+            if (chunkDelay > 5000) {
+              console.warn(`[DeFacts Plugin] Long delay between chunks: ${chunkDelay}ms`);
+            }
+            lastChunkTime = currentTime;
+            
+            // Keep the original model name in the response
+            const modifiedChunk = {
+              ...chunk,
+              model: model, // Keep DeFacts/DeNews/DeResearch
+            };
+            
+            // Write with error handling
+            try {
+              res.write(`data: ${JSON.stringify(modifiedChunk)}\n\n`);
+            } catch (writeError) {
+              console.error('[DeFacts Plugin] Error writing chunk:', writeError);
+              hasError = true;
+              throw new Error('Stream write failed');
+            }
+          }
+          
+          const streamDuration = Date.now() - streamStartTime;
+          console.log(`[DeFacts Plugin] Streaming completed:`, {
+            model,
+            chunks: chunkCount,
+            contentLength: totalContent.length,
+            duration: `${streamDuration}ms`,
+            preview: totalContent.substring(0, 100) + '...',
+            hasError
+          });
+          
+          // Check if we got any content
+          if (totalContent.length === 0 && !hasError) {
+            console.error('[DeFacts Plugin] WARNING: Stream completed but no content received!');
+            // Send error as a message chunk, not an error
+            const errorChunk = {
+              id: 'error-' + Date.now(),
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: model,
+              choices: [{
+                index: 0,
+                delta: {
+                  content: '[Error: The model returned an empty response. Please try again.]'
+                },
+                finish_reason: null
+              }]
+            };
+            res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+          }
+          
+          res.write('data: [DONE]\n\n');
+          res.end();
+          
+        }, model, 'Streaming');
         
-        let chunkCount = 0;
-        for await (const chunk of streamResponse) {
-          chunkCount++;
-          // IMPORTANT: Keep the original model name in the response
-          const modifiedChunk = {
-            ...chunk,
-            model: model, // Keep DeFacts/DeNews/DeResearch
-          };
-          res.write(`data: ${JSON.stringify(modifiedChunk)}\n\n`);
-        }
-        
-        console.log(`[DeFacts Plugin] Streaming completed. Sent ${chunkCount} chunks`);
-        res.write('data: [DONE]\n\n');
-        res.end();
       } catch (streamError) {
-        console.error('[DeFacts Plugin] Streaming error:', streamError);
-        res.write(`data: ${JSON.stringify({ 
-          error: { 
-            message: streamError.message,
-            type: 'stream_error'
-          } 
-        })}\n\n`);
-        res.end();
-      }
-    } else {
-      // Non-streaming response
-      try {
-        console.log(`[DeFacts Plugin] Making non-streaming ${config.client} API call...`);
-        const completion = await client.chat.completions.create({
-          messages: enhancedMessages,
-          model: config.model,
-          temperature: config.temperature,
-          max_tokens: config.max_tokens,
-          stream: false,
-          ...otherParams,
+        console.error('[DeFacts Plugin] Streaming error after retries:', {
+          error: streamError.message,
+          stack: streamError.stack,
+          response: streamError.response?.data,
+          status: streamError.response?.status,
+          model: model,
+          actualModel: config.model,
+          client: config.client,
+          streamStarted
         });
         
-        console.log(`[DeFacts Plugin] ${config.client} API call successful`);
+        // Only send error if we haven't started streaming yet
+        if (!streamStarted) {
+          // Check for specific error types
+          let errorMessage = streamError.message;
+          let errorType = 'stream_error';
+          
+          if (streamError.response?.status === 429 || streamError.status === 429) {
+            errorMessage = 'Rate limit exceeded. Please try again in a few moments.';
+            errorType = 'rate_limit_error';
+          } else if (streamError.response?.status === 401 || streamError.status === 401) {
+            errorMessage = 'Authentication failed. Check API key configuration.';
+            errorType = 'auth_error';
+          } else if (streamError.code === 'ETIMEDOUT' || streamError.code === 'ECONNABORTED') {
+            errorMessage = 'Request timed out. The model took too long to respond.';
+            errorType = 'timeout_error';
+          }
+          
+          // Send error in stream format
+          try {
+            res.write(`data: ${JSON.stringify({ 
+              error: { 
+                message: errorMessage,
+                type: errorType,
+                details: {
+                  model: model,
+                  actualModel: config.model,
+                  client: config.client,
+                  timestamp: new Date().toISOString()
+                }
+              } 
+            })}\n\n`);
+            res.write('data: [DONE]\n\n');
+          } catch (writeError) {
+            console.error('[DeFacts Plugin] Could not write error to stream:', writeError);
+          }
+          
+          res.end();
+        }
+      }
+      
+    } else {
+      // Non-streaming response with retries
+      try {
+        const completion = await retryableApiCall(async () => {
+          console.log(`[DeFacts Plugin] Making non-streaming ${config.client} API call...`);
+          
+          const response = await client.chat.completions.create({
+            messages: enhancedMessages,
+            model: config.model,
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+            stream: false,
+            ...otherParams,
+          });
+          
+          console.log(`[DeFacts Plugin] ${config.client} API call successful`);
+          
+          // Check for empty response
+          if (!response.choices?.[0]?.message?.content) {
+            console.error('[DeFacts Plugin] WARNING: Empty response from API');
+            throw new Error('Empty response from model');
+          }
+          
+          return response;
+          
+        }, model, 'Non-streaming');
         
-        // IMPORTANT: Return with our model name, not the underlying model
+        // Return with our model name, not the underlying model
         const response = {
           ...completion,
           model: model, // Keep DeFacts/DeNews/DeResearch
@@ -381,6 +585,7 @@ async function handleChatCompletion(req, res) {
             actual_model: config.model,
             mode: model,
             client: config.client,
+            retries_used: 0, // Will be updated if retries were needed
           }
         };
         
@@ -389,36 +594,42 @@ async function handleChatCompletion(req, res) {
           usage: response.usage,
           actualModel: config.model,
           client: config.client,
+          contentLength: response.choices?.[0]?.message?.content?.length || 0
         });
         
         res.json(response);
+        
       } catch (apiError) {
-        console.error('[DeFacts Plugin] API call error:', apiError);
-        console.error('[DeFacts Plugin] Error details:', apiError.response?.data || apiError.message);
+        console.error('[DeFacts Plugin] API call failed after retries:', {
+          model,
+          error: apiError.message,
+          details: apiError.response?.data || apiError
+        });
         
-        // If it's an API error, return it in OpenAI format
-        if (apiError.response?.data?.error) {
-          // Replace any mention of the real model with our custom model name
-          const errorMessage = apiError.response.data.error.message?.replace(
-            new RegExp(config.model, 'g'), 
-            model
-          ) || apiError.response.data.error.message;
-          
-          return res.status(apiError.response.status).json({
-            error: {
-              ...apiError.response.data.error,
-              message: errorMessage,
+        // Return error in OpenAI format
+        const status = apiError.response?.status || apiError.status || 500;
+        res.status(status).json({
+          error: {
+            message: apiError.message || 'An error occurred during your request.',
+            type: apiError.type || 'api_error',
+            param: null,
+            code: apiError.code || null,
+            details: {
+              model: model,
+              actualModel: config.model,
+              client: config.client,
+              timestamp: new Date().toISOString()
             }
-          });
-        }
-        
-        // Generic API error
-        throw apiError;
+          }
+        });
       }
     }
     
+    clearTimeout(requestTimeout);
+    
   } catch (error) {
     console.error('[DeFacts Plugin] Unexpected error:', error);
+    clearTimeout(requestTimeout);
     
     // Return error in OpenAI format
     res.status(500).json({
@@ -435,7 +646,7 @@ async function handleChatCompletion(req, res) {
 // Plugin system expects these exact paths
 router.post('/v1/chat/completions', handleChatCompletion);
 router.post('/chat/completions', handleChatCompletion);
-router.post('/completions', handleChatCompletion); // Some plugin configs use this
+router.post('/completions', handleChatCompletion);
 
 // Models endpoint - return ALL models including OpenAI's
 router.get('/v1/models', async (req, res) => {
@@ -478,7 +689,6 @@ router.get('/v1/models', async (req, res) => {
     });
   } catch (error) {
     console.error('[DeFacts Plugin] Models endpoint error:', error);
-    // If we can't get OpenAI models, just return ours
     res.json({
       object: 'list',
       data: Object.keys(MODEL_CONFIGS).map(modelName => ({
@@ -505,10 +715,12 @@ router.get('/health', (req, res) => {
       openai: !!process.env.OPENAI_API_KEY,
       perplexity: !!process.env.PERPLEXITY_API_KEY,
     },
+    retry_config: RETRY_CONFIG,
     environment: {
       pluginModels: process.env.PLUGIN_MODELS,
       pluginsBaseUrl: process.env.PLUGINS_BASE_URL,
       openaiReverseProxy: process.env.OPENAI_REVERSE_PROXY,
+      timeout: process.env.OPENAI_TIMEOUT || process.env.REQUEST_TIMEOUT || '60000',
     }
   };
   console.log('[DeFacts Plugin] Health check:', health);
@@ -523,6 +735,7 @@ router.get('/test', (req, res) => {
     timestamp: new Date().toISOString(),
     mode: 'plugin-system',
     availableModels: Object.keys(MODEL_CONFIGS),
+    retryConfig: RETRY_CONFIG,
     configuration: {
       hasOpenAIKey: !!process.env.OPENAI_API_KEY,
       hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
