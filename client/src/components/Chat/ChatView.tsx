@@ -60,14 +60,23 @@ function ChatView({ index = 0 }: { index?: number }) {
   // Add a failsafe to clear stuck submissions after a timeout
   const clearStuckSubmissions = useCallback(() => {
     const now = Date.now();
-    const stuckThreshold = 30000; // Reduced to 30 seconds (was 60)
+    const stuckThreshold = 15000; // Reduced to 15 seconds (was 30)
     let hasStuckSubmissions = false;
+    
+    // Log current state
+    if (activeSubmissions.current.size > 0) {
+      console.log('🔍 [FAILSAFE CHECK] Active submissions:', {
+        count: activeSubmissions.current.size,
+        submissions: Array.from(activeSubmissions.current),
+        timeSinceLastCheck: now - ((window as any).__lastSubmissionCheck || now)
+      });
+    }
     
     // Don't use timestamp-based logic since our IDs don't have timestamps anymore
     // Instead, track submission start times separately
     if (activeSubmissions.current.size > 0) {
       // Check if we've been stuck for too long
-      const timeSinceCheck = now - (window as any).__lastSubmissionCheck || 0;
+      const timeSinceCheck = now - ((window as any).__lastSubmissionCheck || 0);
       if (timeSinceCheck > stuckThreshold) {
         hasStuckSubmissions = true;
         console.warn(`⚠️ [SUBMISSION STUCK] Clearing ${activeSubmissions.current.size} stuck submissions after ${stuckThreshold/1000}s`);
@@ -83,12 +92,14 @@ function ChatView({ index = 0 }: { index?: number }) {
         
         activeSubmissions.current.clear();
       }
+    } else {
+      // Reset the check timer when no active submissions
+      (window as any).__lastSubmissionCheck = now;
     }
     
-    (window as any).__lastSubmissionCheck = now;
-    
-    if (hasStuckSubmissions && activeSubmissions.current.size === 0) {
-      console.log('🔓 [FAILSAFE] Clearing isSubmitting state');
+    if (hasStuckSubmissions || activeSubmissions.current.size === 0) {
+      // Always try to clear if no active submissions
+      console.log('🔓 [FAILSAFE] Ensuring submit button is enabled');
       chatHelpers.setIsSubmitting(false);
       addedChatHelpers.setIsSubmitting(false);
     }
@@ -96,9 +107,25 @@ function ChatView({ index = 0 }: { index?: number }) {
 
   // Run failsafe check periodically
   useEffect(() => {
-    const interval = setInterval(clearStuckSubmissions, 1000); // Check every 1 second instead of 5
+    const interval = setInterval(() => {
+      clearStuckSubmissions();
+      
+      // Extra aggressive check - if no active submissions but button still disabled
+      if (activeSubmissions.current.size === 0) {
+        // Check if submit button is actually disabled (you might need to adjust this check)
+        const submitButton = document.querySelector('button[type="submit"]') || 
+                           document.querySelector('button[data-testid="send-button"]') ||
+                           document.querySelector('textarea')?.closest('form')?.querySelector('button');
+        
+        if (submitButton && submitButton.hasAttribute('disabled')) {
+          console.warn('🚨 [FAILSAFE OVERRIDE] Submit button stuck disabled with no active submissions!');
+          chatHelpers.setIsSubmitting(false);
+          addedChatHelpers.setIsSubmitting(false);
+        }
+      }
+    }, 1000); // Check every 1 second
     return () => clearInterval(interval);
-  }, [clearStuckSubmissions]);
+  }, [clearStuckSubmissions, chatHelpers, addedChatHelpers]);
 
   // Add debug methods to window
   useEffect(() => {
@@ -230,6 +257,12 @@ function ChatView({ index = 0 }: { index?: number }) {
           if (isComparisonMode) {
             // Small delay to ensure both panels have time to update
             setTimeout(() => {
+              console.log('🔍 [SUBMISSION CHECK] Checking if all panels done', {
+                activeCount: activeSubmissions.current.size,
+                activeSubmissions: Array.from(activeSubmissions.current),
+                isComparisonMode
+              });
+              
               if (activeSubmissions.current.size === 0) {
                 console.log('✅ [SUBMISSION COMPLETE] All panels done, enabling submit button');
                 baseHelpers.setIsSubmitting(false);
@@ -242,6 +275,7 @@ function ChatView({ index = 0 }: { index?: number }) {
             }, 100);
           } else {
             // Single mode - immediately set to false
+            console.log('📝 [SINGLE MODE] Setting isSubmitting to false immediately');
             baseHelpers.setIsSubmitting(false);
           }
         }
