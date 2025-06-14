@@ -145,6 +145,12 @@ const REQUEST_TRACKER = {
       return;
     }
     
+    // Consider it a failure if response is empty for certain models
+    if (responseLength === 0 && ['DeFacts', 'DeNews', 'DeResearch'].includes(request.model)) {
+      success = false;
+      error = error || 'Empty response received';
+    }
+    
     request.status = success ? 'success' : 'failed';
     request.responseLength = responseLength;
     request.error = error;
@@ -319,6 +325,29 @@ const REQUEST_TRACKER = {
 // Make it globally accessible for debugging
 if (typeof window !== 'undefined') {
   (window as any).REQUEST_TRACKER = REQUEST_TRACKER;
+  
+  // Add debug function
+  (window as any).debugDeFacts = () => {
+    console.log('=== DeFacts Debug Summary ===');
+    
+    // Get all completed DeFacts requests
+    const completed = Array.from(REQUEST_TRACKER.completedRequests.values());
+    const deFactsRequests = completed.filter(r => r.model === 'DeFacts');
+    
+    console.log('Total DeFacts requests:', deFactsRequests.length);
+    console.log('Failed requests:', deFactsRequests.filter(r => r.status === 'failed').length);
+    console.log('Empty responses:', deFactsRequests.filter(r => r.responseLength === 0).length);
+    
+    // Show each failed request
+    deFactsRequests.filter(r => r.status === 'failed' || r.responseLength === 0).forEach(req => {
+      console.log(`\nFailed Request #${req.questionNumber}:`, {
+        question: req.question,
+        duration: req.duration,
+        error: req.error,
+        responseLength: req.responseLength
+      });
+    });
+  };
 }
 
 // Create SSE debugger for deep inspection
@@ -435,45 +464,50 @@ const safeGetContent = (obj: any, field: string = 'content'): string => {
 
 // Enhanced text extraction that handles more formats
 const extractDeltaText = (data: any): string => {
-  if (data?.delta?.text) {
-    return data.delta.text;
-  }
-  
-  if (data?.delta?.content) {
-    if (Array.isArray(data.delta.content)) {
-      const textContent = data.delta.content.find((item: any) => item?.type === 'text');
-      if (textContent?.text) {
-        return textContent.text;
-      }
-    } else if (typeof data.delta.content === 'string') {
-      return data.delta.content;
+  try {
+    if (data?.delta?.text) {
+      return data.delta.text;
     }
-  }
-  
-  if (data?.data?.delta?.content) {
-    if (Array.isArray(data.data.delta.content)) {
-      const textContent = data.data.delta.content.find((item: any) => item?.type === 'text');
-      if (textContent?.text) {
-        return textContent.text;
+    
+    if (data?.delta?.content) {
+      if (Array.isArray(data.delta.content)) {
+        const textContent = data.delta.content.find((item: any) => item?.type === 'text');
+        if (textContent?.text) {
+          return textContent.text;
+        }
+      } else if (typeof data.delta.content === 'string') {
+        return data.delta.content;
       }
-    } else if (typeof data.data.delta.content === 'string') {
-      return data.data.delta.content;
     }
+    
+    if (data?.data?.delta?.content) {
+      if (Array.isArray(data.data.delta.content)) {
+        const textContent = data.data.delta.content.find((item: any) => item?.type === 'text');
+        if (textContent?.text) {
+          return textContent.text;
+        }
+      } else if (typeof data.data.delta.content === 'string') {
+        return data.data.delta.content;
+      }
+    }
+    
+    if (data?.data?.delta?.text) {
+      return data.data.delta.text;
+    }
+    
+    if (data?.content && typeof data.content === 'string') {
+      return data.content;
+    }
+    
+    if (data?.message && typeof data.message === 'string') {
+      return data.message;
+    }
+    
+    return '';
+  } catch (error) {
+    console.error('Error extracting delta text:', error);
+    return '';
   }
-  
-  if (data?.data?.delta?.text) {
-    return data.data.delta.text;
-  }
-  
-  if (data?.content && typeof data.content === 'string') {
-    return data.content;
-  }
-  
-  if (data?.message && typeof data.message === 'string') {
-    return data.message;
-  }
-  
-  return '';
 };
 
 // Check if data contains text (handles multiple formats)
@@ -576,15 +610,14 @@ const clearDraft = (conversationId?: string | null): void => {
   }
 };
 
-type ChatHelpers = Pick<    // <-- Add the missing "<"
+type ChatHelpers = Pick<
   EventHandlerParams,
-  'setMessages' |           // <-- Also remove leading "|"
-  'getMessages' |
-  'setConversation' |
-  'setIsSubmitting' |
-  'newConversation' |
-  'setShowStopButton' |
-  'resetLatestMessage'
+  | 'setMessages'
+  | 'getMessages'
+  | 'setConversation'
+  | 'setIsSubmitting'
+  | 'newConversation'
+  | 'resetLatestMessage'
 >;
 
 // Retry configuration
@@ -603,6 +636,13 @@ interface UseSSEReturn {
   retryCount: number;
   maxRetries: number;
   RetryStatusComponent: () => React.ReactElement | null;
+}
+
+// Enhanced SSE error event interface
+interface SSEErrorEvent extends MessageEvent {
+  responseCode?: number;
+  statusCode?: number;
+  status?: number;
 }
 
 export default function useSSE(
@@ -826,6 +866,41 @@ export default function useSSE(
       userMessage: userMessage?.text?.substring(0, 50) + '...'
     });
     
+    // ADD DEFACTS DEBUG HERE
+    if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
+      console.log(`🔍 [DeFacts DEBUG START]`, {
+        connectionId: newConnectionId,
+        endpoint: payload.endpoint,
+        server: payloadData.server,
+        payload: payload,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer [REDACTED]'
+        },
+        timestamp: new Date().toISOString()
+      });
+      
+      // Test the endpoint with a regular fetch
+      fetch(payloadData.server, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(response => {
+        console.log(`🔍 [DeFacts TEST RESPONSE]:`, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+      })
+      .catch(error => {
+        console.error(`🔍 [DeFacts TEST ERROR]:`, error);
+      });
+    }
+    
     debugComparison('SSE_CONNECTION_CREATE', {
       attempt: attempt + 1,
       maxRetries: RETRY_CONFIG.maxRetries + 1,
@@ -833,7 +908,7 @@ export default function useSSE(
       runIndex,
       endpoint: payload?.endpoint,
       model: payload?.model,
-      serverUrl: payloadData?.server,
+      serverUrl: payloadData.server,
       connectionId: newConnectionId,
       requestId: currentRequestId.current,
       panelId: panelId.current,
@@ -914,11 +989,25 @@ export default function useSSE(
       hasReceivedData = false;
     });
 
-    sse.addEventListener('error', async (e: MessageEvent) => {
+    sse.addEventListener('error', async (e: SSEErrorEvent) => {
       // Check if this panel was cancelled
       if (!isPanelActive.current) {
         console.log(`[useSSE] Panel ${panelId.current} was cancelled, ignoring error`);
         return;
+      }
+      
+      // ENHANCED ERROR DEBUG FOR DEFACTS
+      if (payload?.model === 'DeFacts') {
+        console.log(`🔍 [DeFacts ERROR]:`, {
+          connectionId: connectionId.current,
+          errorData: e.data,
+          errorType: e.type,
+          readyState: sse.readyState,
+          responseCode: e.responseCode,
+          statusCode: e.statusCode,
+          hasReceivedData: hasReceivedData,
+          timestamp: new Date().toISOString()
+        });
       }
       
       debugComparison('SSE_ERROR', {
@@ -926,9 +1015,7 @@ export default function useSSE(
         runIndex,
         hasReceivedData,
         attempt: attempt + 1,
-        /* @ts-ignore */
         responseCode: e.responseCode,
-        /* @ts-ignore */
         statusCode: e.statusCode,
         data: e.data,
         panelId: panelId.current
@@ -936,10 +1023,8 @@ export default function useSSE(
 
       clearTimeouts();
 
-      /* @ts-ignore */
       const errorStatus = e.responseCode || e.statusCode || e.status;
       
-      /* @ts-ignore */
       if (e.responseCode === 401) {
         console.log('🔑 [useSSE] 401 error - attempting token refresh');
         try {
@@ -1029,14 +1114,72 @@ export default function useSSE(
       
       hasReceivedData = true;
       
+      // ENHANCED MESSAGE DEBUG FOR DEFACTS
       if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
-        console.log(`🔴 [DEFACTS] Raw SSE Event:`, e.data);
+        console.log(`🔍 [DeFacts RAW MESSAGE]:`, {
+          connectionId: connectionId.current,
+          rawData: e.data,
+          dataType: typeof e.data,
+          dataLength: e.data?.length,
+          isEmpty: !e.data || e.data.trim() === '',
+          isJSON: (() => {
+            try {
+              JSON.parse(e.data);
+              return true;
+            } catch {
+              return false;
+            }
+          })(),
+          preview: e.data?.substring(0, 200),
+          timestamp: new Date().toISOString()
+        });
+        
         sseDebugger.logRawEvent('message', e.data);
       }
       
       let data: any;
       try {
         data = JSON.parse(e.data);
+        
+        // ENHANCED PARSED MESSAGE DEBUG FOR DEFACTS
+        if (payload?.model === 'DeFacts') {
+          console.log(`🔍 [DeFacts PARSED MESSAGE]:`, {
+            connectionId: connectionId.current,
+            hasData: !!data,
+            dataKeys: data ? Object.keys(data) : [],
+            hasFinal: data?.final !== undefined,
+            hasCreated: data?.created !== undefined,
+            hasEvent: data?.event !== undefined,
+            hasText: !!(data?.text || data?.response),
+            hasDelta: !!data?.delta,
+            deltaContent: data?.delta?.content,
+            messageType: data?.type,
+            timestamp: new Date().toISOString()
+          });
+          
+          const textLocations = {
+            'data.text': data?.text,
+            'data.content': data?.content,
+            'data.response': data?.response,
+            'data.message': data?.message,
+            'data.responseMessage.text': data?.responseMessage?.text,
+            'data.responseMessage.content': data?.responseMessage?.content,
+            'data.delta.text': data?.delta?.text,
+            'data.delta.content': data?.delta?.content,
+            'data.choices[0].message.content': data?.choices?.[0]?.message?.content,
+            'data.choices[0].text': data?.choices?.[0]?.text,
+            'data.result': data?.result,
+            'data.output': data?.output,
+          };
+          
+          console.log('🔴 [DEFACTS TEXT SEARCH]:', Object.entries(textLocations).map(([path, value]) => ({
+            path,
+            hasValue: !!value,
+            type: typeof value,
+            length: typeof value === 'string' ? value.length : 0,
+            preview: typeof value === 'string' ? value.substring(0, 50) : null,
+          })));
+        }
       } catch (error) {
         console.error('❌ [useSSE] Error parsing message:', error);
         console.error('Raw message data:', e.data);
@@ -1051,29 +1194,6 @@ export default function useSSE(
 
       if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
         sseDebugger.logRawEvent('parsed_message', data);
-        
-        const textLocations = {
-          'data.text': data?.text,
-          'data.content': data?.content,
-          'data.response': data?.response,
-          'data.message': data?.message,
-          'data.responseMessage.text': data?.responseMessage?.text,
-          'data.responseMessage.content': data?.responseMessage?.content,
-          'data.delta.text': data?.delta?.text,
-          'data.delta.content': data?.delta?.content,
-          'data.choices[0].message.content': data?.choices?.[0]?.message?.content,
-          'data.choices[0].text': data?.choices?.[0]?.text,
-          'data.result': data?.result,
-          'data.output': data?.output,
-        };
-        
-        console.log('🔴 [DEFACTS TEXT SEARCH]:', Object.entries(textLocations).map(([path, value]) => ({
-          path,
-          hasValue: !!value,
-          type: typeof value,
-          length: typeof value === 'string' ? value.length : 0,
-          preview: typeof value === 'string' ? value.substring(0, 50) : null,
-        })));
       }
 
       debugDelta('SSE_MESSAGE_RECEIVED', data, {
@@ -1100,6 +1220,25 @@ export default function useSSE(
           if (modelNeedsFix) {
             const accumulatedText = deltaAccumulator.current[currentConnectionId] || '';
             
+            // COMPREHENSIVE FINAL MESSAGE DEBUG
+            console.log(`🔍 [DeFacts FINAL MESSAGE DEBUG]:`, {
+              connectionId: currentConnectionId,
+              hasResponseMessage: !!data.responseMessage,
+              responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
+              responseText: data.responseMessage?.text,
+              responseTextLength: data.responseMessage?.text?.length || 0,
+              responseContent: data.responseMessage?.content,
+              accumulatedText: accumulatedText.substring(0, 100) + '...',
+              accumulatedLength: accumulatedText.length,
+              deltaCount: deltaCounter.current[currentConnectionId] || 0,
+              allDataKeys: Object.keys(data),
+              fullData: data,
+              timestamp: new Date().toISOString()
+            });
+            
+            // Log the exact structure
+            console.log(`🔍 [DeFacts RESPONSE STRUCTURE]:`, JSON.stringify(data, null, 2));
+            
             console.log(`🏁 [FINAL MESSAGE] ${currentConnectionId}:`, {
               model: payload?.model,
               hasResponseMessage: !!data.responseMessage,
@@ -1119,19 +1258,31 @@ export default function useSSE(
               };
             }
             
-            // Fix empty response with accumulated text
-            if (accumulatedText && data.responseMessage && !data.responseMessage.text) {
-              console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars`);
-              data.responseMessage.text = accumulatedText;
-              
-              // Also ensure content array is populated
-              if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
+            // Fix empty response with accumulated text OR add error message
+            if (data.responseMessage) {
+              if (!data.responseMessage.text && !accumulatedText) {
+                // No text at all - add error message
+                console.error(`❌ [EMPTY RESPONSE] ${currentConnectionId}: No content received`);
+                data.responseMessage.text = '[Error: No response received from the model]';
+                data.responseMessage.error = true;
                 data.responseMessage.content = [{
                   type: 'text',
-                  text: accumulatedText
+                  text: '[Error: No response received from the model]'
                 }];
-              } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
-                data.responseMessage.content[0].text = accumulatedText;
+              } else if (accumulatedText && !data.responseMessage.text) {
+                // We have accumulated text but responseMessage.text is empty
+                console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars`);
+                data.responseMessage.text = accumulatedText;
+                
+                // Also ensure content array is populated
+                if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
+                  data.responseMessage.content = [{
+                    type: 'text',
+                    text: accumulatedText
+                  }];
+                } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
+                  data.responseMessage.content[0].text = accumulatedText;
+                }
               }
             }
             
@@ -1278,6 +1429,18 @@ export default function useSSE(
             const deltaText = extractDeltaText(data);
             const currentConnectionId = connectionId.current;
             
+            // ENHANCED DELTA DEBUG FOR DEFACTS
+            if (payload?.model === 'DeFacts') {
+              console.log(`🔍 [DeFacts DELTA]:`, {
+                connectionId: currentConnectionId,
+                deltaText: deltaText,
+                deltaLength: deltaText.length,
+                eventData: data,
+                currentAccumulated: deltaAccumulator.current[currentConnectionId]?.length || 0,
+                deltaCount: deltaCounter.current[currentConnectionId] || 0
+              });
+            }
+            
             // Initialize if needed
             if (!deltaCounter.current[currentConnectionId]) {
               deltaCounter.current[currentConnectionId] = 0;
@@ -1356,7 +1519,7 @@ export default function useSSE(
         debugComparison('SSE_MESSAGE_PROCESSING_ERROR', {
           isAddedRequest,
           runIndex,
-          error: error.message,
+          error: (error as Error).message,
           data: data,
           panelId: panelId.current
         });
@@ -1480,6 +1643,19 @@ export default function useSSE(
     return sse;
   };
 
+  // Add failsafe timeout for stuck states
+  useEffect(() => {
+    if (isSubmitting) {
+      const failsafeTimeout = setTimeout(() => {
+        console.warn('⚠️ [FAILSAFE] Submission stuck for 30s, forcing completion');
+        setIsSubmitting(false);
+        setShowStopButton(false);
+      }, 30000); // 30 second timeout
+      
+      return () => clearTimeout(failsafeTimeout);
+    }
+  }, [isSubmitting, setIsSubmitting, setShowStopButton]);
+
   // Cleanup effect for component unmount
   useEffect(() => {
     return () => {
@@ -1520,6 +1696,10 @@ export default function useSSE(
     }
 
     const { userMessage } = submission;
+    if (!userMessage) {
+      console.error('No userMessage in submission');
+      return;
+    }
 
     // Start tracking this request
     const requestId = REQUEST_TRACKER.startRequest(
@@ -1544,6 +1724,19 @@ export default function useSSE(
       console.error('❌ [useSSE] Error creating payload:', error);
       setIsSubmitting(false);
       return;
+    }
+
+    // DEBUG: Log DeFacts request details
+    if (payload?.model === 'DeFacts') {
+      console.log(`🔍 [DeFacts REQUEST]:`, {
+        url: payloadData.server,
+        method: 'POST',
+        payload: JSON.stringify(payload, null, 2),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer [REDACTED]'
+        }
+      });
     }
 
     debugComparison('SSE_REQUEST_START', {
@@ -1628,4 +1821,4 @@ export default function useSSE(
       maxRetries: RETRY_CONFIG.maxRetries,
     }),
   };
-}
+} 
