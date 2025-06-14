@@ -576,7 +576,7 @@ const clearDraft = (conversationId?: string | null): void => {
   }
 };
 
-type ChatHelpers = Pick<
+type ChatHelpers = Pick
   EventHandlerParams,
   | 'setMessages'
   | 'getMessages'
@@ -625,6 +625,11 @@ export default function useSSE(
   const isPanelActive = useRef(true);
   const panelId = useRef(`${isAddedRequest ? 'RIGHT' : 'LEFT'}-${Date.now()}`);
   
+  // Track delta message accumulation for debugging - CONNECTION SCOPED
+  const deltaAccumulator = useRef<{[connectionId: string]: string}>({});
+  const messageStartTime = useRef<{[connectionId: string]: number}>({});
+  const deltaCounter = useRef<{[connectionId: string]: number}>({});
+  
   // Log cache state changes
   const logCacheState = (context: string) => {
     const currentCache = {
@@ -667,11 +672,6 @@ export default function useSSE(
   const retryTimeoutRef = useRef<any>(null);
   const connectionTimeoutRef = useRef<any>(null);
   const currentSSERef = useRef<SSE | null>(null);
-
-  // Track delta message accumulation for debugging
-  const deltaAccumulator = useRef<{[messageId: string]: string}>({});
-  const messageStartTime = useRef<{[messageId: string]: number}>({});
-  const deltaCounter = useRef<{[messageId: string]: number}>({});
 
   const {
     setMessages,
@@ -814,8 +814,16 @@ export default function useSSE(
       throw new Error('Panel is inactive');
     }
     
+    // Create unique connection ID for this specific request
     const newConnectionId = `${isAddedRequest ? 'COMP' : 'DEFACTS'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     connectionId.current = newConnectionId;
+    
+    console.log(`🔌 [CONNECTION] New connection created: ${newConnectionId}`, {
+      panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+      model: payload?.model,
+      conversationId: submission?.conversation?.conversationId,
+      userMessage: userMessage?.text?.substring(0, 50) + '...'
+    });
     
     debugComparison('SSE_CONNECTION_CREATE', {
       attempt: attempt + 1,
@@ -870,6 +878,7 @@ export default function useSSE(
     let textIndex: number | null = null;
     let hasReceivedData = false;
 
+    // Set connection timeout
     connectionTimeoutRef.current = setTimeout(() => {
       if (!isPanelActive.current) {
         console.log(`[useSSE] Panel ${panelId.current} inactive, skipping timeout`);
@@ -887,6 +896,7 @@ export default function useSSE(
       }
     }, RETRY_CONFIG.connectionTimeoutMs);
 
+    // Set up SSE event listeners
     sse.addEventListener('open', () => {
       debugComparison('SSE_CONNECTION_OPEN', {
         isAddedRequest,
@@ -976,6 +986,15 @@ export default function useSSE(
       } catch (handlerError) {
         console.error('❌ [useSSE] Error in error handler:', handlerError);
         setIsSubmitting(false);
+      }
+      
+      // Clean up this connection on error
+      const currentConnectionId = connectionId.current;
+      if (currentConnectionId) {
+        console.log(`❌ [ERROR CLEANUP] Removing failed connection: ${currentConnectionId}`);
+        delete deltaAccumulator.current[currentConnectionId];
+        delete deltaCounter.current[currentConnectionId];
+        delete messageStartTime.current[currentConnectionId];
       }
     });
 
@@ -1072,30 +1091,76 @@ export default function useSSE(
 
       try {
         if (data.final != null) {
-          if (payload?.model === 'DeFacts' || !isAddedRequest && runIndex === 0) {
-            const messageId = data.responseMessage?.messageId || data.messageId || 'unknown';
-            const accumulatedText = deltaAccumulator.current[messageId] || '';
+          const currentConnectionId = connectionId.current;
+          const modelNeedsFix = payload?.model === 'DeFacts' || 
+                               payload?.model === 'DeNews' || 
+                               payload?.model === 'DeResearch';
+          
+          if (modelNeedsFix) {
+            const accumulatedText = deltaAccumulator.current[currentConnectionId] || '';
             
-            console.log(`🔴 [DEFACTS FINAL CHECK]:`, {
-              messageId,
+            console.log(`🏁 [FINAL MESSAGE] ${currentConnectionId}:`, {
+              model: payload?.model,
               hasResponseMessage: !!data.responseMessage,
               responseTextLength: data.responseMessage?.text?.length || 0,
               accumulatedLength: accumulatedText.length,
-              deltaCount: deltaCounter.current[messageId] || 0,
-              responseMessageStructure: data.responseMessage ? Object.keys(data.responseMessage) : 'no response message',
+              deltaCount: deltaCounter.current[currentConnectionId] || 0,
+              activeConnections: Object.keys(deltaAccumulator.current).length
             });
             
+            // Create responseMessage if it doesn't exist
+            if (!data.responseMessage && accumulatedText) {
+              data.responseMessage = {
+                messageId: data.messageId || `msg-${currentConnectionId}`,
+                conversationId: data.conversationId || submission?.conversation?.conversationId,
+                text: '',
+                content: []
+              };
+            }
+            
+            // Fix empty response with accumulated text
             if (accumulatedText && data.responseMessage && !data.responseMessage.text) {
-              console.warn(`🔴 [DEFACTS FIX] Injecting accumulated text into empty final message`);
+              console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars`);
               data.responseMessage.text = accumulatedText;
               
+              // Also ensure content array is populated
               if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
                 data.responseMessage.content = [{
                   type: 'text',
                   text: accumulatedText
                 }];
+              } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
+                data.responseMessage.content[0].text = accumulatedText;
               }
             }
+            
+            // Clean up this connection's data
+            console.log(`🧹 [CLEANUP] Removing data for connection: ${currentConnectionId}`);
+            delete deltaAccumulator.current[currentConnectionId];
+            delete deltaCounter.current[currentConnectionId];
+            delete messageStartTime.current[currentConnectionId];
+            
+            // Periodic cleanup of old connections (older than 10 minutes)
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            let cleanedCount = 0;
+            
+            Object.keys(messageStartTime.current).forEach(connId => {
+              if (messageStartTime.current[connId] < tenMinutesAgo) {
+                delete deltaAccumulator.current[connId];
+                delete deltaCounter.current[connId];
+                delete messageStartTime.current[connId];
+                cleanedCount++;
+              }
+            });
+            
+            if (cleanedCount > 0) {
+              console.log(`🧹 [CLEANUP] Removed ${cleanedCount} old connections`);
+            }
+            
+            // Debug: Show current state
+            console.log(`📦 [STATE] Active connections: ${Object.keys(deltaAccumulator.current).length}`, 
+              Object.keys(deltaAccumulator.current)
+            );
             
             if (payload?.model === 'DeFacts') {
               sseDebugger.exportLog();
@@ -1161,13 +1226,6 @@ export default function useSSE(
           
           logCacheState('AFTER_FINAL');
           
-          if (data.messageId || data.responseMessage?.messageId) {
-            const messageId = data.messageId || data.responseMessage?.messageId;
-            delete deltaAccumulator.current[messageId];
-            delete messageStartTime.current[messageId];
-            delete deltaCounter.current[messageId];
-          }
-          
           return;
         } else if (data.created != null) {
           // Track message creation
@@ -1198,11 +1256,6 @@ export default function useSSE(
           const runId = v4();
           setActiveRunId(runId);
           
-          if (data.messageId) {
-            messageStartTime.current[data.messageId] = Date.now();
-            deltaAccumulator.current[data.messageId] = '';
-          }
-          
           const updatedUserMessage = {
             ...userMessage,
             ...data.message,
@@ -1220,22 +1273,30 @@ export default function useSSE(
             panelId: panelId.current
           });
           
-          if (data.event === 'on_message_delta' && !isAddedRequest) {
+          if (data.event === 'on_message_delta') {
             const deltaText = extractDeltaText(data);
-            const messageId = data.data?.id || 'unknown';
+            const currentConnectionId = connectionId.current;
             
-            if (!deltaCounter.current[messageId]) {
-              deltaCounter.current[messageId] = 0;
-              deltaAccumulator.current[messageId] = '';
-              messageStartTime.current[messageId] = Date.now();
+            // Initialize if needed
+            if (!deltaCounter.current[currentConnectionId]) {
+              deltaCounter.current[currentConnectionId] = 0;
+              deltaAccumulator.current[currentConnectionId] = '';
+              messageStartTime.current[currentConnectionId] = Date.now();
+              console.log(`🔵 [DELTA INIT] Connection ${currentConnectionId} initialized`);
             }
             
             if (deltaText) {
-              deltaCounter.current[messageId]++;
-              deltaAccumulator.current[messageId] += deltaText;
-              console.log(`[DEFACTS DELTA] ${deltaCounter.current[messageId]}: "${deltaText}"`);
-            } else {
-              console.log(`[DEFACTS DELTA] ${deltaCounter.current[messageId] + 1}: NO TEXT FOUND`);
+              deltaCounter.current[currentConnectionId]++;
+              deltaAccumulator.current[currentConnectionId] += deltaText;
+              
+              // Log progress every 10 deltas
+              if (deltaCounter.current[currentConnectionId] % 10 === 0) {
+                console.log(`📊 [DELTA PROGRESS] ${currentConnectionId}:`, {
+                  deltas: deltaCounter.current[currentConnectionId],
+                  accumulated: deltaAccumulator.current[currentConnectionId].length + ' chars',
+                  preview: deltaAccumulator.current[currentConnectionId].substring(0, 50) + '...'
+                });
+              }
             }
           }
           
@@ -1265,21 +1326,6 @@ export default function useSSE(
           const { text, index } = data;
           if (text != null && index !== textIndex) {
             textIndex = index;
-          }
-
-          if (data.messageId && data.text) {
-            const safeText = safeGetContent(data, 'text');
-            deltaAccumulator.current[data.messageId] = 
-              (deltaAccumulator.current[data.messageId] || '') + safeText;
-            
-            debugDelta('DELTA_ACCUMULATION', {
-              messageId: data.messageId,
-              newText: safePreview(safeText, 50),
-              totalLength: deltaAccumulator.current[data.messageId].length,
-              timeElapsed: messageStartTime.current[data.messageId] ? 
-                Date.now() - messageStartTime.current[data.messageId] : 'unknown',
-              panelId: panelId.current
-            });
           }
 
           contentHandler({ data, submission: submission as EventSubmission });
@@ -1327,6 +1373,15 @@ export default function useSSE(
       isPanelActive.current = false;
       
       clearTimeouts();
+      
+      // Clean up connection data on cancel
+      const currentConnectionId = connectionId.current;
+      if (currentConnectionId) {
+        console.log(`🚫 [CANCEL CLEANUP] Removing cancelled connection: ${currentConnectionId}`);
+        delete deltaAccumulator.current[currentConnectionId];
+        delete deltaCounter.current[currentConnectionId];
+        delete messageStartTime.current[currentConnectionId];
+      }
       
       // Only handle cancellation for this specific panel
       try {
@@ -1404,6 +1459,7 @@ export default function useSSE(
       });
     }
 
+    // Start the stream
     setIsSubmitting(true);
     
     debugComparison('SSE_STREAM_START', {
@@ -1423,6 +1479,7 @@ export default function useSSE(
     return sse;
   };
 
+  // Cleanup effect for component unmount
   useEffect(() => {
     return () => {
       debugComparison('SSE_CLEANUP', {
@@ -1444,12 +1501,18 @@ export default function useSSE(
         currentSSERef.current = null;
       }
       
-      deltaAccumulator.current = {};
-      messageStartTime.current = {};
-      deltaCounter.current = {};
+      // Clean up connection-specific data
+      const currentConnectionId = connectionId.current;
+      if (currentConnectionId) {
+        console.log(`🔚 [UNMOUNT CLEANUP] Removing connection: ${currentConnectionId}`);
+        delete deltaAccumulator.current[currentConnectionId];
+        delete deltaCounter.current[currentConnectionId];
+        delete messageStartTime.current[currentConnectionId];
+      }
     };
   }, []);
 
+  // Effect for handling submissions
   useEffect(() => {
     if (submission == null || Object.keys(submission).length === 0) {
       return;
@@ -1517,6 +1580,7 @@ export default function useSSE(
       return;
     }
 
+    // Cleanup function
     return () => {
       const isCancelled = sse.readyState <= 1;
       debugComparison('SSE_EFFECT_CLEANUP', {
