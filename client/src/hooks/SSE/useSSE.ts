@@ -576,14 +576,15 @@ const clearDraft = (conversationId?: string | null): void => {
   }
 };
 
-type ChatHelpers = Pick
+type ChatHelpers = Pick<    // <-- Add the missing "<"
   EventHandlerParams,
-  | 'setMessages'
-  | 'getMessages'
-  | 'setConversation'
-  | 'setIsSubmitting'
-  | 'newConversation'
-  | 'resetLatestMessage'
+  'setMessages' |           // <-- Also remove leading "|"
+  'getMessages' |
+  'setConversation' |
+  'setIsSubmitting' |
+  'newConversation' |
+  'setShowStopButton' |
+  'resetLatestMessage'
 >;
 
 // Retry configuration
