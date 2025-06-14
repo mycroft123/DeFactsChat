@@ -28,7 +28,7 @@ import {
   extractDeltaText, 
   hasTextContent, 
   debugComparison 
-} from './sseDebugUtils';
+} from './useSSEDebug';
 
 // Retry Status Component
 const RetryStatusDisplay: React.FC<{
