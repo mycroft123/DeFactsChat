@@ -710,6 +710,7 @@ export default function useSSE(
   // Add retry state
   const [retryCount, setRetryCount] = useState<number>(0);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
+  const [isSubmittingLocal, setIsSubmittingLocal] = useState<boolean>(false);
   const retryTimeoutRef = useRef<any>(null);
   const connectionTimeoutRef = useRef<any>(null);
   const currentSSERef = useRef<SSE | null>(null);
@@ -803,6 +804,7 @@ export default function useSSE(
       console.error('❌ [useSSE] Max retries reached, giving up');
       setIsRetrying(false);
       setIsSubmitting(false);
+      setIsSubmittingLocal(false);
       
       const errorData = {
         message: 'Connection failed after multiple attempts. Please try again.',
@@ -1065,6 +1067,7 @@ export default function useSSE(
         console.error('❌ [useSSE] Could not parse error data:', error);
         console.error('Raw error data:', e.data);
         setIsSubmitting(false);
+        setIsSubmittingLocal(false);
       }
 
       try {
@@ -1072,6 +1075,7 @@ export default function useSSE(
       } catch (handlerError) {
         console.error('❌ [useSSE] Error in error handler:', handlerError);
         setIsSubmitting(false);
+        setIsSubmittingLocal(false);
       }
       
       // Clean up this connection on error
@@ -1554,6 +1558,7 @@ export default function useSSE(
           // Only set isSubmitting false if both panels are done
           // This should be handled by parent component
           setIsSubmitting(false);
+          setIsSubmittingLocal(false);
           setCompleted((prev) => {
             prev.delete(streamKey);
             return new Set(prev);
@@ -1625,6 +1630,7 @@ export default function useSSE(
 
     // Start the stream
     setIsSubmitting(true);
+    setIsSubmittingLocal(true);
     
     debugComparison('SSE_STREAM_START', {
       isAddedRequest,
@@ -1645,16 +1651,17 @@ export default function useSSE(
 
   // Add failsafe timeout for stuck states
   useEffect(() => {
-    if (isSubmitting) {
+    if (isSubmittingLocal) {
       const failsafeTimeout = setTimeout(() => {
         console.warn('⚠️ [FAILSAFE] Submission stuck for 30s, forcing completion');
         setIsSubmitting(false);
+        setIsSubmittingLocal(false);
         setShowStopButton(false);
       }, 30000); // 30 second timeout
       
       return () => clearTimeout(failsafeTimeout);
     }
-  }, [isSubmitting, setIsSubmitting, setShowStopButton]);
+  }, [isSubmittingLocal, setIsSubmitting, setShowStopButton]);
 
   // Cleanup effect for component unmount
   useEffect(() => {
@@ -1723,6 +1730,7 @@ export default function useSSE(
     } catch (error) {
       console.error('❌ [useSSE] Error creating payload:', error);
       setIsSubmitting(false);
+      setIsSubmittingLocal(false);
       return;
     }
 
@@ -1771,6 +1779,7 @@ export default function useSSE(
     } catch (error) {
       console.error('❌ [useSSE] Failed to create initial connection:', error);
       setIsSubmitting(false);
+      setIsSubmittingLocal(false);
       return;
     }
 
@@ -1821,4 +1830,4 @@ export default function useSSE(
       maxRetries: RETRY_CONFIG.maxRetries,
     }),
   };
-} 
+} '
