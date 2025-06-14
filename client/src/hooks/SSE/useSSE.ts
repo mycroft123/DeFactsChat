@@ -849,10 +849,77 @@ export default function useSSE(
       const hasText = !!(data.responseMessage?.text);
       const responseLength = data.responseMessage?.text?.length || 0;
       
-      const request = REQUEST_TRACKER.findRequestByMessageId(messageId) || 
-                      (currentRequestId.current ? REQUEST_TRACKER.activeRequests.get(currentRequestId.current) : null);
+      // ENHANCED DEBUGGING FOR REQUEST TRACKING
+      console.log("🔍 [COMPLETE REQUEST] Looking for request:", {
+        messageId,
+        currentRequestId: currentRequestId.current,
+        activeRequestIds: Array.from(REQUEST_TRACKER.activeRequests.keys()),
+        model: payload?.model,
+        panel: isAddedRequest ? 'RIGHT' : 'LEFT'
+      });
       
-      if (request) {
+      // Try multiple ways to find the request
+      let request = REQUEST_TRACKER.findRequestByMessageId(messageId);
+      
+      if (!request && currentRequestId.current) {
+        console.log("🔍 [COMPLETE REQUEST] Trying currentRequestId:", currentRequestId.current);
+        request = REQUEST_TRACKER.activeRequests.get(currentRequestId.current);
+      }
+      
+      if (!request) {
+        // Try to find by matching model and status
+        const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.values());
+        request = activeRequests.find(r => 
+          r.model === payload?.model && 
+          r.status === 'pending' &&
+          r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
+        );
+        
+        if (request) {
+          console.log("🔍 [COMPLETE REQUEST] Found request by model/panel match:", request);
+        }
+      }
+      
+      // Log the result of our search
+      if (!request) {
+        console.error("❌ [COMPLETE REQUEST] Could not find request to complete!", {
+          triedMessageId: messageId,
+          triedRequestId: currentRequestId.current,
+          model: payload?.model,
+          panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+          allActiveRequests: Array.from(REQUEST_TRACKER.activeRequests.entries()).map(([id, req]) => ({
+            id,
+            model: req.model,
+            panel: req.panel,
+            messageId: req.messageId,
+            status: req.status
+          }))
+        });
+        
+        // Force complete any matching pending request as a fallback
+        const pendingRequest = Array.from(REQUEST_TRACKER.activeRequests.values()).find(r => 
+          r.model === payload?.model && 
+          r.status === 'pending' &&
+          r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
+        );
+        
+        if (pendingRequest) {
+          console.warn("⚠️ [COMPLETE REQUEST] Force completing pending request:", pendingRequest);
+          REQUEST_TRACKER.completeRequest(
+            pendingRequest.id,
+            hasText,
+            responseLength,
+            !hasText ? 'Empty response from backend' : undefined
+          );
+        }
+      } else {
+        console.log("✅ [COMPLETE REQUEST] Found request to complete:", {
+          requestId: request.id,
+          model: request.model,
+          panel: request.panel,
+          questionNumber: request.questionNumber
+        });
+        
         REQUEST_TRACKER.completeRequest(
           request.id,
           hasText,
@@ -898,7 +965,7 @@ export default function useSSE(
       
       logCacheState('AFTER_FINAL');
     }
-
+    
     function handleCreatedMessage(data: any) {
       const messageId = data.message?.messageId;
       
