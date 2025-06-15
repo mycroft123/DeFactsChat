@@ -27,285 +27,14 @@ import {
   debugDelta, 
   extractDeltaText, 
   hasTextContent, 
-  debugComparison 
+  debugComparison,
+  debugAICall,
+  performPreflightCheck,
+  installDebugGlobals
 } from './useSSEDebug';
 
-// Enhanced debugging interface
-interface AICallDebugInfo {
-  requestId: string;
-  panel: 'LEFT' | 'RIGHT' | 'SINGLE';
-  model: string;
-  endpoint: string;
-  timestamp: number;
-  payload: any;
-  response?: any;
-  error?: any;
-  duration?: number;
-  sseEvents: Array<{
-    type: string;
-    data: any;
-    timestamp: number;
-  }>;
-}
-
-// Global debug storage
-const AI_CALL_DEBUG_HISTORY: AICallDebugInfo[] = [];
-
-// Debug function
-const debugAICall = (info: Partial<AICallDebugInfo>) => {
-  const debugEntry: AICallDebugInfo = {
-    requestId: info.requestId || 'unknown',
-    panel: info.panel || 'SINGLE',
-    model: info.model || 'unknown',
-    endpoint: info.endpoint || 'unknown',
-    timestamp: Date.now(),
-    payload: info.payload,
-    response: info.response,
-    error: info.error,
-    duration: info.duration,
-    sseEvents: info.sseEvents || [],
-  };
-  
-  AI_CALL_DEBUG_HISTORY.push(debugEntry);
-  
-  // Keep only last 50 entries
-  if (AI_CALL_DEBUG_HISTORY.length > 50) {
-    AI_CALL_DEBUG_HISTORY.shift();
-  }
-  
-  console.log('🔍 [AI_CALL_DEBUG]', debugEntry);
-};
-
-// Enhanced pre-flight check function
-const performPreflightCheck = async (
-  server: string,
-  payload: any,
-  token: string,
-  model: string
-): Promise<{ success: boolean; error?: any; details?: any }> => {
-  console.log(`🛫 [PREFLIGHT CHECK] Starting for ${model}...`);
-  
-  try {
-    // First, try OPTIONS request to check CORS
-    try {
-      const optionsResponse = await fetch(server, {
-        method: 'OPTIONS',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      console.log(`🛫 [PREFLIGHT OPTIONS]`, {
-        status: optionsResponse.status,
-        headers: Object.fromEntries(optionsResponse.headers.entries()),
-      });
-    } catch (optionsError) {
-      console.warn(`⚠️ [PREFLIGHT OPTIONS] Failed:`, optionsError);
-    }
-    
-    // Then try actual POST request
-    const response = await fetch(server, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-    
-    const responseHeaders = Object.fromEntries(response.headers.entries());
-    let responseData = null;
-    
-    try {
-      const responseText = await response.text();
-      if (responseText) {
-        responseData = JSON.parse(responseText);
-      }
-    } catch (e) {
-      // Response might not be JSON
-    }
-    
-    const result = {
-      success: response.ok,
-      details: {
-        status: response.status,
-        statusText: response.statusText,
-        headers: responseHeaders,
-        data: responseData,
-        hasSSEHeaders: responseHeaders['content-type']?.includes('text/event-stream'),
-      },
-    };
-    
-    console.log(`🛫 [PREFLIGHT RESULT]`, result);
-    
-    return result;
-  } catch (error) {
-    console.error(`❌ [PREFLIGHT ERROR]`, error);
-    return {
-      success: false,
-      error: error,
-      details: {
-        errorType: (error as Error).constructor.name,
-        message: (error as Error).message,
-        stack: (error as Error).stack,
-      },
-    };
-  }
-};
-
-// Diagnostic function
-const diagnoseRightPanelFailure = () => {
-  console.log('🔍 DIAGNOSING RIGHT PANEL FAILURE...');
-  console.log('=====================================');
-  
-  // 1. Check active requests
-  const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.values());
-  const rightPanelRequests = activeRequests.filter(r => r.panel === 'RIGHT');
-  
-  console.log('1️⃣ Active RIGHT Panel Requests:', rightPanelRequests.length);
-  rightPanelRequests.forEach(req => {
-    console.log('  - Request:', {
-      id: req.id,
-      model: req.model,
-      status: req.status,
-      duration: Date.now() - req.startTime,
-      messageId: req.messageId,
-    });
-  });
-  
-  // 2. Check comparison mode detection
-  const panels = document.querySelectorAll('[data-panel]');
-  console.log('2️⃣ Panel Detection:', {
-    panelCount: panels.length,
-    isComparisonMode: panels.length > 1,
-    panelAttributes: Array.from(panels).map(p => p.getAttribute('data-panel')),
-  });
-  
-  // 3. Check for stuck requests
-  const stuckRequests = activeRequests.filter(r => 
-    r.status === 'pending' && 
-    Date.now() - r.startTime > 5000 // More than 5 seconds
-  );
-  
-  if (stuckRequests.length > 0) {
-    console.log('3️⃣ ⚠️  STUCK REQUESTS FOUND:', stuckRequests.length);
-    stuckRequests.forEach(req => {
-      console.log('  - Stuck Request:', {
-        panel: req.panel,
-        model: req.model,
-        duration: `${Math.round((Date.now() - req.startTime) / 1000)}s`,
-        question: req.question.substring(0, 50),
-      });
-    });
-  } else {
-    console.log('3️⃣ ✅ No stuck requests');
-  }
-  
-  // 4. Check AI call history
-  const pendingAICalls = AI_CALL_DEBUG_HISTORY.filter(call => !call.duration);
-  const failedAICalls = AI_CALL_DEBUG_HISTORY.filter(call => call.error);
-  
-  console.log('4️⃣ AI Call Status:', {
-    total: AI_CALL_DEBUG_HISTORY.length,
-    pending: pendingAICalls.length,
-    failed: failedAICalls.length,
-  });
-  
-  if (failedAICalls.length > 0) {
-    console.log('  ❌ Failed AI Calls:');
-    failedAICalls.forEach(call => {
-      console.log('    -', {
-        panel: call.panel,
-        model: call.model,
-        error: call.error,
-      });
-    });
-  }
-  
-  // 5. Provide recommendations
-  console.log('\n📋 DIAGNOSTIC SUMMARY:');
-  
-  if (rightPanelRequests.length === 0) {
-    console.log('❌ No RIGHT panel requests found - The request may not be starting');
-    console.log('   → Check if submission is being passed to the RIGHT panel');
-    console.log('   → Verify isAddedRequest=true for RIGHT panel');
-  } else if (stuckRequests.some(r => r.panel === 'RIGHT')) {
-    console.log('❌ RIGHT panel request is stuck in pending state');
-    console.log('   → Check SSE connection establishment');
-    console.log('   → Verify server endpoint is responding');
-    console.log('   → Check for CORS or authentication issues');
-  } else {
-    console.log('⚠️  Unable to determine specific failure reason');
-    console.log('   → Enable more verbose logging');
-    console.log('   → Check browser DevTools Network tab');
-    console.log('   → Verify model availability');
-  }
-  
-  return {
-    rightPanelRequests,
-    stuckRequests: stuckRequests.filter(r => r.panel === 'RIGHT'),
-    isComparisonMode: panels.length > 1,
-  };
-};
-
-// Add debug functions to window
-if (typeof window !== 'undefined') {
-  (window as any).AI_DEBUG = {
-    showHistory: () => {
-      console.table(AI_CALL_DEBUG_HISTORY.map(entry => ({
-        requestId: entry.requestId.substring(0, 8),
-        panel: entry.panel,
-        model: entry.model,
-        endpoint: entry.endpoint,
-        timestamp: new Date(entry.timestamp).toLocaleTimeString(),
-        hasError: !!entry.error,
-        duration: entry.duration ? `${entry.duration}ms` : 'pending',
-        eventCount: entry.sseEvents.length,
-      })));
-    },
-    showRequest: (requestId: string) => {
-      const entry = AI_CALL_DEBUG_HISTORY.find(e => 
-        e.requestId.includes(requestId) || e.requestId === requestId
-      );
-      if (entry) {
-        console.log('📋 AI Call Details:', entry);
-      } else {
-        console.log('Request not found');
-      }
-    },
-    showFailures: () => {
-      const failures = AI_CALL_DEBUG_HISTORY.filter(e => e.error);
-      console.log(`❌ Failed AI Calls (${failures.length}):`, failures);
-    },
-    showPending: () => {
-      const pending = AI_CALL_DEBUG_HISTORY.filter(e => !e.duration);
-      console.log(`⏳ Pending AI Calls (${pending.length}):`, pending);
-      return pending;
-    },
-    clear: () => {
-      AI_CALL_DEBUG_HISTORY.length = 0;
-      console.log('🧹 AI debug history cleared');
-    },
-  };
-  
-  (window as any).diagnoseRight = diagnoseRightPanelFailure;
-  
-  (window as any).forceCompleteStuck = () => {
-    const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.entries());
-    let completed = 0;
-    
-    activeRequests.forEach(([id, req]) => {
-      if (req.status === 'pending' && Date.now() - req.startTime > 5000) {
-        console.log(`Force completing stuck request: ${req.panel} - ${req.model}`);
-        REQUEST_TRACKER.completeRequest(id, false, 0, 'Force completed - was stuck');
-        completed++;
-      }
-    });
-    
-    console.log(`✅ Force completed ${completed} stuck requests`);
-  };
-}
+// Install global debug functions
+installDebugGlobals();
 
 // Retry Status Component
 const RetryStatusDisplay: React.FC<{
@@ -640,7 +369,7 @@ export default function useSSE(
     });
     
     // Create debug info for this connection
-    const debugInfo: AICallDebugInfo = {
+    const debugInfo = {
       requestId: currentRequestId.current || newConnectionId,
       panel: isAddedRequest ? 'RIGHT' : 'LEFT',
       model: payload?.model || 'unknown',
@@ -648,7 +377,7 @@ export default function useSSE(
       timestamp: Date.now(),
       payload: payload,
       sseEvents: [],
-    };
+    } as const;
     
     const addSSEEvent = (type: string, data: any) => {
       debugInfo.sseEvents.push({
@@ -976,8 +705,117 @@ export default function useSSE(
       }
       
       let data: any;
+      let isOpenAIFormat = false;
+      let isCustomFormat = false;
+      
       try {
-        data = JSON.parse(e.data);
+        // First, check if it's standard OpenAI SSE format (data: {...})
+        if (e.data.startsWith('data: ')) {
+          const jsonStr = e.data.substring(6).trim();
+          
+          if (jsonStr === '[DONE]') {
+            // OpenAI completion signal
+            console.log('🤖 [GPT] Received [DONE] signal');
+            return;
+          }
+          
+          data = JSON.parse(jsonStr);
+          isOpenAIFormat = true;
+          
+          // Log format detection
+          console.log('🤖 [GPT FORMAT] Standard OpenAI format detected', {
+            hasChoices: !!data.choices,
+            hasDelta: !!data.choices?.[0]?.delta,
+          });
+          
+        } else {
+          // Try parsing as custom format
+          data = JSON.parse(e.data);
+          
+          // Check if it's the custom event format
+          if (data.event || data.message || data.final) {
+            isCustomFormat = true;
+            console.log('🤖 [GPT FORMAT] Custom event format detected', {
+              event: data.event,
+              hasMessage: !!data.message,
+              isFinal: !!data.final,
+            });
+          }
+        }
+        
+        // HANDLE STANDARD OPENAI FORMAT
+        if (isOpenAIFormat && data.choices?.[0]) {
+          const choice = data.choices[0];
+          
+          // Delta content (streaming)
+          if (choice.delta?.content) {
+            // Transform to your expected format
+            data = {
+              event: 'on_message_delta',
+              data: {
+                delta: {
+                  content: [{
+                    type: 'text',
+                    text: choice.delta.content
+                  }]
+                }
+              }
+            };
+            
+            console.log('🤖 [GPT OPENAI DELTA]:', {
+              text: choice.delta.content,
+              length: choice.delta.content.length,
+            });
+          }
+          
+          // Completion
+          if (choice.finish_reason) {
+            console.log('🤖 [GPT OPENAI COMPLETE]:', {
+              finishReason: choice.finish_reason,
+              hasMessage: !!choice.message,
+            });
+          }
+        }
+        
+        // HANDLE CUSTOM EVENT FORMAT
+        else if (isCustomFormat) {
+          // Already in the format we expect, but let's ensure consistency
+          if (data.event === 'on_message_delta' && data.data) {
+            // Format is already correct
+            console.log('🤖 [GPT CUSTOM DELTA]:', {
+              hasDelta: !!data.data.delta,
+              deltaKeys: data.data.delta ? Object.keys(data.data.delta) : [],
+            });
+          } else if (data.message) {
+            // Initial message creation
+            data = {
+              created: true,
+              message: data.message
+            };
+          } else if (data.event === 'on_run_step') {
+            // Pass through run step events
+            data = {
+              event: 'on_run_step',
+              data: data.data
+            };
+          }
+          // Keep final messages as-is
+          else if (data.final) {
+            // This is already in the correct format
+            console.log('🤖 [GPT FINAL]:', {
+              hasResponseMessage: !!data.responseMessage,
+              responseLength: data.responseMessage?.text?.length || 0,
+            });
+          }
+        }
+        
+        // Log unrecognized formats for debugging
+        if (!isOpenAIFormat && !isCustomFormat) {
+          console.warn('⚠️ [GPT] Unrecognized message format:', {
+            dataKeys: Object.keys(data),
+            preview: JSON.stringify(data).substring(0, 200),
+          });
+        }
         
         // Enhanced parsed message debug for DeFacts
         if (payload?.model === 'DeFacts') {
@@ -1779,201 +1617,3 @@ export default function useSSE(
     }),
   };
 }
-
-// ChatGPT Stream Analysis Functions
-if (typeof window !== 'undefined') {
-  // Initialize storage
-  window.CHATGPT_RAW_STREAM = window.CHATGPT_RAW_STREAM || [];
-  
-  // Analysis function for ChatGPT responses
-  window.analyzeChatGPTStream = (connectionId?: string) => {
-    if (!window.CHATGPT_RAW_STREAM || window.CHATGPT_RAW_STREAM.length === 0) {
-      console.log('No ChatGPT stream data captured');
-      return;
-    }
-    
-    let messages = window.CHATGPT_RAW_STREAM;
-    
-    // Filter by connection ID if provided
-    if (connectionId) {
-      messages = messages.filter(m => m.connectionId.includes(connectionId));
-    }
-    
-    console.log(`\n🤖 CHATGPT STREAM ANALYSIS (${messages.length} messages)`);
-    console.log('=====================================');
-    
-    // Group by connection
-    const connections: Record<string, any[]> = {};
-    messages.forEach(msg => {
-      if (!connections[msg.connectionId]) {
-        connections[msg.connectionId] = [];
-      }
-      connections[msg.connectionId].push(msg);
-    });
-    
-    Object.entries(connections).forEach(([connId, msgs]) => {
-      console.log(`\n📡 Connection: ${connId}`);
-      console.log(`Messages: ${msgs.length}`);
-      
-      // Analyze message types
-      const messageTypes = {
-        empty: 0,
-        done: 0,
-        data: 0,
-        error: 0,
-        delta: 0,
-        final: 0,
-        other: 0,
-      };
-      
-      let totalContent = '';
-      let deltaCount = 0;
-      
-      msgs.forEach((msg, index) => {
-        // Categorize message
-        if (!msg.raw || msg.raw.trim() === '') {
-          messageTypes.empty++;
-        } else if (msg.raw.includes('[DONE]')) {
-          messageTypes.done++;
-        } else if (msg.raw.includes('error')) {
-          messageTypes.error++;
-        } else if (msg.raw.startsWith('data:')) {
-          messageTypes.data++;
-          
-          // Try to parse the data
-          try {
-            const jsonStr = msg.raw.substring(5).trim();
-            if (jsonStr && jsonStr !== '[DONE]') {
-              const parsed = JSON.parse(jsonStr);
-              
-              // Look for delta content
-              if (parsed.choices?.[0]?.delta?.content) {
-                deltaCount++;
-                totalContent += parsed.choices[0].delta.content;
-              }
-              
-              // Check for final message
-              if (parsed.choices?.[0]?.finish_reason) {
-                messageTypes.final++;
-              }
-            }
-          } catch (e) {
-            // Not JSON, log it
-            if (index < 5 || index >= msgs.length - 5) {
-              console.log(`Non-JSON message ${index}:`, msg.raw.substring(0, 100));
-            }
-          }
-        } else {
-          messageTypes.other++;
-        }
-      });
-      
-      console.log('\nMessage Types:', messageTypes);
-      console.log(`Delta messages: ${deltaCount}`);
-      console.log(`Total content length: ${totalContent.length} chars`);
-      
-      // Show first and last few messages
-      console.log('\nFirst 3 messages:');
-      msgs.slice(0, 3).forEach((msg, i) => {
-        console.log(`  [${i}]:`, msg.raw?.substring(0, 100) + '...');
-      });
-      
-      console.log('\nLast 3 messages:');
-      msgs.slice(-3).forEach((msg, i) => {
-        console.log(`  [${msgs.length - 3 + i}]:`, msg.raw?.substring(0, 100) + '...');
-      });
-      
-      // Show accumulated content
-      if (totalContent) {
-        console.log('\n📝 Accumulated content:');
-        console.log('Length:', totalContent.length);
-        console.log('Preview:', totalContent.substring(0, 200) + '...');
-        console.log('End:', '...' + totalContent.substring(totalContent.length - 100));
-      }
-      
-      // Look for errors
-      const errorMessages = msgs.filter(m => m.raw?.includes('error'));
-      if (errorMessages.length > 0) {
-        console.log('\n❌ Error messages found:');
-        errorMessages.forEach(msg => {
-          console.log(msg.raw);
-        });
-      }
-    });
-  };
-
-  // Function to see the last ChatGPT failure
-  window.debugLastChatGPTFailure = () => {
-    // Get failed ChatGPT requests
-    const failedRequests = Array.from(REQUEST_TRACKER.completedRequests.values())
-      .filter(r => (r.model === 'gpt-4o' || r.model?.includes('gpt')) && r.status === 'failed')
-      .sort((a, b) => b.startTime - a.startTime);
-      
-    if (failedRequests.length === 0) {
-      console.log('No failed ChatGPT requests found');
-      return;
-    }
-    
-    const lastFailed = failedRequests[0];
-    console.log('❌ Last failed ChatGPT request:', {
-      questionNumber: lastFailed.questionNumber,
-      question: lastFailed.question,
-      duration: lastFailed.duration,
-      error: lastFailed.error,
-      responseLength: lastFailed.responseLength,
-    });
-    
-    // Find the connection for this request
-    const failureTime = lastFailed.startTime;
-    const relevantMessages = window.CHATGPT_RAW_STREAM?.filter(m => 
-      m.timestamp >= failureTime && 
-      m.timestamp <= failureTime + (lastFailed.duration || 30000)
-    ) || [];
-    
-    console.log(`\n📡 Found ${relevantMessages.length} messages during this request`);
-    
-    if (relevantMessages.length > 0) {
-      console.log('Analyzing stream for this failure...');
-      const connectionId = relevantMessages[0]?.connectionId;
-      if (connectionId) {
-        window.analyzeChatGPTStream(connectionId);
-      }
-    }
-  };
-
-  // Real-time monitoring for ChatGPT
-  window.monitorChatGPT = (enable = true) => {
-    if (enable) {
-      window.CHATGPT_MONITOR_ENABLED = true;
-      console.log('🔍 ChatGPT monitoring ENABLED - will log all messages in real-time');
-    } else {
-      window.CHATGPT_MONITOR_ENABLED = false;
-      console.log('🔍 ChatGPT monitoring DISABLED');
-    }
-  };
-}
-
-// Log debug commands on load
-console.log(`
-🔍 AI Debugging Commands:
-- AI_DEBUG.showHistory()     // Show all AI calls
-- AI_DEBUG.showRequest('id') // Show specific request details
-- AI_DEBUG.showFailures()    // Show only failed calls
-- AI_DEBUG.showPending()     // Show active/pending calls
-- AI_DEBUG.clear()           // Clear history
-
-🔧 Request Tracker Commands:
-- REQUEST_TRACKER.showCurrentState()
-- REQUEST_TRACKER.showSummary()
-- window.debugDeFacts()
-
-🔍 Diagnostic Commands:
-- diagnoseRight()        // Diagnose RIGHT panel failures
-- forceCompleteStuck()   // Force complete stuck requests
-
-🤖 ChatGPT Debugging Commands:
-- monitorChatGPT(true)         // Enable real-time logging
-- analyzeChatGPTStream()       // Analyze all captured messages
-- debugLastChatGPTFailure()    // Debug the last failure
-- window.CHATGPT_RAW_STREAM    // Access raw message array
-`);
