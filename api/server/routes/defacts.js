@@ -146,7 +146,7 @@ const MODEL_CONFIGS = {
   },
   DeNews: {
     client: 'perplexity',
-    model: 'sonar-medium-online',
+    model: 'llama-3.1-sonar-small-128k-online',  // Change to a valid model
     temperature: 0.5,
     max_tokens: 2048,
   },
