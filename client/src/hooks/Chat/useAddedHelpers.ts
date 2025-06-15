@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { QueryKeys } from 'librechat-data-provider';
 import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
@@ -72,38 +72,44 @@ export default function useAddedHelpers({
 
   const queryParam = paramId === 'new' ? paramId : conversation?.conversationId ?? paramId ?? '';
 
-  debugLog('useAddedHelpers INIT', { 
-    rootIndex, 
-    currentIndex, 
-    paramId,
-    queryParam,
-    isMainConvo: currentIndex === 0,
-    isComparisonConvo: currentIndex > 0
-  });
-  
-  // Add comprehensive debugging immediately
-  console.log('🔧 DEBUGGING - currentIndex:', currentIndex, 'queryParam:', queryParam);
-  
-  // Try to expose debugging tools globally
-  if (typeof window !== 'undefined') {
-    if (!window.__LIBRECHAT_DEBUG__) {
-      window.__LIBRECHAT_DEBUG__ = {};
-    }
-    window.__LIBRECHAT_DEBUG__[`helper_${currentIndex}`] = {
-      queryClient,
-      currentIndex,
+  // 🔧 FIXED: Move debug logging to useEffect with proper dependencies
+  useEffect(() => {
+    debugLog('useAddedHelpers INIT', { 
+      rootIndex, 
+      currentIndex, 
+      paramId,
       queryParam,
-      getStoredMessages: () => {
-        const results = {};
-        results[`3-part-${currentIndex}`] = queryClient.getQueryData(['messages', queryParam, currentIndex]);
-        results['cache-all'] = queryClient.getQueryCache().getAll()
-          .filter(q => q.queryKey[0] === 'messages')
-          .map(q => ({ key: q.queryKey, hasData: !!q.state.data }));
-        return results;
+      isMainConvo: currentIndex === 0,
+      isComparisonConvo: currentIndex > 0
+    });
+    
+    // Add comprehensive debugging immediately
+    console.log('🔧 DEBUGGING - currentIndex:', currentIndex, 'queryParam:', queryParam);
+  }, [rootIndex, currentIndex, paramId, queryParam]); // Proper dependencies
+
+  // 🔧 FIXED: Move debug helper setup to useEffect
+  useEffect(() => {
+    // Try to expose debugging tools globally
+    if (typeof window !== 'undefined') {
+      if (!window.__LIBRECHAT_DEBUG__) {
+        window.__LIBRECHAT_DEBUG__ = {};
       }
-    };
-    console.log(`🔧 Debug helper available at window.__LIBRECHAT_DEBUG__.helper_${currentIndex}`);
-  }
+      window.__LIBRECHAT_DEBUG__[`helper_${currentIndex}`] = {
+        queryClient,
+        currentIndex,
+        queryParam,
+        getStoredMessages: () => {
+          const results = {};
+          results[`3-part-${currentIndex}`] = queryClient.getQueryData(['messages', queryParam, currentIndex]);
+          results['cache-all'] = queryClient.getQueryCache().getAll()
+            .filter(q => q.queryKey[0] === 'messages')
+            .map(q => ({ key: q.queryKey, hasData: !!q.state.data }));
+          return results;
+        }
+      };
+      console.log(`🔧 Debug helper available at window.__LIBRECHAT_DEBUG__.helper_${currentIndex}`);
+    }
+  }, [currentIndex, queryParam, queryClient]); // Only when these change
 
   const setMessages = useCallback(
     (messages: TMessage[]) => {
@@ -267,7 +273,7 @@ export default function useAddedHelpers({
     regenerate({ parentMessageId });
   };
 
-  const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleContinue = (e: React.MouseEvent<HTMLButtonButton>) => {
     e.preventDefault();
     continueGeneration();
     setSiblingIdx(0);
