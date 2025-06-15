@@ -154,9 +154,35 @@ export default function useSSE(
   const previousCacheState = useRef<any>({});
   const currentRequestId = useRef<string>('');
   
-  // Add panel-specific state management
-  const isPanelActive = useRef(true);
-  const panelId = useRef(`${isAddedRequest ? 'RIGHT' : 'LEFT'}-${Date.now()}`);
+  // ===== PANEL ISOLATION FIXES =====
+  // Add panel-specific state management with unique IDs
+  const panelId = useRef(`${isAddedRequest ? 'RIGHT' : 'LEFT'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  
+  // FIXED: Panel-specific timeout management (no more shared refs)
+  const retryTimeoutRef = useRef<{[panelId: string]: any}>({});
+  const connectionTimeoutRef = useRef<{[panelId: string]: any}>({});
+  
+  // FIXED: Panel-specific connection references
+  const currentSSERef = useRef<{[panelId: string]: SSE | null}>({});
+  
+  // FIXED: Panel-specific active state
+  const isPanelActive = useRef<{[panelId: string]: boolean}>({});
+  
+  // Initialize this panel as active
+  isPanelActive.current[panelId.current] = true;
+  
+  // FIXED: Panel-specific timeout clearing
+  const clearPanelTimeouts = (targetPanelId: string): void => {
+    if (retryTimeoutRef.current[targetPanelId]) {
+      clearTimeout(retryTimeoutRef.current[targetPanelId]);
+      delete retryTimeoutRef.current[targetPanelId];
+    }
+    if (connectionTimeoutRef.current[targetPanelId]) {
+      clearTimeout(connectionTimeoutRef.current[targetPanelId]);
+      delete connectionTimeoutRef.current[targetPanelId];
+    }
+  };
+  // ===== END PANEL ISOLATION FIXES =====
   
   // Track delta message accumulation for debugging - CONNECTION SCOPED
   const deltaAccumulator = useRef<{[connectionId: string]: string}>({});
@@ -213,9 +239,6 @@ export default function useSSE(
   const [retryCount, setRetryCount] = useState<number>(0);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [isSubmittingLocal, setIsSubmittingLocal] = useState<boolean>(false);
-  const retryTimeoutRef = useRef<any>(null);
-  const connectionTimeoutRef = useRef<any>(null);
-  const currentSSERef = useRef<SSE | null>(null);
 
   const {
     setMessages,
@@ -266,19 +289,7 @@ export default function useSSE(
     return Math.min(delay, RETRY_CONFIG.maxDelay);
   };
 
-  // Clean up timeouts
-  const clearTimeouts = (): void => {
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-    if (connectionTimeoutRef.current) {
-      clearTimeout(connectionTimeoutRef.current);
-      connectionTimeoutRef.current = null;
-    }
-  };
-
-  // Handle retry logic
+  // FIXED: Handle retry logic with panel isolation
   const handleRetry = (
     errorReason: string, 
     currentAttempt: number,
@@ -286,8 +297,10 @@ export default function useSSE(
     payload: TPayload,
     userMessage: TMessage
   ): void => {
-    if (!isPanelActive.current) {
-      console.log(`[useSSE] Panel ${panelId.current} is inactive, skipping retry`);
+    const thisPanel = panelId.current;
+    
+    if (!isPanelActive.current[thisPanel]) {
+      console.log(`[useSSE] Panel ${thisPanel} is inactive, skipping retry`);
       return;
     }
     
@@ -298,7 +311,7 @@ export default function useSSE(
       runIndex,
       endpoint: payload?.endpoint,
       model: payload?.model,
-      panelId: panelId.current
+      panelId: thisPanel
     });
     
     if (currentAttempt >= RETRY_CONFIG.maxRetries) {
@@ -329,9 +342,10 @@ export default function useSSE(
     const delay = getRetryDelay(currentAttempt);
     console.log(`⏳ [useSSE] Retrying in ${delay}ms (attempt ${currentAttempt + 2})`);
     
-    retryTimeoutRef.current = setTimeout(() => {
-      if (!isPanelActive.current) {
-        console.log(`[useSSE] Panel ${panelId.current} became inactive during retry delay`);
+    // FIXED: Panel-specific retry timeout
+    retryTimeoutRef.current[thisPanel] = setTimeout(() => {
+      if (!isPanelActive.current[thisPanel]) {
+        console.log(`[useSSE] Panel ${thisPanel} became inactive during retry delay`);
         return;
       }
       
@@ -346,15 +360,17 @@ export default function useSSE(
     }, delay);
   };
 
-  // Enhanced SSE creation with retry logic
+  // Enhanced SSE creation with retry logic and panel isolation
   const createSSEConnection = (
     payloadData: any,
     payload: TPayload,
     userMessage: TMessage,
     attempt: number = 0
   ): SSE => {
-    if (!isPanelActive.current) {
-      console.log(`[useSSE] Panel ${panelId.current} is inactive, not creating connection`);
+    const thisPanel = panelId.current;
+    
+    if (!isPanelActive.current[thisPanel]) {
+      console.log(`[useSSE] Panel ${thisPanel} is inactive, not creating connection`);
       throw new Error('Panel is inactive');
     }
     
@@ -363,6 +379,7 @@ export default function useSSE(
     
     console.log(`🔌 [CONNECTION] New connection created: ${newConnectionId}`, {
       panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+      panelId: thisPanel,
       model: payload?.model,
       conversationId: submission?.conversation?.conversationId,
       userMessage: userMessage?.text?.substring(0, 50) + '...'
@@ -402,6 +419,7 @@ export default function useSSE(
     if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
       console.log(`🔍 [DeFacts DEBUG START]`, {
         connectionId: newConnectionId,
+        panelId: thisPanel,
         endpoint: payload.endpoint,
         server: payloadData.server,
         payload: payload,
@@ -423,11 +441,12 @@ export default function useSSE(
       serverUrl: payloadData.server,
       connectionId: newConnectionId,
       requestId: currentRequestId.current,
-      panelId: panelId.current,
-      isPanelActive: isPanelActive.current
+      panelId: thisPanel,
+      isPanelActive: isPanelActive.current[thisPanel]
     });
     
-    clearTimeouts();
+    // FIXED: Clear only this panel's timeouts
+    clearPanelTimeouts(thisPanel);
     
     let sse: SSE;
     
@@ -450,24 +469,26 @@ export default function useSSE(
       isAddedRequest
     );
     
-    currentSSERef.current = sse;
+    // FIXED: Store connection in panel-specific ref
+    currentSSERef.current[thisPanel] = sse;
     let textIndex: number | null = null;
     let hasReceivedData = false;
 
-    // Set connection timeout
-    connectionTimeoutRef.current = setTimeout(() => {
-      if (!isPanelActive.current) {
-        console.log(`[useSSE] Panel ${panelId.current} inactive, skipping timeout`);
+    // FIXED: Set panel-specific connection timeout
+    connectionTimeoutRef.current[thisPanel] = setTimeout(() => {
+      if (!isPanelActive.current[thisPanel]) {
+        console.log(`[useSSE] Panel ${thisPanel} inactive, skipping timeout`);
         return;
       }
       
-      console.warn('⏰ [useSSE] Connection timeout reached');
+      console.warn(`⏰ [useSSE] Connection timeout reached for panel ${thisPanel}`);
       addSSEEvent('timeout', { readyState: sse.readyState });
+      
       if (sse.readyState === 0 || sse.readyState === 1) {
         try {
           sse.close();
         } catch (error) {
-          console.error('❌ [useSSE] Error closing timed out connection:', error);
+          console.error(`❌ [useSSE] Error closing timed out connection for ${thisPanel}:`, error);
         }
         handleRetry('Connection timeout', attempt, payloadData, payload, userMessage);
       }
@@ -481,10 +502,11 @@ export default function useSSE(
         runIndex,
         readyState: sse.readyState,
         url: payloadData.server,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
-      clearTimeouts();
+      // FIXED: Clear only this panel's timeouts
+      clearPanelTimeouts(thisPanel);
       setAbortScroll(false);
       setRetryCount(0);
       setIsRetrying(false);
@@ -492,8 +514,8 @@ export default function useSSE(
     });
 
     sse.addEventListener('error', async (e: SSEErrorEvent) => {
-      if (!isPanelActive.current) {
-        console.log(`[useSSE] Panel ${panelId.current} was cancelled, ignoring error`);
+      if (!isPanelActive.current[thisPanel]) {
+        console.log(`[useSSE] Panel ${thisPanel} was cancelled, ignoring error`);
         return;
       }
       
@@ -518,6 +540,7 @@ export default function useSSE(
       if (payload?.model === 'DeFacts') {
         console.log(`🔍 [DeFacts ERROR]:`, {
           connectionId: connectionId.current,
+          panelId: thisPanel,
           errorData: e.data,
           errorType: e.type,
           readyState: sse.readyState,
@@ -536,10 +559,11 @@ export default function useSSE(
         responseCode: e.responseCode,
         statusCode: e.statusCode,
         data: e.data,
-        panelId: panelId.current
+        panelId: thisPanel
       });
 
-      clearTimeouts();
+      // FIXED: Clear only this panel's timeouts
+      clearPanelTimeouts(thisPanel);
 
       const errorStatus = e.responseCode || e.statusCode || e.status;
       
@@ -605,8 +629,8 @@ export default function useSSE(
     });
 
     sse.addEventListener('attachment', (e: MessageEvent) => {
-      if (!isPanelActive.current) {
-        console.log(`[useSSE] Panel ${panelId.current} inactive, ignoring attachment`);
+      if (!isPanelActive.current[thisPanel]) {
+        console.log(`[useSSE] Panel ${thisPanel} inactive, ignoring attachment`);
         return;
       }
       
@@ -616,7 +640,7 @@ export default function useSSE(
         isAddedRequest,
         runIndex,
         dataLength: e.data?.length || 0,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
       try {
@@ -628,8 +652,8 @@ export default function useSSE(
     });
 
     sse.addEventListener('message', (e: MessageEvent) => {
-      if (!isPanelActive.current) {
-        console.log(`[useSSE] Panel ${panelId.current} inactive, ignoring message`);
+      if (!isPanelActive.current[thisPanel]) {
+        console.log(`[useSSE] Panel ${thisPanel} inactive, ignoring message`);
         return;
       }
       
@@ -649,6 +673,7 @@ export default function useSSE(
         const rawEntry = {
           timestamp: Date.now(),
           connectionId: connectionId.current,
+          panelId: thisPanel,
           model: payload.model,
           raw: e.data,
           length: e.data?.length || 0,
@@ -685,6 +710,7 @@ export default function useSSE(
       if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
         console.log(`🔍 [DeFacts RAW MESSAGE]:`, {
           connectionId: connectionId.current,
+          panelId: thisPanel,
           rawData: e.data,
           dataType: typeof e.data,
           dataLength: e.data?.length,
@@ -821,6 +847,7 @@ export default function useSSE(
         if (payload?.model === 'DeFacts') {
           console.log(`🔍 [DeFacts PARSED MESSAGE]:`, {
             connectionId: connectionId.current,
+            panelId: thisPanel,
             hasData: !!data,
             dataKeys: data ? Object.keys(data) : [],
             hasFinal: data?.final !== undefined,
@@ -883,7 +910,7 @@ export default function useSSE(
                     data.type ? 'content' : 'standard',
         hasText: hasTextContent(data),
         textLength: (data.text || data.response || extractDeltaText(data) || '').length,
-        panelId: panelId.current
+        panelId: thisPanel
       });
 
       try {
@@ -907,7 +934,7 @@ export default function useSSE(
           runIndex,
           error: (error as Error).message,
           data: data,
-          panelId: panelId.current
+          panelId: thisPanel
         });
       }
     });
@@ -917,11 +944,12 @@ export default function useSSE(
       debugComparison('SSE_CANCEL_EVENT', {
         isAddedRequest,
         runIndex,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
-      isPanelActive.current = false;
-      clearTimeouts();
+      // FIXED: Set only this panel as inactive
+      isPanelActive.current[thisPanel] = false;
+      clearPanelTimeouts(thisPanel);
       
       const currentConnectionId = connectionId.current;
       if (currentConnectionId) {
@@ -961,7 +989,7 @@ export default function useSSE(
 
     // Register custom event handlers for DeFacts
     if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
-      registerDeFactsEventHandlers(sse, sseDebugger);
+      registerDeFactsEventHandlers(sse, sseDebugger, thisPanel);
     }
 
     // Start the stream
@@ -972,12 +1000,12 @@ export default function useSSE(
       isAddedRequest,
       runIndex,
       url: payloadData.server,
-      panelId: panelId.current
+      panelId: thisPanel
     });
     
     try {
       sse.stream();
-      console.log(`[SSE DEBUG] Stream started for ${panelId.current}`, {
+      console.log(`[SSE DEBUG] Stream started for ${thisPanel}`, {
         readyState: sse.readyState,
         url: payloadData.server,
         model: payload?.model
@@ -985,10 +1013,10 @@ export default function useSSE(
       
       // Check readyState after 1 second
       setTimeout(() => {
-        console.log(`[SSE DEBUG] ReadyState after 1s for ${panelId.current}:`, {
-          readyState: currentSSERef.current?.readyState,
+        console.log(`[SSE DEBUG] ReadyState after 1s for ${thisPanel}:`, {
+          readyState: currentSSERef.current[thisPanel]?.readyState,
           model: payload?.model,
-          isActive: isPanelActive.current
+          isActive: isPanelActive.current[thisPanel]
         });
       }, 1000);
     } catch (error) {
@@ -1020,6 +1048,7 @@ export default function useSSE(
         // Comprehensive final message debug
         console.log(`🔍 [DeFacts FINAL MESSAGE DEBUG]:`, {
           connectionId: currentConnectionId,
+          panelId: thisPanel,
           hasResponseMessage: !!data.responseMessage,
           responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
           responseText: data.responseMessage?.text,
@@ -1093,7 +1122,8 @@ export default function useSSE(
         currentRequestId: currentRequestId.current,
         activeRequestIds: Array.from(REQUEST_TRACKER.activeRequests.keys()),
         model: payload?.model,
-        panel: isAddedRequest ? 'RIGHT' : 'LEFT'
+        panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+        panelId: thisPanel
       });
       
       // Try multiple ways to find the request
@@ -1125,6 +1155,7 @@ export default function useSSE(
           triedRequestId: currentRequestId.current,
           model: payload?.model,
           panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+          panelId: thisPanel,
           allActiveRequests: Array.from(REQUEST_TRACKER.activeRequests.entries()).map(([id, req]) => ({
             id,
             model: req.model,
@@ -1174,7 +1205,8 @@ export default function useSSE(
             question: request.question
           } : 'Request not found',
           messageId,
-          responseMessage: data.responseMessage
+          responseMessage: data.responseMessage,
+          panelId: thisPanel
         });
       }
       
@@ -1184,20 +1216,24 @@ export default function useSSE(
         isAddedRequest,
         runIndex,
         finalData: data,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
-      clearTimeouts();
+      // FIXED: Clear only this panel's timeouts
+      clearPanelTimeouts(thisPanel);
       clearDraft(submission?.conversation?.conversationId);
       const { plugins } = data;
       
-      // Add a small delay before processing final message to prevent race conditions
-      const cleanupDelay = isAddedRequest ? 0 : 500; // Give DeFacts more time
+      // FIXED: Add larger delay for DeFacts to prevent race conditions
+      const cleanupDelay = payload?.model === 'DeFacts' ? 2000 : 
+                          isAddedRequest ? 0 : 500; // DeFacts gets 2 seconds buffer
       
       setTimeout(() => {
-        if (isPanelActive.current) {
+        if (isPanelActive.current[thisPanel]) {
           finalHandler(data, { ...submission, plugins } as EventSubmission);
           (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
+        } else {
+          console.log(`[useSSE] Panel ${thisPanel} became inactive, skipping final handler`);
         }
       }, cleanupDelay);
       
@@ -1218,7 +1254,7 @@ export default function useSSE(
           messageId,
           panel: !detectedComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
           mode: detectedComparisonMode ? 'comparison' : 'single',
-          panelId: panelId.current
+          panelId: thisPanel
         });
       }
       
@@ -1226,7 +1262,7 @@ export default function useSSE(
         isAddedRequest,
         runIndex,
         createdData: data,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
       const runId = v4();
@@ -1248,7 +1284,7 @@ export default function useSSE(
         stepData: data,
         eventType: data.event,
         hasDeltaContent: !!(data.data?.delta?.content),
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
       if (data.event === 'on_message_delta') {
@@ -1259,6 +1295,7 @@ export default function useSSE(
         if (payload?.model === 'DeFacts') {
           console.log(`🔍 [DeFacts DELTA]:`, {
             connectionId: currentConnectionId,
+            panelId: thisPanel,
             deltaText: deltaText,
             deltaLength: deltaText.length,
             eventData: data,
@@ -1298,7 +1335,7 @@ export default function useSSE(
         isAddedRequest,
         runIndex,
         syncData: data,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
       const runId = v4();
@@ -1314,7 +1351,7 @@ export default function useSSE(
         index: data.index,
         hasText: !!data.text,
         textLength: data.text?.length || 0,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
       const { text, index } = data;
@@ -1330,7 +1367,7 @@ export default function useSSE(
         isAddedRequest,
         runIndex,
         standardData: data,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
       const text = data.text ?? data.response;
@@ -1376,7 +1413,8 @@ export default function useSSE(
       );
     }
 
-    function registerDeFactsEventHandlers(sse: SSE, sseDebugger: any) {
+    // FIXED: Panel isolation in custom event handlers
+    function registerDeFactsEventHandlers(sse: SSE, sseDebugger: any, panelId: string) {
       const possibleEventNames = [
         'data', 'update', 'chunk', 'stream', 'delta', 'text', 
         'content', 'response', 'completion', 'message_delta',
@@ -1385,17 +1423,17 @@ export default function useSSE(
       
       possibleEventNames.forEach(eventName => {
         sse.addEventListener(eventName, (e: any) => {
-          if (!isPanelActive.current) {
+          if (!isPanelActive.current[panelId]) {
             return;
           }
           
-          console.log(`🔴 [DEFACTS CUSTOM EVENT: ${eventName}]:`, e.data || e);
+          console.log(`🔴 [DEFACTS CUSTOM EVENT: ${eventName}] Panel ${panelId}:`, e.data || e);
           sseDebugger.logRawEvent(eventName, e.data || e);
           
           try {
             const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
             if (data && (data.text || data.content || data.delta)) {
-              console.log(`🔴 [DEFACTS] Processing ${eventName} as message`);
+              console.log(`🔴 [DEFACTS] Processing ${eventName} as message on panel ${panelId}`);
               messageHandler(data.text || data.content || '', { 
                 ...submission, 
                 userMessage,
@@ -1424,32 +1462,38 @@ export default function useSSE(
     }
   }, [isSubmittingLocal, setIsSubmitting, setShowStopButton]);
 
-  // Cleanup effect for component unmount
+  // FIXED: Panel-specific cleanup effect
   useEffect(() => {
+    const thisPanel = panelId.current;
+    
     return () => {
       debugComparison('SSE_CLEANUP', {
         isAddedRequest,
         runIndex,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
-      // Mark panel as inactive on cleanup
-      isPanelActive.current = false;
+      // FIXED: Mark only this panel as inactive
+      isPanelActive.current[thisPanel] = false;
       
-      clearTimeouts();
-      if (currentSSERef.current) {
+      // FIXED: Clear only this panel's timeouts
+      clearPanelTimeouts(thisPanel);
+      
+      // FIXED: Close only this panel's connection
+      const thisPanelSSE = currentSSERef.current[thisPanel];
+      if (thisPanelSSE) {
         try {
-          currentSSERef.current.close();
+          thisPanelSSE.close();
         } catch (error) {
-          console.error('❌ [useSSE] Error closing connection on unmount:', error);
+          console.error(`❌ [useSSE] Error closing connection for ${thisPanel}:`, error);
         }
-        currentSSERef.current = null;
+        delete currentSSERef.current[thisPanel];
       }
       
       // Clean up connection-specific data
       const currentConnectionId = connectionId.current;
       if (currentConnectionId) {
-        console.log(`🔚 [UNMOUNT CLEANUP] Removing connection: ${currentConnectionId}`);
+        console.log(`🔚 [UNMOUNT CLEANUP] Removing connection: ${currentConnectionId} from panel: ${thisPanel}`);
         delete deltaAccumulator.current[currentConnectionId];
         delete deltaCounter.current[currentConnectionId];
         delete messageStartTime.current[currentConnectionId];
@@ -1459,12 +1503,14 @@ export default function useSSE(
 
   // Effect for handling submissions
   useEffect(() => {
+    const thisPanel = panelId.current;
+    
     if (submission == null || Object.keys(submission).length === 0) {
-      console.log(`[useSSE EFFECT] No submission for panel ${panelId.current}`);
+      console.log(`[useSSE EFFECT] No submission for panel ${thisPanel}`);
       return;
     }
 
-    console.log(`[useSSE EFFECT] Processing submission for panel ${panelId.current}:`, {
+    console.log(`[useSSE EFFECT] Processing submission for panel ${thisPanel}:`, {
       isAddedRequest,
       model: submission?.conversation?.model,
       endpoint: submission?.conversation?.endpoint,
@@ -1473,7 +1519,7 @@ export default function useSSE(
 
     const { userMessage } = submission;
     if (!userMessage) {
-      console.error('No userMessage in submission');
+      console.error(`No userMessage in submission for panel ${thisPanel}`);
       return;
     }
 
@@ -1497,7 +1543,7 @@ export default function useSSE(
         payload = removeNullishValues(payload) as TPayload;
       }
     } catch (error) {
-      console.error('❌ [useSSE] Error creating payload:', error);
+      console.error(`❌ [useSSE] Error creating payload for panel ${thisPanel}:`, error);
       setIsSubmitting(false);
       setIsSubmittingLocal(false);
       return;
@@ -1505,7 +1551,7 @@ export default function useSSE(
 
     // DEBUG: Log DeFacts request details
     if (payload?.model === 'DeFacts') {
-      console.log(`🔍 [DeFacts REQUEST]:`, {
+      console.log(`🔍 [DeFacts REQUEST] Panel ${thisPanel}:`, {
         url: payloadData.server,
         method: 'POST',
         payload: JSON.stringify(payload, null, 2),
@@ -1534,11 +1580,11 @@ export default function useSSE(
       isDeFacts: payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts'),
       comparisonModeDetected: detectedComparisonMode,
       originalComparisonMode: isComparisonMode,
-      panelId: panelId.current
+      panelId: thisPanel
     });
 
-    // Reset panel active state when new submission comes in
-    isPanelActive.current = true;
+    // FIXED: Reset only this panel's active state
+    isPanelActive.current[thisPanel] = true;
     setRetryCount(0);
     setIsRetrying(false);
 
@@ -1546,7 +1592,7 @@ export default function useSSE(
     try {
       sse = createSSEConnection(payloadData, payload, userMessage, 0);
     } catch (error) {
-      console.error('❌ [useSSE] Failed to create initial connection:', error);
+      console.error(`❌ [useSSE] Failed to create initial connection for panel ${thisPanel}:`, error);
       setIsSubmitting(false);
       setIsSubmittingLocal(false);
       return;
@@ -1561,19 +1607,24 @@ export default function useSSE(
         readyState: sse.readyState,
         isCancelled,
         retryCount,
-        panelId: panelId.current
+        panelId: thisPanel
       });
       
-      // Mark panel as inactive
-      isPanelActive.current = false;
+      // FIXED: Mark only this panel as inactive
+      isPanelActive.current[thisPanel] = false;
       
-      clearTimeouts();
-      currentSSERef.current = null;
+      // FIXED: Clear only this panel's timeouts
+      clearPanelTimeouts(thisPanel);
+      
+      // FIXED: Remove only this panel's connection reference
+      if (currentSSERef.current[thisPanel]) {
+        delete currentSSERef.current[thisPanel];
+      }
       
       try {
         sse.close();
       } catch (error) {
-        console.error('❌ [useSSE] Error closing connection in cleanup:', error);
+        console.error(`❌ [useSSE] Error closing connection in cleanup for panel ${thisPanel}:`, error);
       }
       
       if (isCancelled) {
@@ -1582,7 +1633,7 @@ export default function useSSE(
           /* @ts-ignore */
           sse.dispatchEvent(e);
         } catch (error) {
-          console.error('❌ [useSSE] Error dispatching cancel event:', error);
+          console.error(`❌ [useSSE] Error dispatching cancel event for panel ${thisPanel}:`, error);
         }
       }
     };
@@ -1591,7 +1642,9 @@ export default function useSSE(
 
   // Log mount/unmount lifecycle
   useEffect(() => {
-    console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel`, {
+    const thisPanel = panelId.current;
+    
+    console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel ${thisPanel}`, {
       mounted: true,
       submission: !!submission,
       model: submission?.conversation?.model,
@@ -1599,7 +1652,7 @@ export default function useSSE(
     });
     
     return () => {
-      console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel`, {
+      console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel ${thisPanel}`, {
         unmounted: true,
         timestamp: Date.now()
       });
