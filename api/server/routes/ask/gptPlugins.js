@@ -141,19 +141,17 @@ router.post(
     activeRequests.set(requestId, requestScope);
     
     // Add staggered delay for DeFacts models to prevent race conditions
-// TEMPORARILY DISABLED - Testing if delay causes panel erasing
-// if (isDefactsModel) {
-//   const finalDelay = 1000;
-//   console.log(`⏱️ [DEFACTS FINAL DELAY] Adding ${finalDelay}ms delay before final message`);
-//   await new Promise(resolve => setTimeout(resolve, finalDelay));
-//   
-//   if (!requestScope.isActive) {
-//     console.log(`⚠️ [FINAL MESSAGE] Request ${requestId} was cancelled during final delay`);
-//     return;
-//   }
-// }
-
-console.log(`⚡ [NO DELAY TEST] Sending final message immediately for ${model}`);
+    if (isDefactsModel) {
+      const delay = Math.floor(Math.random() * 1000) + 500; // 500-1500ms random delay
+      console.log(`⏱️ [DEFACTS DELAY] Adding ${delay}ms staggered delay for ${model} to prevent interference`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Check if request is still active after delay
+      if (!requestScope.isActive) {
+        console.log(`⚠️ [DEFACTS DELAY] Request ${requestId} was cancelled during delay`);
+        return;
+      }
+    }
     
     // Setup request cleanup
     requestCleanup(req, res, () => {});
