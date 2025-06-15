@@ -135,16 +135,6 @@ export default function useSSE(
   isComparisonMode = false,
 ): UseSSEReturn {
   
-  // Initial logging
-  console.log(`[useSSE INITIAL] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
-    hasSubmission: !!submission,
-    submissionKeys: submission ? Object.keys(submission) : [],
-    model: submission?.conversation?.model,
-    endpoint: submission?.conversation?.endpoint,
-    isAddedRequest,
-    timestamp: Date.now()
-  });
-  
   // Auto-detect comparison mode if not explicitly passed
   const detectedComparisonMode = isComparisonMode || 
     (typeof document !== 'undefined' && document.querySelectorAll('[data-panel]').length > 1);
@@ -189,16 +179,6 @@ export default function useSSE(
   const messageStartTime = useRef<{[connectionId: string]: number}>({});
   const deltaCounter = useRef<{[connectionId: string]: number}>({});
   
-  // Log submission changes
-  useEffect(() => {
-    console.log(`[useSSE SUBMISSION CHANGE] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
-      hasSubmission: !!submission,
-      model: submission?.conversation?.model,
-      isEmpty: !submission || Object.keys(submission).length === 0,
-      timestamp: Date.now()
-    });
-  }, [submission, isAddedRequest]);
-  
   // Log cache state changes
   const logCacheState = (context: string) => {
     const currentCache = {
@@ -213,19 +193,30 @@ export default function useSSE(
     
     previousCacheState.current = currentCache;
   };
-  
-  // Enhanced initialization logging
-  debugComparison('useSSE INIT', {
-    isAddedRequest,
-    runIndex,
-    isComparisonMode,
-    detectedComparisonMode,
-    hasSubmission: !!submission,
-    submissionEndpoint: submission?.conversation?.endpoint,
-    submissionModel: submission?.conversation?.model,
-    previousConnectionId: connectionId.current,
-    panelId: panelId.current
-  });
+
+  // FIXED: Move initialization logging to useEffect to prevent re-renders
+  useEffect(() => {
+    console.log(`[useSSE INITIAL] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
+      hasSubmission: !!submission,
+      submissionKeys: submission ? Object.keys(submission) : [],
+      model: submission?.conversation?.model,
+      endpoint: submission?.conversation?.endpoint,
+      isAddedRequest,
+      timestamp: Date.now()
+    });
+    
+    debugComparison('useSSE INIT', {
+      isAddedRequest,
+      runIndex,
+      isComparisonMode,
+      detectedComparisonMode,
+      hasSubmission: !!submission,
+      submissionEndpoint: submission?.conversation?.endpoint,
+      submissionModel: submission?.conversation?.model,
+      previousConnectionId: connectionId.current,
+      panelId: panelId.current
+    });
+  }, []); // Only run once on mount
 
   const genTitle = useGenTitleMutation();
   const setActiveRunId = useSetRecoilState(store.activeRunFamily(runIndex));
@@ -276,6 +267,20 @@ export default function useSSE(
   const balanceQuery = useGetUserBalance({
     enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
   });
+
+  // FIXED: Move submission change logging to prevent excessive logging
+  useEffect(() => {
+    // Only log if there's actually a meaningful change
+    const hasRealSubmission = submission && Object.keys(submission).length > 0;
+    if (hasRealSubmission) {
+      console.log(`[useSSE SUBMISSION CHANGE] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
+        hasSubmission: !!submission,
+        model: submission?.conversation?.model,
+        isEmpty: !submission || Object.keys(submission).length === 0,
+        timestamp: Date.now()
+      });
+    }
+  }, [submission?.conversation?.conversationId, submission?.conversation?.model]); // Only trigger on meaningful changes
 
   // Helper function to check if error is retryable
   const isRetryableError = (error: any): boolean => {
@@ -1027,323 +1032,321 @@ export default function useSSE(
     return sse;
 
     // Helper functions for message handling
-// Complete handleFinalMessage function with 5-second buffer fix
-// Complete handleFinalMessage function with enhanced DeFacts API debugging
-function handleFinalMessage(data: any) {
-  const currentConnectionId = connectionId.current;
-  const modelNeedsFix = payload?.model === 'DeFacts' || 
-                       payload?.model === 'DeNews' || 
-                       payload?.model === 'DeResearch';
-  
-  // Complete the debug info
-  debugInfo.duration = Date.now() - debugInfo.timestamp;
-  debugInfo.response = {
-    final: true,
-    hasText: !!(data.responseMessage?.text),
-    responseLength: data.responseMessage?.text?.length || 0,
-  };
-  debugAICall(debugInfo);
-  
-  if (modelNeedsFix) {
-    const accumulatedText = deltaAccumulator.current[currentConnectionId] || '';
-    
-    // Comprehensive final message debug
-    console.log(`🔍 [DeFacts FINAL MESSAGE DEBUG]:`, {
-      connectionId: currentConnectionId,
-      panelId: thisPanel,
-      hasResponseMessage: !!data.responseMessage,
-      responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
-      responseText: data.responseMessage?.text,
-      responseTextLength: data.responseMessage?.text?.length || 0,
-      responseContent: data.responseMessage?.content,
-      accumulatedText: accumulatedText.substring(0, 100) + '...',
-      accumulatedLength: accumulatedText.length,
-      deltaCount: deltaCounter.current[currentConnectionId] || 0,
-      allDataKeys: Object.keys(data),
-      fullData: data,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Log the exact structure
-    console.log(`🔍 [DeFacts RESPONSE STRUCTURE]:`, JSON.stringify(data, null, 2));
-    
-    // Enhanced DeFacts API debugging
-    if (payload?.model === 'DeFacts') {
-      console.log('🔴 [DEFACTS API DEBUG] Full response analysis:', {
-        title: data.title,
-        final: data.final,
-        hasResponseMessage: !!data.responseMessage,
-        responseMessageText: data.responseMessage?.text,
-        responseMessageTextLength: data.responseMessage?.text?.length,
-        allResponseFields: data.responseMessage ? Object.keys(data.responseMessage) : [],
-        conversationMessages: data.conversation?.messages?.length || 0,
-        agentOptions: data.conversation?.agentOptions,
-        promptTokens: data.responseMessage?.promptTokens,
-        endpoint: data.responseMessage?.endpoint
-      });
+    function handleFinalMessage(data: any) {
+      const currentConnectionId = connectionId.current;
+      const modelNeedsFix = payload?.model === 'DeFacts' || 
+                          payload?.model === 'DeNews' || 
+                          payload?.model === 'DeResearch';
       
-      // Check if there's content elsewhere in the response
-      const possibleTextFields = {
-        'data.text': data.text,
-        'data.content': data.content,
-        'data.response': data.response,
-        'data.responseMessage.content': data.responseMessage?.content,
-        'data.conversation.lastMessage.text': data.conversation?.lastMessage?.text,
-        'data.title': data.title,
-        'data.responseMessage.text': data.responseMessage?.text,
-        'data.conversation.greeting': data.conversation?.greeting,
-        'accumulatedText': accumulatedText
+      // Complete the debug info
+      debugInfo.duration = Date.now() - debugInfo.timestamp;
+      debugInfo.response = {
+        final: true,
+        hasText: !!(data.responseMessage?.text),
+        responseLength: data.responseMessage?.text?.length || 0,
       };
+      debugAICall(debugInfo);
       
-      console.log('🔍 [DEFACTS] Checking all possible text locations:', 
-        Object.entries(possibleTextFields).map(([path, value]) => ({
-          path,
-          hasValue: !!value,
-          type: typeof value,
-          length: typeof value === 'string' ? value.length : 0,
-          preview: typeof value === 'string' ? value.substring(0, 100) : null,
-          value: typeof value === 'string' && value.length < 200 ? value : '[too long to display]'
-        }))
-      );
-      
-      // Check if this is a DeFacts configuration issue
-      if (data.conversation?.agentOptions) {
-        console.log('🔧 [DEFACTS CONFIG] Agent configuration:', {
-          agent: data.conversation.agentOptions.agent,
-          skipCompletion: data.conversation.agentOptions.skipCompletion,
-          model: data.conversation.agentOptions.model,
-          temperature: data.conversation.agentOptions.temperature
+      if (modelNeedsFix) {
+        const accumulatedText = deltaAccumulator.current[currentConnectionId] || '';
+        
+        // Comprehensive final message debug
+        console.log(`🔍 [DeFacts FINAL MESSAGE DEBUG]:`, {
+          connectionId: currentConnectionId,
+          panelId: thisPanel,
+          hasResponseMessage: !!data.responseMessage,
+          responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
+          responseText: data.responseMessage?.text,
+          responseTextLength: data.responseMessage?.text?.length || 0,
+          responseContent: data.responseMessage?.content,
+          accumulatedText: accumulatedText.substring(0, 100) + '...',
+          accumulatedLength: accumulatedText.length,
+          deltaCount: deltaCounter.current[currentConnectionId] || 0,
+          allDataKeys: Object.keys(data),
+          fullData: data,
+          timestamp: new Date().toISOString()
         });
         
-        // Look for configuration issues
-        if (data.conversation.agentOptions.skipCompletion === true) {
-          console.warn('⚠️ [DEFACTS CONFIG] skipCompletion is TRUE - this might prevent text generation!');
+        // Log the exact structure
+        console.log(`🔍 [DeFacts RESPONSE STRUCTURE]:`, JSON.stringify(data, null, 2));
+        
+        // Enhanced DeFacts API debugging
+        if (payload?.model === 'DeFacts') {
+          console.log('🔴 [DEFACTS API DEBUG] Full response analysis:', {
+            title: data.title,
+            final: data.final,
+            hasResponseMessage: !!data.responseMessage,
+            responseMessageText: data.responseMessage?.text,
+            responseMessageTextLength: data.responseMessage?.text?.length,
+            allResponseFields: data.responseMessage ? Object.keys(data.responseMessage) : [],
+            conversationMessages: data.conversation?.messages?.length || 0,
+            agentOptions: data.conversation?.agentOptions,
+            promptTokens: data.responseMessage?.promptTokens,
+            endpoint: data.responseMessage?.endpoint
+          });
+          
+          // Check if there's content elsewhere in the response
+          const possibleTextFields = {
+            'data.text': data.text,
+            'data.content': data.content,
+            'data.response': data.response,
+            'data.responseMessage.content': data.responseMessage?.content,
+            'data.conversation.lastMessage.text': data.conversation?.lastMessage?.text,
+            'data.title': data.title,
+            'data.responseMessage.text': data.responseMessage?.text,
+            'data.conversation.greeting': data.conversation?.greeting,
+            'accumulatedText': accumulatedText
+          };
+          
+          console.log('🔍 [DEFACTS] Checking all possible text locations:', 
+            Object.entries(possibleTextFields).map(([path, value]) => ({
+              path,
+              hasValue: !!value,
+              type: typeof value,
+              length: typeof value === 'string' ? value.length : 0,
+              preview: typeof value === 'string' ? value.substring(0, 100) : null,
+              value: typeof value === 'string' && value.length < 200 ? value : '[too long to display]'
+            }))
+          );
+          
+          // Check if this is a DeFacts configuration issue
+          if (data.conversation?.agentOptions) {
+            console.log('🔧 [DEFACTS CONFIG] Agent configuration:', {
+              agent: data.conversation.agentOptions.agent,
+              skipCompletion: data.conversation.agentOptions.skipCompletion,
+              model: data.conversation.agentOptions.model,
+              temperature: data.conversation.agentOptions.temperature
+            });
+            
+            // Look for configuration issues
+            if (data.conversation.agentOptions.skipCompletion === true) {
+              console.warn('⚠️ [DEFACTS CONFIG] skipCompletion is TRUE - this might prevent text generation!');
+            }
+          }
+        }
+        
+        // Create responseMessage if it doesn't exist
+        if (!data.responseMessage && accumulatedText) {
+          data.responseMessage = {
+            messageId: data.messageId || `msg-${currentConnectionId}`,
+            conversationId: data.conversationId || submission?.conversation?.conversationId,
+            text: '',
+            content: []
+          };
+        }
+        
+        // Enhanced response fixing logic
+        if (data.responseMessage) {
+          // Check if we need to fix empty response
+          const hasEmptyText = !data.responseMessage.text || data.responseMessage.text.trim() === '';
+          
+          if (hasEmptyText && !accumulatedText) {
+            // No text at all - check if there's content elsewhere
+            let alternativeText = '';
+            
+            // Try to find text in alternative locations
+            if (data.title && data.title !== 'Understanding The Concept Of Beta') {
+              alternativeText = data.title;
+              console.log('🔧 [DEFACTS FIX] Using title as response text:', alternativeText);
+            } else if (data.content) {
+              alternativeText = typeof data.content === 'string' ? data.content : JSON.stringify(data.content);
+              console.log('🔧 [DEFACTS FIX] Using content field as response text');
+            } else if (data.response) {
+              alternativeText = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
+              console.log('🔧 [DEFACTS FIX] Using response field as response text');
+            }
+            
+            if (alternativeText) {
+              console.warn(`✅ [ALTERNATIVE TEXT FOUND] ${currentConnectionId}: Using alternative text (${alternativeText.length} chars)`);
+              data.responseMessage.text = alternativeText;
+              data.responseMessage.content = [{
+                type: 'text',
+                text: alternativeText
+              }];
+            } else {
+              // Still no text - add error message but indicate it's a DeFacts API issue
+              console.error(`❌ [DEFACTS API ISSUE] ${currentConnectionId}: DeFacts API returned empty response`);
+              data.responseMessage.text = '[Error: DeFacts API returned empty response. This may be a service configuration issue.]';
+              data.responseMessage.error = true;
+              data.responseMessage.content = [{
+                type: 'text',
+                text: '[Error: DeFacts API returned empty response. This may be a service configuration issue.]'
+              }];
+            }
+          } else if (accumulatedText && hasEmptyText) {
+            // We have accumulated text but responseMessage.text is empty
+            console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars from accumulated deltas`);
+            data.responseMessage.text = accumulatedText;
+            
+            // Also ensure content array is populated
+            if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
+              data.responseMessage.content = [{
+                type: 'text',
+                text: accumulatedText
+              }];
+            } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
+              data.responseMessage.content[0].text = accumulatedText;
+            }
+          } else if (!hasEmptyText) {
+            console.log(`✅ [DEFACTS SUCCESS] ${currentConnectionId}: Response text found (${data.responseMessage.text.length} chars)`);
+          }
+        }
+        
+        // Clean up this connection's data
+        cleanupConnectionData(currentConnectionId);
+        
+        if (payload?.model === 'DeFacts') {
+          sseDebugger.exportLog();
         }
       }
-    }
-    
-    // Create responseMessage if it doesn't exist
-    if (!data.responseMessage && accumulatedText) {
-      data.responseMessage = {
-        messageId: data.messageId || `msg-${currentConnectionId}`,
-        conversationId: data.conversationId || submission?.conversation?.conversationId,
-        text: '',
-        content: []
-      };
-    }
-    
-    // Enhanced response fixing logic
-    if (data.responseMessage) {
-      // Check if we need to fix empty response
-      const hasEmptyText = !data.responseMessage.text || data.responseMessage.text.trim() === '';
       
-      if (hasEmptyText && !accumulatedText) {
-        // No text at all - check if there's content elsewhere
-        let alternativeText = '';
-        
-        // Try to find text in alternative locations
-        if (data.title && data.title !== 'Understanding The Concept Of Beta') {
-          alternativeText = data.title;
-          console.log('🔧 [DEFACTS FIX] Using title as response text:', alternativeText);
-        } else if (data.content) {
-          alternativeText = typeof data.content === 'string' ? data.content : JSON.stringify(data.content);
-          console.log('🔧 [DEFACTS FIX] Using content field as response text');
-        } else if (data.response) {
-          alternativeText = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
-          console.log('🔧 [DEFACTS FIX] Using response field as response text');
-        }
-        
-        if (alternativeText) {
-          console.warn(`✅ [ALTERNATIVE TEXT FOUND] ${currentConnectionId}: Using alternative text (${alternativeText.length} chars)`);
-          data.responseMessage.text = alternativeText;
-          data.responseMessage.content = [{
-            type: 'text',
-            text: alternativeText
-          }];
-        } else {
-          // Still no text - add error message but indicate it's a DeFacts API issue
-          console.error(`❌ [DEFACTS API ISSUE] ${currentConnectionId}: DeFacts API returned empty response`);
-          data.responseMessage.text = '[Error: DeFacts API returned empty response. This may be a service configuration issue.]';
-          data.responseMessage.error = true;
-          data.responseMessage.content = [{
-            type: 'text',
-            text: '[Error: DeFacts API returned empty response. This may be a service configuration issue.]'
-          }];
-        }
-      } else if (accumulatedText && hasEmptyText) {
-        // We have accumulated text but responseMessage.text is empty
-        console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars from accumulated deltas`);
-        data.responseMessage.text = accumulatedText;
-        
-        // Also ensure content array is populated
-        if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
-          data.responseMessage.content = [{
-            type: 'text',
-            text: accumulatedText
-          }];
-        } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
-          data.responseMessage.content[0].text = accumulatedText;
-        }
-      } else if (!hasEmptyText) {
-        console.log(`✅ [DEFACTS SUCCESS] ${currentConnectionId}: Response text found (${data.responseMessage.text.length} chars)`);
+      // Track request completion
+      const messageId = data.responseMessage?.messageId || data.messageId;
+      const hasText = !!(data.responseMessage?.text);
+      const responseLength = data.responseMessage?.text?.length || 0;
+      
+      // ENHANCED DEBUGGING FOR REQUEST TRACKING
+      console.log("🔍 [COMPLETE REQUEST] Looking for request:", {
+        messageId,
+        currentRequestId: currentRequestId.current,
+        activeRequestIds: Array.from(REQUEST_TRACKER.activeRequests.keys()),
+        model: payload?.model,
+        panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+        panelId: thisPanel
+      });
+      
+      // Try multiple ways to find the request
+      let request = REQUEST_TRACKER.findRequestByMessageId(messageId);
+      
+      if (!request && currentRequestId.current) {
+        console.log("🔍 [COMPLETE REQUEST] Trying currentRequestId:", currentRequestId.current);
+        request = REQUEST_TRACKER.activeRequests.get(currentRequestId.current);
       }
+      
+      if (!request) {
+        // Try to find by matching model and status
+        const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.values());
+        request = activeRequests.find(r => 
+          r.model === payload?.model && 
+          r.status === 'pending' &&
+          r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
+        );
+        
+        if (request) {
+          console.log("🔍 [COMPLETE REQUEST] Found request by model/panel match:", request);
+        }
+      }
+      
+      // Log the result of our search
+      if (!request) {
+        console.error("❌ [COMPLETE REQUEST] Could not find request to complete!", {
+          triedMessageId: messageId,
+          triedRequestId: currentRequestId.current,
+          model: payload?.model,
+          panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+          panelId: thisPanel,
+          allActiveRequests: Array.from(REQUEST_TRACKER.activeRequests.entries()).map(([id, req]) => ({
+            id,
+            model: req.model,
+            panel: req.panel,
+            messageId: req.messageId,
+            status: req.status
+          }))
+        });
+        
+        // Force complete any matching pending request as a fallback
+        const pendingRequest = Array.from(REQUEST_TRACKER.activeRequests.values()).find(r => 
+          r.model === payload?.model && 
+          r.status === 'pending' &&
+          r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
+        );
+        
+        if (pendingRequest) {
+          console.warn("⚠️ [COMPLETE REQUEST] Force completing pending request:", pendingRequest);
+          REQUEST_TRACKER.completeRequest(
+            pendingRequest.id,
+            hasText,
+            responseLength,
+            !hasText ? 'DeFacts API returned empty response' : undefined
+          );
+        }
+      } else {
+        console.log("✅ [COMPLETE REQUEST] Found request to complete:", {
+          requestId: request.id,
+          model: request.model,
+          panel: request.panel,
+          questionNumber: request.questionNumber
+        });
+        
+        REQUEST_TRACKER.completeRequest(
+          request.id,
+          hasText,
+          responseLength,
+          !hasText ? 'DeFacts API returned empty response' : undefined
+        );
+      }
+      
+      // Enhanced DeFacts failure logging
+      if (payload?.model === 'DeFacts' && !hasText) {
+        console.error(`🔴 [DEFACTS API FAILURE] - Service Issue Detected`, {
+          request: request ? {
+            questionNumber: request.questionNumber,
+            panel: request.panel,
+            question: request.question
+          } : 'Request not found',
+          messageId,
+          apiResponse: {
+            hasResponseMessage: !!data.responseMessage,
+            responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
+            promptTokens: data.responseMessage?.promptTokens,
+            agentConfig: data.conversation?.agentOptions
+          },
+          panelId: thisPanel,
+          diagnosis: 'DeFacts API is responding but not generating text content'
+        });
+      } else if (payload?.model === 'DeFacts' && hasText) {
+        console.log(`✅ [DEFACTS SUCCESS]`, {
+          responseLength,
+          question: request?.question?.substring(0, 50) + '...',
+          panelId: thisPanel
+        });
+      }
+      
+      logCacheState('BEFORE_FINAL');
+      
+      debugComparison('SSE_FINAL_MESSAGE', {
+        isAddedRequest,
+        runIndex,
+        finalData: data,
+        panelId: thisPanel
+      });
+      
+      // FIXED: Clear only this panel's timeouts
+      clearPanelTimeouts(thisPanel);
+      clearDraft(submission?.conversation?.conversationId);
+      const { plugins } = data;
+      
+      // FIXED: Increased delay for DeFacts to prevent race conditions
+      const cleanupDelay = payload?.model === 'DeFacts' ? 5000 : 
+                          isAddedRequest ? 0 : 500; // DeFacts gets 5 seconds buffer
+      
+      setTimeout(() => {
+        // Extra safety check for DeFacts
+        if (payload?.model === 'DeFacts') {
+          console.log(`🛡️ [DEFACTS PROTECTION] Waited ${cleanupDelay}ms before final processing`);
+        }
+        
+        if (isPanelActive.current[thisPanel]) {
+          finalHandler(data, { ...submission, plugins } as EventSubmission);
+          (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
+        } else {
+          console.log(`[useSSE] Panel ${thisPanel} became inactive, skipping final handler`);
+        }
+      }, cleanupDelay);
+      
+      logCacheState('AFTER_FINAL');
     }
-    
-    // Clean up this connection's data
-    cleanupConnectionData(currentConnectionId);
-    
-    if (payload?.model === 'DeFacts') {
-      sseDebugger.exportLog();
-    }
-  }
-  
-  // Track request completion
-  const messageId = data.responseMessage?.messageId || data.messageId;
-  const hasText = !!(data.responseMessage?.text);
-  const responseLength = data.responseMessage?.text?.length || 0;
-  
-  // ENHANCED DEBUGGING FOR REQUEST TRACKING
-  console.log("🔍 [COMPLETE REQUEST] Looking for request:", {
-    messageId,
-    currentRequestId: currentRequestId.current,
-    activeRequestIds: Array.from(REQUEST_TRACKER.activeRequests.keys()),
-    model: payload?.model,
-    panel: isAddedRequest ? 'RIGHT' : 'LEFT',
-    panelId: thisPanel
-  });
-  
-  // Try multiple ways to find the request
-  let request = REQUEST_TRACKER.findRequestByMessageId(messageId);
-  
-  if (!request && currentRequestId.current) {
-    console.log("🔍 [COMPLETE REQUEST] Trying currentRequestId:", currentRequestId.current);
-    request = REQUEST_TRACKER.activeRequests.get(currentRequestId.current);
-  }
-  
-  if (!request) {
-    // Try to find by matching model and status
-    const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.values());
-    request = activeRequests.find(r => 
-      r.model === payload?.model && 
-      r.status === 'pending' &&
-      r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
-    );
-    
-    if (request) {
-      console.log("🔍 [COMPLETE REQUEST] Found request by model/panel match:", request);
-    }
-  }
-  
-  // Log the result of our search
-  if (!request) {
-    console.error("❌ [COMPLETE REQUEST] Could not find request to complete!", {
-      triedMessageId: messageId,
-      triedRequestId: currentRequestId.current,
-      model: payload?.model,
-      panel: isAddedRequest ? 'RIGHT' : 'LEFT',
-      panelId: thisPanel,
-      allActiveRequests: Array.from(REQUEST_TRACKER.activeRequests.entries()).map(([id, req]) => ({
-        id,
-        model: req.model,
-        panel: req.panel,
-        messageId: req.messageId,
-        status: req.status
-      }))
-    });
-    
-    // Force complete any matching pending request as a fallback
-    const pendingRequest = Array.from(REQUEST_TRACKER.activeRequests.values()).find(r => 
-      r.model === payload?.model && 
-      r.status === 'pending' &&
-      r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
-    );
-    
-    if (pendingRequest) {
-      console.warn("⚠️ [COMPLETE REQUEST] Force completing pending request:", pendingRequest);
-      REQUEST_TRACKER.completeRequest(
-        pendingRequest.id,
-        hasText,
-        responseLength,
-        !hasText ? 'DeFacts API returned empty response' : undefined
-      );
-    }
-  } else {
-    console.log("✅ [COMPLETE REQUEST] Found request to complete:", {
-      requestId: request.id,
-      model: request.model,
-      panel: request.panel,
-      questionNumber: request.questionNumber
-    });
-    
-    REQUEST_TRACKER.completeRequest(
-      request.id,
-      hasText,
-      responseLength,
-      !hasText ? 'DeFacts API returned empty response' : undefined
-    );
-  }
-  
-  // Enhanced DeFacts failure logging
-  if (payload?.model === 'DeFacts' && !hasText) {
-    console.error(`🔴 [DEFACTS API FAILURE] - Service Issue Detected`, {
-      request: request ? {
-        questionNumber: request.questionNumber,
-        panel: request.panel,
-        question: request.question
-      } : 'Request not found',
-      messageId,
-      apiResponse: {
-        hasResponseMessage: !!data.responseMessage,
-        responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
-        promptTokens: data.responseMessage?.promptTokens,
-        agentConfig: data.conversation?.agentOptions
-      },
-      panelId: thisPanel,
-      diagnosis: 'DeFacts API is responding but not generating text content'
-    });
-  } else if (payload?.model === 'DeFacts' && hasText) {
-    console.log(`✅ [DEFACTS SUCCESS]`, {
-      responseLength,
-      question: request?.question?.substring(0, 50) + '...',
-      panelId: thisPanel
-    });
-  }
-  
-  logCacheState('BEFORE_FINAL');
-  
-  debugComparison('SSE_FINAL_MESSAGE', {
-    isAddedRequest,
-    runIndex,
-    finalData: data,
-    panelId: thisPanel
-  });
-  
-  // FIXED: Clear only this panel's timeouts
-  clearPanelTimeouts(thisPanel);
-  clearDraft(submission?.conversation?.conversationId);
-  const { plugins } = data;
-  
-  // FIXED: Increased delay for DeFacts to prevent race conditions
-  const cleanupDelay = payload?.model === 'DeFacts' ? 5000 : 
-                      isAddedRequest ? 0 : 500; // DeFacts gets 5 seconds buffer
-  
-  setTimeout(() => {
-    // Extra safety check for DeFacts
-    if (payload?.model === 'DeFacts') {
-      console.log(`🛡️ [DEFACTS PROTECTION] Waited ${cleanupDelay}ms before final processing`);
-    }
-    
-    if (isPanelActive.current[thisPanel]) {
-      finalHandler(data, { ...submission, plugins } as EventSubmission);
-      (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
-    } else {
-      console.log(`[useSSE] Panel ${thisPanel} became inactive, skipping final handler`);
-    }
-  }, cleanupDelay);
-  
-  logCacheState('AFTER_FINAL');
-}
-    
+        
     function handleCreatedMessage(data: any) {
       const messageId = data.message?.messageId;
       
@@ -1744,24 +1747,23 @@ function handleFinalMessage(data: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submission]);
 
-  // Log mount/unmount lifecycle
+  // FIXED: Reduce lifecycle logging verbosity
   useEffect(() => {
     const thisPanel = panelId.current;
     
-    console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel ${thisPanel}`, {
-      mounted: true,
-      submission: !!submission,
+    // Only log mount, not every render
+    console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel mounted`, {
+      panelId: thisPanel,
+      hasSubmission: !!submission,
       model: submission?.conversation?.model,
-      timestamp: Date.now()
     });
     
     return () => {
-      console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel ${thisPanel}`, {
-        unmounted: true,
-        timestamp: Date.now()
+      console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel unmounted`, {
+        panelId: thisPanel,
       });
     };
-  }, []);
+  }, []); // Only run on mount/unmount
 
   return {
     isRetrying,
