@@ -1258,6 +1258,7 @@ ${convo}
           reverseProxyUrl: this.options.reverseProxyUrl,
         }),
         apiKey: this.apiKey,
+        timeout: parseInt(process.env.OPENAI_TIMEOUT || process.env.REQUEST_TIMEOUT || '60000'), // Add this line
         ...opts,
       });
 
