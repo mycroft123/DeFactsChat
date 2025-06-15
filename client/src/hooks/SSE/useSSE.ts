@@ -1414,7 +1414,7 @@ export default function useSSE(
   useEffect(() => {
     if (isSubmittingLocal) {
       const failsafeTimeout = setTimeout(() => {
-        console.warn('⚠️ [FAILSAFE] Submission stuck for 30s, forcing completion');
+        //console.warn('⚠️ [FAILSAFE] Submission stuck for 30s, forcing completion');
         setIsSubmitting(false);
         setIsSubmittingLocal(false);
         setShowStopButton(false);

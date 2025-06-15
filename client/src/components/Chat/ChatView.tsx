@@ -65,7 +65,7 @@ function ChatView({ index = 0 }: { index?: number }) {
     
     // Log current state
     if (activeSubmissions.current.size > 0) {
-      console.log('🔍 [FAILSAFE CHECK] Active submissions:', {
+   //   console.log('🔍 [FAILSAFE CHECK] Active submissions:', {
         count: activeSubmissions.current.size,
         submissions: Array.from(activeSubmissions.current),
         timeSinceLastCheck: now - ((window as any).__lastSubmissionCheck || now)
@@ -99,7 +99,7 @@ function ChatView({ index = 0 }: { index?: number }) {
     
     if (hasStuckSubmissions || activeSubmissions.current.size === 0) {
       // Always try to clear if no active submissions
-      console.log('🔓 [FAILSAFE] Ensuring submit button is enabled');
+   //   console.log('🔓 [FAILSAFE] Ensuring submit button is enabled');
       chatHelpers.setIsSubmitting(false);
       addedChatHelpers.setIsSubmitting(false);
     }
@@ -118,7 +118,7 @@ function ChatView({ index = 0 }: { index?: number }) {
                            document.querySelector('textarea')?.closest('form')?.querySelector('button');
         
         if (submitButton && submitButton.hasAttribute('disabled')) {
-          console.warn('🚨 [FAILSAFE OVERRIDE] Submit button stuck disabled with no active submissions!');
+       //   console.warn('🚨 [FAILSAFE OVERRIDE] Submit button stuck disabled with no active submissions!');
           chatHelpers.setIsSubmitting(false);
           addedChatHelpers.setIsSubmitting(false);
         }
