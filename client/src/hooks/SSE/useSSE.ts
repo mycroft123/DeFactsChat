@@ -144,89 +144,23 @@ export default function useSSE(
   const previousCacheState = useRef<any>({});
   const currentRequestId = useRef<string>('');
   
-  // ===== ENHANCED PANEL ISOLATION FIXES =====
-  // Add panel-specific state management with unique IDs
+  // Panel-specific state management with unique IDs
   const panelId = useRef(`${isAddedRequest ? 'RIGHT' : 'LEFT'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
   
-  // FIXED: Panel-specific timeout management (no more shared refs)
+  // Panel-specific timeout management
   const retryTimeoutRef = useRef<{[panelId: string]: any}>({});
   const connectionTimeoutRef = useRef<{[panelId: string]: any}>({});
   
-  // FIXED: Panel-specific connection references
+  // Panel-specific connection references
   const currentSSERef = useRef<{[panelId: string]: SSE | null}>({});
   
-  // FIXED: Panel-specific active state with cross-contamination protection
+  // Panel-specific active state
   const isPanelActive = useRef<{[panelId: string]: boolean}>({});
   
-  // NEW: Panel-specific message isolation
-  const panelMessageBuffer = useRef<{[panelId: string]: string}>({});
-  const panelLastUpdate = useRef<{[panelId: string]: number}>({});
-  
-  // Initialize this panel as active with protective measures
+  // Initialize this panel as active
   isPanelActive.current[panelId.current] = true;
-  panelMessageBuffer.current[panelId.current] = '';
-  panelLastUpdate.current[panelId.current] = Date.now();
   
-  // CRITICAL: Panel isolation guardian - prevents cross-panel interference
-  const guardPanelIntegrity = (context: string) => {
-    const thisPanel = panelId.current;
-    const now = Date.now();
-    
-    if (!isPanelActive.current[thisPanel]) {
-      console.warn(`🚨 [PANEL GUARD] ${context}: Panel ${thisPanel} is not active but trying to process!`);
-      return false;
-    }
-    
-    // Check for rapid state changes that might indicate cross-contamination
-    const lastUpdate = panelLastUpdate.current[thisPanel] || 0;
-    if (now - lastUpdate < 50) { // Less than 50ms since last update
-      console.warn(`🚨 [PANEL GUARD] ${context}: Rapid updates detected on ${thisPanel} - possible contamination`);
-    }
-    
-    panelLastUpdate.current[thisPanel] = now;
-    return true;
-  };
-
-  // 🎯 CLEAN INTERFERENCE MONITOR - Watch for the disappearing text issue
-  useEffect(() => {
-    let monitorInterval: NodeJS.Timeout;
-    
-    if (detectedComparisonMode) {
-      monitorInterval = setInterval(() => {
-        const leftPanel = document.querySelector('[data-panel="0"]') || document.querySelector('[data-panel="left"]');
-        const rightPanel = document.querySelector('[data-panel="1"]') || document.querySelector('[data-panel="right"]');
-        
-        const leftLength = leftPanel?.textContent?.length || 0;
-        const rightLength = rightPanel?.textContent?.length || 0;
-        
-        // Only log significant changes or when text disappears
-        const leftChanged = Math.abs(leftLength - (window.lastLeftLength || 0)) > 10;
-        const rightChanged = Math.abs(rightLength - (window.lastRightLength || 0)) > 10;
-        const textDisappeared = (window.lastRightLength || 0) > 100 && rightLength < 50;
-        
-        if (leftChanged || rightChanged || textDisappeared) {
-          console.log(`🎯 [PANEL MONITOR] ${new Date().toLocaleTimeString()}`, {
-            LEFT: `${leftLength} chars`,
-            RIGHT: `${rightLength} chars`,
-            textDisappeared: textDisappeared ? '⚠️ RIGHT PANEL TEXT DISAPPEARED!' : false
-          });
-          
-          if (textDisappeared) {
-            console.error(`🚨 [INTERFERENCE DETECTED] Right panel text vanished! Was ${window.lastRightLength}, now ${rightLength}`);
-          }
-        }
-        
-        window.lastLeftLength = leftLength;
-        window.lastRightLength = rightLength;
-      }, 500); // Check every 500ms
-    }
-    
-    return () => {
-      if (monitorInterval) clearInterval(monitorInterval);
-    };
-  }, [detectedComparisonMode]);
-  
-  // FIXED: Panel-specific timeout clearing
+  // Panel-specific timeout clearing
   const clearPanelTimeouts = (targetPanelId: string): void => {
     if (retryTimeoutRef.current[targetPanelId]) {
       clearTimeout(retryTimeoutRef.current[targetPanelId]);
@@ -237,7 +171,6 @@ export default function useSSE(
       delete connectionTimeoutRef.current[targetPanelId];
     }
   };
-  // ===== END PANEL ISOLATION FIXES =====
   
   // Track delta message accumulation for debugging - CONNECTION SCOPED
   const deltaAccumulator = useRef<{[connectionId: string]: string}>({});
@@ -259,15 +192,16 @@ export default function useSSE(
     previousCacheState.current = currentCache;
   };
 
-  // FIXED: Move initialization logging to useEffect to prevent re-renders
+  // Initialization logging
   useEffect(() => {
-    // PANEL ISOLATION SUMMARY - Clean logging
-    console.log(`🎯 [PANEL INIT] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'} Panel`, {
-      model: submission?.conversation?.model,
-      panelId: panelId.current.split('-')[0], // Just LEFT/RIGHT
+    console.log(`[useSSE INITIAL] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
       hasSubmission: !!submission,
+      model: submission?.conversation?.model,
+      endpoint: submission?.conversation?.endpoint,
+      isAddedRequest,
+      timestamp: Date.now()
     });
-  }, []); // Only run once on mount
+  }, []);
 
   const genTitle = useGenTitleMutation();
   const setActiveRunId = useSetRecoilState(store.activeRunFamily(runIndex));
@@ -319,17 +253,17 @@ export default function useSSE(
     enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
   });
 
-  // FIXED: Move submission change logging to prevent excessive logging
+  // Submission change logging
   useEffect(() => {
-    // Only log if there's actually a meaningful change
     const hasRealSubmission = submission && Object.keys(submission).length > 0;
     if (hasRealSubmission) {
-      console.log(`🎯 [SUBMISSION] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'}`, {
+      console.log(`[useSSE SUBMISSION CHANGE] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
+        hasSubmission: !!submission,
         model: submission?.conversation?.model,
-        endpoint: submission?.conversation?.endpoint,
+        timestamp: Date.now()
       });
     }
-  }, [submission?.conversation?.conversationId, submission?.conversation?.model]); // Only trigger on meaningful changes
+  }, [submission?.conversation?.conversationId, submission?.conversation?.model]);
 
   // Helper function to check if error is retryable
   const isRetryableError = (error: any): boolean => {
@@ -343,7 +277,7 @@ export default function useSSE(
     return Math.min(delay, RETRY_CONFIG.maxDelay);
   };
 
-  // FIXED: Handle retry logic with panel isolation
+  // Handle retry logic with panel isolation
   const handleRetry = (
     errorReason: string, 
     currentAttempt: number,
@@ -386,7 +320,7 @@ export default function useSSE(
     const delay = getRetryDelay(currentAttempt);
     console.log(`⏳ [useSSE] Retrying in ${delay}ms (attempt ${currentAttempt + 2})`);
     
-    // FIXED: Panel-specific retry timeout
+    // Panel-specific retry timeout
     retryTimeoutRef.current[thisPanel] = setTimeout(() => {
       if (!isPanelActive.current[thisPanel]) {
         console.log(`[useSSE] Panel ${thisPanel} became inactive during retry delay`);
@@ -421,9 +355,9 @@ export default function useSSE(
     const newConnectionId = `${isAddedRequest ? 'COMP' : 'DEFACTS'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     connectionId.current = newConnectionId;
     
-    console.log(`🔌 [CONNECTION] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'} Panel`, {
-      model: payload?.model,
-      connectionId: newConnectionId.split('-')[0], // Short ID
+    console.log(`🔌 [CONNECTION] New connection created: ${newConnectionId}`, {
+      panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+      model: payload?.model
     });
     
     // Create debug info for this connection
@@ -456,7 +390,7 @@ export default function useSSE(
         });
     }
     
-    // FIXED: Clear only this panel's timeouts
+    // Clear only this panel's timeouts
     clearPanelTimeouts(thisPanel);
     
     let sse: SSE;
@@ -480,12 +414,12 @@ export default function useSSE(
       isAddedRequest
     );
     
-    // FIXED: Store connection in panel-specific ref
+    // Store connection in panel-specific ref
     currentSSERef.current[thisPanel] = sse;
     let textIndex: number | null = null;
     let hasReceivedData = false;
 
-    // FIXED: Set panel-specific connection timeout
+    // Set panel-specific connection timeout
     connectionTimeoutRef.current[thisPanel] = setTimeout(() => {
       if (!isPanelActive.current[thisPanel]) {
         console.log(`[useSSE] Panel ${thisPanel} inactive, skipping timeout`);
@@ -508,9 +442,8 @@ export default function useSSE(
     // Set up SSE event listeners
     sse.addEventListener('open', () => {
       addSSEEvent('open', { readyState: sse.readyState });
-      console.log(`✅ [CONNECTED] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'} Panel`);
       
-      // FIXED: Clear only this panel's timeouts
+      // Clear only this panel's timeouts
       clearPanelTimeouts(thisPanel);
       setAbortScroll(false);
       setRetryCount(0);
@@ -541,12 +474,7 @@ export default function useSSE(
       debugInfo.duration = Date.now() - debugInfo.timestamp;
       debugAICall(debugInfo);
       
-      console.error(`❌ [ERROR] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'} Panel`, {
-        status: e.responseCode || e.statusCode,
-        hasData: hasReceivedData
-      });
-
-      // FIXED: Clear only this panel's timeouts
+      // Clear only this panel's timeouts
       clearPanelTimeouts(thisPanel);
 
       const errorStatus = e.responseCode || e.statusCode || e.status;
@@ -630,16 +558,8 @@ export default function useSSE(
     });
 
     sse.addEventListener('message', (e: MessageEvent) => {
-      const thisPanel = panelId.current;
-      
       if (!isPanelActive.current[thisPanel]) {
         console.log(`[useSSE] Panel ${thisPanel} inactive, ignoring message`);
-        return;
-      }
-      
-      // CRITICAL: Guard against cross-panel interference
-      if (!guardPanelIntegrity('MESSAGE_HANDLER')) {
-        console.error(`🚨 [CROSS-PANEL BLOCK] Blocked message processing for ${thisPanel}`);
         return;
       }
       
@@ -648,83 +568,6 @@ export default function useSSE(
         dataLength: e.data?.length,
         dataPreview: e.data?.substring(0, 100),
       });
-      
-      // Enhanced panel-specific logging
-      console.log(`📨 [${thisPanel}] MESSAGE RECEIVED:`, {
-        panel: isAddedRequest ? 'RIGHT' : 'LEFT',
-        model: payload?.model,
-        dataLength: e.data?.length,
-        connectionId: connectionId.current,
-        timestamp: Date.now(),
-        preview: e.data?.substring(0, 100)
-      });
-      
-      // CAPTURE RAW CHATGPT RESPONSES
-      if (payload?.model === 'gpt-4o' || payload?.model?.includes('gpt')) {
-        // Store EVERYTHING
-        if (!window.CHATGPT_RAW_STREAM) {
-          window.CHATGPT_RAW_STREAM = [];
-        }
-        
-        const rawEntry = {
-          timestamp: Date.now(),
-          connectionId: connectionId.current,
-          panelId: thisPanel,
-          model: payload.model,
-          raw: e.data,
-          length: e.data?.length || 0,
-          type: e.type,
-          origin: e.origin,
-          lastEventId: e.lastEventId,
-        };
-        
-        window.CHATGPT_RAW_STREAM.push(rawEntry);
-        
-        // Log immediately for real-time debugging
-        console.log('🤖 [CHATGPT RAW]:', {
-          ...rawEntry,
-          preview: e.data?.substring(0, 200),
-        });
-        
-        // Keep only last 500 messages to avoid memory issues
-        if (window.CHATGPT_RAW_STREAM.length > 500) {
-          window.CHATGPT_RAW_STREAM = window.CHATGPT_RAW_STREAM.slice(-500);
-        }
-      }
-      
-      // Real-time monitoring
-      if (window.CHATGPT_MONITOR_ENABLED && (payload?.model === 'gpt-4o' || payload?.model?.includes('gpt'))) {
-        console.log(`🤖 [GPT LIVE ${new Date().toLocaleTimeString()}]:`, {
-          dataLength: e.data?.length,
-          preview: e.data?.substring(0, 150),
-          hasData: e.data?.startsWith('data:'),
-          isDone: e.data?.includes('[DONE]'),
-        });
-      }
-      
-      // Enhanced message debug for DeFacts
-      if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
-        console.log(`🔍 [DeFacts RAW MESSAGE]:`, {
-          connectionId: connectionId.current,
-          panelId: thisPanel,
-          rawData: e.data,
-          dataType: typeof e.data,
-          dataLength: e.data?.length,
-          isEmpty: !e.data || e.data.trim() === '',
-          isJSON: (() => {
-            try {
-              JSON.parse(e.data);
-              return true;
-            } catch {
-              return false;
-            }
-          })(),
-          preview: e.data?.substring(0, 200),
-          timestamp: new Date().toISOString()
-        });
-        
-        sseDebugger.logRawEvent('message', e.data);
-      }
       
       let data: any;
       let isOpenAIFormat = false;
@@ -744,12 +587,6 @@ export default function useSSE(
           data = JSON.parse(jsonStr);
           isOpenAIFormat = true;
           
-          // Log format detection
-          console.log('🤖 [GPT FORMAT] Standard OpenAI format detected', {
-            hasChoices: !!data.choices,
-            hasDelta: !!data.choices?.[0]?.delta,
-          });
-          
         } else {
           // Try parsing as custom format
           data = JSON.parse(e.data);
@@ -757,11 +594,6 @@ export default function useSSE(
           // Check if it's the custom event format
           if (data.event || data.message || data.final) {
             isCustomFormat = true;
-            console.log('🤖 [GPT FORMAT] Custom event format detected', {
-              event: data.event,
-              hasMessage: !!data.message,
-              isFinal: !!data.final,
-            });
           }
         }
         
@@ -783,32 +615,13 @@ export default function useSSE(
                 }
               }
             };
-            
-            console.log('🤖 [GPT OPENAI DELTA]:', {
-              text: choice.delta.content,
-              length: choice.delta.content.length,
-            });
-          }
-          
-          // Completion
-          if (choice.finish_reason) {
-            console.log('🤖 [GPT OPENAI COMPLETE]:', {
-              finishReason: choice.finish_reason,
-              hasMessage: !!choice.message,
-            });
           }
         }
         
         // HANDLE CUSTOM EVENT FORMAT
         else if (isCustomFormat) {
           // Already in the format we expect, but let's ensure consistency
-          if (data.event === 'on_message_delta' && data.data) {
-            // Format is already correct
-            console.log('🤖 [GPT CUSTOM DELTA]:', {
-              hasDelta: !!data.data.delta,
-              deltaKeys: data.data.delta ? Object.keys(data.data.delta) : [],
-            });
-          } else if (data.message) {
+          if (data.message) {
             // Initial message creation
             data = {
               created: true,
@@ -821,63 +634,6 @@ export default function useSSE(
               data: data.data
             };
           }
-          // Keep final messages as-is
-          else if (data.final) {
-            // This is already in the correct format
-            console.log('🤖 [GPT FINAL]:', {
-              hasResponseMessage: !!data.responseMessage,
-              responseLength: data.responseMessage?.text?.length || 0,
-            });
-          }
-        }
-        
-        // Log unrecognized formats for debugging
-        if (!isOpenAIFormat && !isCustomFormat) {
-          console.warn('⚠️ [GPT] Unrecognized message format:', {
-            dataKeys: Object.keys(data),
-            preview: JSON.stringify(data).substring(0, 200),
-          });
-        }
-        
-        // Enhanced parsed message debug for DeFacts
-        if (payload?.model === 'DeFacts') {
-          console.log(`🔍 [DeFacts PARSED MESSAGE]:`, {
-            connectionId: connectionId.current,
-            panelId: thisPanel,
-            hasData: !!data,
-            dataKeys: data ? Object.keys(data) : [],
-            hasFinal: data?.final !== undefined,
-            hasCreated: data?.created !== undefined,
-            hasEvent: data?.event !== undefined,
-            hasText: !!(data?.text || data?.response),
-            hasDelta: !!data?.delta,
-            deltaContent: data?.delta?.content,
-            messageType: data?.type,
-            timestamp: new Date().toISOString()
-          });
-          
-          const textLocations = {
-            'data.text': data?.text,
-            'data.content': data?.content,
-            'data.response': data?.response,
-            'data.message': data?.message,
-            'data.responseMessage.text': data?.responseMessage?.text,
-            'data.responseMessage.content': data?.responseMessage?.content,
-            'data.delta.text': data?.delta?.text,
-            'data.delta.content': data?.delta?.content,
-            'data.choices[0].message.content': data?.choices?.[0]?.message?.content,
-            'data.choices[0].text': data?.choices?.[0]?.text,
-            'data.result': data?.result,
-            'data.output': data?.output,
-          };
-          
-          console.log('🔴 [DEFACTS TEXT SEARCH]:', Object.entries(textLocations).map(([path, value]) => ({
-            path,
-            hasValue: !!value,
-            type: typeof value,
-            length: typeof value === 'string' ? value.length : 0,
-            preview: typeof value === 'string' ? value.substring(0, 50) : null,
-          })));
         }
       } catch (error) {
         console.error('❌ [useSSE] Error parsing message:', error);
@@ -889,10 +645,6 @@ export default function useSSE(
         } else {
           return;
         }
-      }
-
-      if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
-        sseDebugger.logRawEvent('parsed_message', data);
       }
 
       debugDelta('SSE_MESSAGE_RECEIVED', data, {
@@ -911,46 +663,27 @@ export default function useSSE(
 
       try {
         if (data.final != null) {
-          if (!guardPanelIntegrity('FINAL_MESSAGE')) return;
-          console.log(`🏁 [${thisPanel}] FINAL MESSAGE - ${payload?.model}`);
           handleFinalMessage(data);
         } else if (data.created != null) {
-          if (!guardPanelIntegrity('CREATED_MESSAGE')) return;
-          console.log(`🆕 [${thisPanel}] CREATED MESSAGE - ${payload?.model}`);
           handleCreatedMessage(data);
         } else if (data.event != null) {
-          if (!guardPanelIntegrity('EVENT_MESSAGE')) return;
-          console.log(`📡 [${thisPanel}] EVENT MESSAGE - ${data.event} - ${payload?.model}`);
           handleEventMessage(data);
         } else if (data.sync != null) {
-          if (!guardPanelIntegrity('SYNC_MESSAGE')) return;
-          console.log(`🔄 [${thisPanel}] SYNC MESSAGE - ${payload?.model}`);
           handleSyncMessage(data);
         } else if (data.type != null) {
-          if (!guardPanelIntegrity('CONTENT_MESSAGE')) return;
-          console.log(`📝 [${thisPanel}] CONTENT MESSAGE - ${payload?.model}`);
           handleContentMessage(data, textIndex);
         } else {
-          if (!guardPanelIntegrity('STANDARD_MESSAGE')) return;
-          console.log(`📄 [${thisPanel}] STANDARD MESSAGE - ${payload?.model}`);
           handleStandardMessage(data);
         }
       } catch (error) {
         console.error('❌ [useSSE] Error processing message event:', error);
-        debugComparison('SSE_MESSAGE_PROCESSING_ERROR', {
-          isAddedRequest,
-          runIndex,
-          error: (error as Error).message,
-          data: data,
-          panelId: thisPanel
-        });
       }
     });
 
     sse.addEventListener('cancel', async () => {
       addSSEEvent('cancel', {});
       
-      // FIXED: Set only this panel as inactive
+      // Set only this panel as inactive
       isPanelActive.current[thisPanel] = false;
       clearPanelTimeouts(thisPanel);
       
@@ -990,27 +723,13 @@ export default function useSSE(
       }
     });
 
-    // Register custom event handlers for DeFacts
-    if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
-      registerDeFactsEventHandlers(sse, sseDebugger, thisPanel);
-    }
-
     // Start the stream
     setIsSubmitting(true);
     setIsSubmittingLocal(true);
     
     try {
       sse.stream();
-      console.log(`🚀 [STREAM START] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'} Panel`);
-      
-      // Check readyState after 1 second
-      setTimeout(() => {
-        console.log(`[SSE DEBUG] ReadyState after 1s for ${thisPanel}:`, {
-          readyState: currentSSERef.current[thisPanel]?.readyState,
-          model: payload?.model,
-          isActive: isPanelActive.current[thisPanel]
-        });
-      }, 1000);
+      console.log(`🚀 [STREAM START] ${isAddedRequest ? 'RIGHT' : 'LEFT'} Panel`);
     } catch (error) {
       console.error('❌ [useSSE] Error starting stream:', error);
       handleRetry('Stream start failed', attempt, payloadData, payload, userMessage);
@@ -1020,29 +739,10 @@ export default function useSSE(
 
     // Helper functions for message handling
     function handleFinalMessage(data: any) {
-      const thisPanel = panelId.current;
       const currentConnectionId = connectionId.current;
       const modelNeedsFix = payload?.model === 'DeFacts' || 
                           payload?.model === 'DeNews' || 
                           payload?.model === 'DeResearch';
-      
-      // 🎯 CLEAN SUMMARY - Key panel events only
-      const panelType = payload?.model?.toLowerCase().includes('perplexity') ? '🟣 PERPLEXITY' : '🔴 DEFACTS';
-      const side = isAddedRequest ? 'RIGHT' : 'LEFT';
-      
-      console.log(`${panelType} FINAL - ${side}`, {
-        hasText: !!(data.responseMessage?.text),
-        textLength: data.responseMessage?.text?.length || 0,
-        timestamp: new Date().toLocaleTimeString()
-      });
-      
-      // Store the final message in panel buffer to prevent cross-contamination
-      if (data.responseMessage?.text) {
-        panelMessageBuffer.current[thisPanel] = data.responseMessage.text;
-        console.log(`💾 [${side}] STORED MESSAGE: "${data.responseMessage.text.substring(0, 50)}..." (${data.responseMessage.text.length} chars)`);
-      } else {
-        console.warn(`⚠️ [${side}] NO TEXT IN FINAL MESSAGE!`);
-      }
       
       // Complete the debug info
       debugInfo.duration = Date.now() - debugInfo.timestamp;
@@ -1125,10 +825,6 @@ export default function useSSE(
         
         // Clean up this connection's data
         cleanupConnectionData(currentConnectionId);
-        
-        if (payload?.model === 'DeFacts') {
-          sseDebugger.exportLog();
-        }
       }
       
       // Track request completion
@@ -1164,21 +860,16 @@ export default function useSSE(
       
       logCacheState('BEFORE_FINAL');
       
-      // FIXED: Clear only this panel's timeouts
+      // Clear only this panel's timeouts
       clearPanelTimeouts(thisPanel);
       clearDraft(submission?.conversation?.conversationId);
       const { plugins } = data;
       
-      // FIXED: Increased delay for DeFacts to prevent race conditions
+      // Increased delay for DeFacts to prevent race conditions
       const cleanupDelay = payload?.model === 'DeFacts' ? 5000 : 
-                          isAddedRequest ? 0 : 500; // DeFacts gets 5 seconds buffer
+                          isAddedRequest ? 0 : 500;
       
       setTimeout(() => {
-        // Extra safety check for DeFacts
-        if (payload?.model === 'DeFacts') {
-          console.log(`🛡️ [DEFACTS PROTECTION] Waited ${cleanupDelay}ms before final processing`);
-        }
-        
         if (isPanelActive.current[thisPanel]) {
           finalHandler(data, { ...submission, plugins } as EventSubmission);
           (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
@@ -1202,9 +893,7 @@ export default function useSSE(
         console.log('🏁 [MESSAGE CREATED]', {
           requestId: currentRequestId.current,
           messageId,
-          panel: !detectedComparisonMode ? 'SINGLE' : (isAddedRequest ? 'RIGHT' : 'LEFT'),
-          mode: detectedComparisonMode ? 'comparison' : 'single',
-          panelId: thisPanel
+          panel: isAddedRequest ? 'RIGHT' : 'LEFT'
         });
       }
       
@@ -1303,45 +992,6 @@ export default function useSSE(
       if (cleanedCount > 0) {
         console.log(`🧹 [CLEANUP] Removed ${cleanedCount} old connections`);
       }
-      
-      // Debug: Show current state
-      console.log(`📦 [STATE] Active connections: ${Object.keys(deltaAccumulator.current).length}`, 
-        Object.keys(deltaAccumulator.current)
-      );
-    }
-
-    // FIXED: Panel isolation in custom event handlers
-    function registerDeFactsEventHandlers(sse: SSE, sseDebugger: any, panelId: string) {
-      const possibleEventNames = [
-        'data', 'update', 'chunk', 'stream', 'delta', 'text', 
-        'content', 'response', 'completion', 'message_delta',
-        'text_delta', 'assistant_message', 'ai_response'
-      ];
-      
-      possibleEventNames.forEach(eventName => {
-        sse.addEventListener(eventName, (e: any) => {
-          if (!isPanelActive.current[panelId]) {
-            return;
-          }
-          
-          console.log(`🔴 [DEFACTS CUSTOM EVENT: ${eventName}] Panel ${panelId}:`, e.data || e);
-          sseDebugger.logRawEvent(eventName, e.data || e);
-          
-          try {
-            const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-            if (data && (data.text || data.content || data.delta)) {
-              console.log(`🔴 [DEFACTS] Processing ${eventName} as message on panel ${panelId}`);
-              messageHandler(data.text || data.content || '', { 
-                ...submission, 
-                userMessage,
-                initialResponse: submission?.initialResponse as TMessage
-              } as EventSubmission);
-            }
-          } catch (err) {
-            console.log(`🔴 [DEFACTS] Could not process ${eventName} event:`, err);
-          }
-        });
-      });
     }
   };
 
@@ -1358,18 +1008,18 @@ export default function useSSE(
     }
   }, [isSubmittingLocal, setIsSubmitting, setShowStopButton]);
 
-  // FIXED: Panel-specific cleanup effect
+  // Panel-specific cleanup effect
   useEffect(() => {
     const thisPanel = panelId.current;
     
     return () => {
-      // FIXED: Mark only this panel as inactive
+      // Mark only this panel as inactive
       isPanelActive.current[thisPanel] = false;
       
-      // FIXED: Clear only this panel's timeouts
+      // Clear only this panel's timeouts
       clearPanelTimeouts(thisPanel);
       
-      // FIXED: Close only this panel's connection
+      // Close only this panel's connection
       const thisPanelSSE = currentSSERef.current[thisPanel];
       if (thisPanelSSE) {
         try {
@@ -1400,9 +1050,11 @@ export default function useSSE(
       return;
     }
 
-    console.log(`🎯 [REQUEST START] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'} Panel`, {
+    console.log(`[useSSE EFFECT] Processing submission for panel ${thisPanel}:`, {
+      isAddedRequest,
       model: submission?.conversation?.model,
       endpoint: submission?.conversation?.endpoint,
+      hasUserMessage: !!submission?.userMessage
     });
 
     const { userMessage } = submission;
@@ -1437,7 +1089,7 @@ export default function useSSE(
       return;
     }
 
-    // FIXED: Reset only this panel's active state
+    // Reset only this panel's active state
     isPanelActive.current[thisPanel] = true;
     setRetryCount(0);
     setIsRetrying(false);
@@ -1456,13 +1108,13 @@ export default function useSSE(
     return () => {
       const isCancelled = sse.readyState <= 1;
       
-      // FIXED: Mark only this panel as inactive
+      // Mark only this panel as inactive
       isPanelActive.current[thisPanel] = false;
       
-      // FIXED: Clear only this panel's timeouts
+      // Clear only this panel's timeouts
       clearPanelTimeouts(thisPanel);
       
-      // FIXED: Remove only this panel's connection reference
+      // Remove only this panel's connection reference
       if (currentSSERef.current[thisPanel]) {
         delete currentSSERef.current[thisPanel];
       }
@@ -1486,59 +1138,14 @@ export default function useSSE(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submission]);
 
-  // FIXED: Reduce lifecycle logging verbosity
-  useEffect(() => {
-    const thisPanel = panelId.current;
-    
-    // Only log mount, not every render
-    console.log(`🎯 [PANEL MOUNT] ${isAddedRequest ? '🟣 RIGHT' : '🔴 LEFT'}`, {
-      panelId: thisPanel.split('-')[0], // Just LEFT/RIGHT
-      model: submission?.conversation?.model,
-    });
-    
-    // Install clean monitoring functions
-    if (typeof window !== 'undefined' && !window.PANEL_MONITOR_INSTALLED) {
-      window.PANEL_MONITOR_INSTALLED = true;
-      
-      // 🎯 CLEAN SUMMARY COMMAND
-      window.watchInterference = () => {
-        console.log('\n🎯 INTERFERENCE MONITOR ACTIVE - Watching for text disappearing...');
-        window.INTERFERENCE_WATCH = setInterval(() => {
-          const left = document.querySelector('[data-panel="0"]')?.textContent?.length || 0;
-          const right = document.querySelector('[data-panel="1"]')?.textContent?.length || 0;
-          
-          const leftText = document.querySelector('[data-panel="0"]')?.textContent?.substring(0, 50) || '';
-          const rightText = document.querySelector('[data-panel="1"]')?.textContent?.substring(0, 50) || '';
-          
-          // Detect significant changes
-          const leftDelta = left - (window.lastLeft || 0);
-          const rightDelta = right - (window.lastRight || 0);
-          
-          if (Math.abs(leftDelta) > 10 || Math.abs(rightDelta) > 10) {
-            console.log(`📊 [${new Date().toLocaleTimeString()}]`, {
-              '🔴 LEFT': `${left} chars (${leftDelta > 0 ? '+' : ''}${leftDelta})`,
-              '🟣 RIGHT': `${right} chars (${rightDelta > 0 ? '+' : ''}${rightDelta})`,
-              leftPreview: leftText.includes('galaxy') ? leftText : '[other content]',
-              rightPreview: rightText.includes('galaxy') ? rightText : '[other content]'
-            });
-            
-            // Alert on text disappearing
-            if (window.lastRight > 100 && right < 50) {
-              console.error('🚨 RIGHT PANEL TEXT DISAPPEARED!', {
-                was: window.lastRight,
-                now: right,
-                likely: 'Cross-panel interference detected'
-              });
-            }
-          }
-          
-          window.lastLeft = left;
-          window.lastRight = right;
-        }, 300);
-        
-        console.log('Use: clearInterval(window.INTERFERENCE_WATCH) to stop');
-      };
-      
-      console.log('\n🎯 CLEAN MONITOR COMMANDS:');
-      console.log('- watchInterference()  // Start monitoring text changes');
-      console.log('- clearInterval(window.INTERFERENCE_WATCH)  // Stop monitoring');
+  return {
+    isRetrying,
+    retryCount,
+    maxRetries: RETRY_CONFIG.maxRetries,
+    RetryStatusComponent: () => React.createElement(RetryStatusDisplay, {
+      isRetrying,
+      retryCount,
+      maxRetries: RETRY_CONFIG.maxRetries,
+    }),
+  };
+}
