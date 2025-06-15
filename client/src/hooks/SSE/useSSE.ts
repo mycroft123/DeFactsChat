@@ -1027,218 +1027,224 @@ export default function useSSE(
     return sse;
 
     // Helper functions for message handling
-    function handleFinalMessage(data: any) {
-      const currentConnectionId = connectionId.current;
-      const modelNeedsFix = payload?.model === 'DeFacts' || 
-                           payload?.model === 'DeNews' || 
-                           payload?.model === 'DeResearch';
-      
-      // Complete the debug info
-      debugInfo.duration = Date.now() - debugInfo.timestamp;
-      debugInfo.response = {
-        final: true,
-        hasText: !!(data.responseMessage?.text),
-        responseLength: data.responseMessage?.text?.length || 0,
+// Complete handleFinalMessage function with 5-second buffer fix
+function handleFinalMessage(data: any) {
+  const currentConnectionId = connectionId.current;
+  const modelNeedsFix = payload?.model === 'DeFacts' || 
+                       payload?.model === 'DeNews' || 
+                       payload?.model === 'DeResearch';
+  
+  // Complete the debug info
+  debugInfo.duration = Date.now() - debugInfo.timestamp;
+  debugInfo.response = {
+    final: true,
+    hasText: !!(data.responseMessage?.text),
+    responseLength: data.responseMessage?.text?.length || 0,
+  };
+  debugAICall(debugInfo);
+  
+  if (modelNeedsFix) {
+    const accumulatedText = deltaAccumulator.current[currentConnectionId] || '';
+    
+    // Comprehensive final message debug
+    console.log(`🔍 [DeFacts FINAL MESSAGE DEBUG]:`, {
+      connectionId: currentConnectionId,
+      panelId: thisPanel,
+      hasResponseMessage: !!data.responseMessage,
+      responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
+      responseText: data.responseMessage?.text,
+      responseTextLength: data.responseMessage?.text?.length || 0,
+      responseContent: data.responseMessage?.content,
+      accumulatedText: accumulatedText.substring(0, 100) + '...',
+      accumulatedLength: accumulatedText.length,
+      deltaCount: deltaCounter.current[currentConnectionId] || 0,
+      allDataKeys: Object.keys(data),
+      fullData: data,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Log the exact structure
+    console.log(`🔍 [DeFacts RESPONSE STRUCTURE]:`, JSON.stringify(data, null, 2));
+    
+    // Create responseMessage if it doesn't exist
+    if (!data.responseMessage && accumulatedText) {
+      data.responseMessage = {
+        messageId: data.messageId || `msg-${currentConnectionId}`,
+        conversationId: data.conversationId || submission?.conversation?.conversationId,
+        text: '',
+        content: []
       };
-      debugAICall(debugInfo);
-      
-      if (modelNeedsFix) {
-        const accumulatedText = deltaAccumulator.current[currentConnectionId] || '';
-        
-        // Comprehensive final message debug
-        console.log(`🔍 [DeFacts FINAL MESSAGE DEBUG]:`, {
-          connectionId: currentConnectionId,
-          panelId: thisPanel,
-          hasResponseMessage: !!data.responseMessage,
-          responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
-          responseText: data.responseMessage?.text,
-          responseTextLength: data.responseMessage?.text?.length || 0,
-          responseContent: data.responseMessage?.content,
-          accumulatedText: accumulatedText.substring(0, 100) + '...',
-          accumulatedLength: accumulatedText.length,
-          deltaCount: deltaCounter.current[currentConnectionId] || 0,
-          allDataKeys: Object.keys(data),
-          fullData: data,
-          timestamp: new Date().toISOString()
-        });
-        
-        // Log the exact structure
-        console.log(`🔍 [DeFacts RESPONSE STRUCTURE]:`, JSON.stringify(data, null, 2));
-        
-        // Create responseMessage if it doesn't exist
-        if (!data.responseMessage && accumulatedText) {
-          data.responseMessage = {
-            messageId: data.messageId || `msg-${currentConnectionId}`,
-            conversationId: data.conversationId || submission?.conversation?.conversationId,
-            text: '',
-            content: []
-          };
-        }
-        
-        // Fix empty response with accumulated text OR add error message
-        if (data.responseMessage) {
-          if (!data.responseMessage.text && !accumulatedText) {
-            // No text at all - add error message
-            console.error(`❌ [EMPTY RESPONSE] ${currentConnectionId}: No content received`);
-            data.responseMessage.text = '[Error: No response received from the model]';
-            data.responseMessage.error = true;
-            data.responseMessage.content = [{
-              type: 'text',
-              text: '[Error: No response received from the model]'
-            }];
-          } else if (accumulatedText && !data.responseMessage.text) {
-            // We have accumulated text but responseMessage.text is empty
-            console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars`);
-            data.responseMessage.text = accumulatedText;
-            
-            // Also ensure content array is populated
-            if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
-              data.responseMessage.content = [{
-                type: 'text',
-                text: accumulatedText
-              }];
-            } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
-              data.responseMessage.content[0].text = accumulatedText;
-            }
-          }
-        }
-        
-        // Clean up this connection's data
-        cleanupConnectionData(currentConnectionId);
-        
-        if (payload?.model === 'DeFacts') {
-          sseDebugger.exportLog();
-        }
-      }
-      
-      // Track request completion
-      const messageId = data.responseMessage?.messageId || data.messageId;
-      const hasText = !!(data.responseMessage?.text);
-      const responseLength = data.responseMessage?.text?.length || 0;
-      
-      // ENHANCED DEBUGGING FOR REQUEST TRACKING
-      console.log("🔍 [COMPLETE REQUEST] Looking for request:", {
-        messageId,
-        currentRequestId: currentRequestId.current,
-        activeRequestIds: Array.from(REQUEST_TRACKER.activeRequests.keys()),
-        model: payload?.model,
-        panel: isAddedRequest ? 'RIGHT' : 'LEFT',
-        panelId: thisPanel
-      });
-      
-      // Try multiple ways to find the request
-      let request = REQUEST_TRACKER.findRequestByMessageId(messageId);
-      
-      if (!request && currentRequestId.current) {
-        console.log("🔍 [COMPLETE REQUEST] Trying currentRequestId:", currentRequestId.current);
-        request = REQUEST_TRACKER.activeRequests.get(currentRequestId.current);
-      }
-      
-      if (!request) {
-        // Try to find by matching model and status
-        const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.values());
-        request = activeRequests.find(r => 
-          r.model === payload?.model && 
-          r.status === 'pending' &&
-          r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
-        );
-        
-        if (request) {
-          console.log("🔍 [COMPLETE REQUEST] Found request by model/panel match:", request);
-        }
-      }
-      
-      // Log the result of our search
-      if (!request) {
-        console.error("❌ [COMPLETE REQUEST] Could not find request to complete!", {
-          triedMessageId: messageId,
-          triedRequestId: currentRequestId.current,
-          model: payload?.model,
-          panel: isAddedRequest ? 'RIGHT' : 'LEFT',
-          panelId: thisPanel,
-          allActiveRequests: Array.from(REQUEST_TRACKER.activeRequests.entries()).map(([id, req]) => ({
-            id,
-            model: req.model,
-            panel: req.panel,
-            messageId: req.messageId,
-            status: req.status
-          }))
-        });
-        
-        // Force complete any matching pending request as a fallback
-        const pendingRequest = Array.from(REQUEST_TRACKER.activeRequests.values()).find(r => 
-          r.model === payload?.model && 
-          r.status === 'pending' &&
-          r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
-        );
-        
-        if (pendingRequest) {
-          console.warn("⚠️ [COMPLETE REQUEST] Force completing pending request:", pendingRequest);
-          REQUEST_TRACKER.completeRequest(
-            pendingRequest.id,
-            hasText,
-            responseLength,
-            !hasText ? 'Empty response from backend' : undefined
-          );
-        }
-      } else {
-        console.log("✅ [COMPLETE REQUEST] Found request to complete:", {
-          requestId: request.id,
-          model: request.model,
-          panel: request.panel,
-          questionNumber: request.questionNumber
-        });
-        
-        REQUEST_TRACKER.completeRequest(
-          request.id,
-          hasText,
-          responseLength,
-          !hasText ? 'Empty response from backend' : undefined
-        );
-      }
-      
-      if (payload?.model === 'DeFacts' && !hasText) {
-        console.error(`🔴 [DEFACTS FAILURE]`, {
-          request: request ? {
-            questionNumber: request.questionNumber,
-            panel: request.panel,
-            question: request.question
-          } : 'Request not found',
-          messageId,
-          responseMessage: data.responseMessage,
-          panelId: thisPanel
-        });
-      }
-      
-      logCacheState('BEFORE_FINAL');
-      
-      debugComparison('SSE_FINAL_MESSAGE', {
-        isAddedRequest,
-        runIndex,
-        finalData: data,
-        panelId: thisPanel
-      });
-      
-      // FIXED: Clear only this panel's timeouts
-      clearPanelTimeouts(thisPanel);
-      clearDraft(submission?.conversation?.conversationId);
-      const { plugins } = data;
-      
-      // FIXED: Add larger delay for DeFacts to prevent race conditions
-      const cleanupDelay = payload?.model === 'DeFacts' ? 2000 : 
-                          isAddedRequest ? 0 : 500; // DeFacts gets 2 seconds buffer
-      
-      setTimeout(() => {
-        if (isPanelActive.current[thisPanel]) {
-          finalHandler(data, { ...submission, plugins } as EventSubmission);
-          (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
-        } else {
-          console.log(`[useSSE] Panel ${thisPanel} became inactive, skipping final handler`);
-        }
-      }, cleanupDelay);
-      
-      logCacheState('AFTER_FINAL');
     }
+    
+    // Fix empty response with accumulated text OR add error message
+    if (data.responseMessage) {
+      if (!data.responseMessage.text && !accumulatedText) {
+        // No text at all - add error message
+        console.error(`❌ [EMPTY RESPONSE] ${currentConnectionId}: No content received`);
+        data.responseMessage.text = '[Error: No response received from the model]';
+        data.responseMessage.error = true;
+        data.responseMessage.content = [{
+          type: 'text',
+          text: '[Error: No response received from the model]'
+        }];
+      } else if (accumulatedText && !data.responseMessage.text) {
+        // We have accumulated text but responseMessage.text is empty
+        console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars`);
+        data.responseMessage.text = accumulatedText;
+        
+        // Also ensure content array is populated
+        if (!data.responseMessage.content || data.responseMessage.content.length === 0) {
+          data.responseMessage.content = [{
+            type: 'text',
+            text: accumulatedText
+          }];
+        } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
+          data.responseMessage.content[0].text = accumulatedText;
+        }
+      }
+    }
+    
+    // Clean up this connection's data
+    cleanupConnectionData(currentConnectionId);
+    
+    if (payload?.model === 'DeFacts') {
+      sseDebugger.exportLog();
+    }
+  }
+  
+  // Track request completion
+  const messageId = data.responseMessage?.messageId || data.messageId;
+  const hasText = !!(data.responseMessage?.text);
+  const responseLength = data.responseMessage?.text?.length || 0;
+  
+  // ENHANCED DEBUGGING FOR REQUEST TRACKING
+  console.log("🔍 [COMPLETE REQUEST] Looking for request:", {
+    messageId,
+    currentRequestId: currentRequestId.current,
+    activeRequestIds: Array.from(REQUEST_TRACKER.activeRequests.keys()),
+    model: payload?.model,
+    panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+    panelId: thisPanel
+  });
+  
+  // Try multiple ways to find the request
+  let request = REQUEST_TRACKER.findRequestByMessageId(messageId);
+  
+  if (!request && currentRequestId.current) {
+    console.log("🔍 [COMPLETE REQUEST] Trying currentRequestId:", currentRequestId.current);
+    request = REQUEST_TRACKER.activeRequests.get(currentRequestId.current);
+  }
+  
+  if (!request) {
+    // Try to find by matching model and status
+    const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.values());
+    request = activeRequests.find(r => 
+      r.model === payload?.model && 
+      r.status === 'pending' &&
+      r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
+    );
+    
+    if (request) {
+      console.log("🔍 [COMPLETE REQUEST] Found request by model/panel match:", request);
+    }
+  }
+  
+  // Log the result of our search
+  if (!request) {
+    console.error("❌ [COMPLETE REQUEST] Could not find request to complete!", {
+      triedMessageId: messageId,
+      triedRequestId: currentRequestId.current,
+      model: payload?.model,
+      panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+      panelId: thisPanel,
+      allActiveRequests: Array.from(REQUEST_TRACKER.activeRequests.entries()).map(([id, req]) => ({
+        id,
+        model: req.model,
+        panel: req.panel,
+        messageId: req.messageId,
+        status: req.status
+      }))
+    });
+    
+    // Force complete any matching pending request as a fallback
+    const pendingRequest = Array.from(REQUEST_TRACKER.activeRequests.values()).find(r => 
+      r.model === payload?.model && 
+      r.status === 'pending' &&
+      r.panel === (isAddedRequest ? 'RIGHT' : 'LEFT')
+    );
+    
+    if (pendingRequest) {
+      console.warn("⚠️ [COMPLETE REQUEST] Force completing pending request:", pendingRequest);
+      REQUEST_TRACKER.completeRequest(
+        pendingRequest.id,
+        hasText,
+        responseLength,
+        !hasText ? 'Empty response from backend' : undefined
+      );
+    }
+  } else {
+    console.log("✅ [COMPLETE REQUEST] Found request to complete:", {
+      requestId: request.id,
+      model: request.model,
+      panel: request.panel,
+      questionNumber: request.questionNumber
+    });
+    
+    REQUEST_TRACKER.completeRequest(
+      request.id,
+      hasText,
+      responseLength,
+      !hasText ? 'Empty response from backend' : undefined
+    );
+  }
+  
+  if (payload?.model === 'DeFacts' && !hasText) {
+    console.error(`🔴 [DEFACTS FAILURE]`, {
+      request: request ? {
+        questionNumber: request.questionNumber,
+        panel: request.panel,
+        question: request.question
+      } : 'Request not found',
+      messageId,
+      responseMessage: data.responseMessage,
+      panelId: thisPanel
+    });
+  }
+  
+  logCacheState('BEFORE_FINAL');
+  
+  debugComparison('SSE_FINAL_MESSAGE', {
+    isAddedRequest,
+    runIndex,
+    finalData: data,
+    panelId: thisPanel
+  });
+  
+  // FIXED: Clear only this panel's timeouts
+  clearPanelTimeouts(thisPanel);
+  clearDraft(submission?.conversation?.conversationId);
+  const { plugins } = data;
+  
+  // FIXED: Increased delay for DeFacts to prevent race conditions
+  const cleanupDelay = payload?.model === 'DeFacts' ? 5000 : 
+                      isAddedRequest ? 0 : 500; // DeFacts gets 5 seconds buffer
+  
+  setTimeout(() => {
+    // Extra safety check for DeFacts
+    if (payload?.model === 'DeFacts') {
+      console.log(`🛡️ [DEFACTS PROTECTION] Waited ${cleanupDelay}ms before final processing`);
+    }
+    
+    if (isPanelActive.current[thisPanel]) {
+      finalHandler(data, { ...submission, plugins } as EventSubmission);
+      (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
+    } else {
+      console.log(`[useSSE] Panel ${thisPanel} became inactive, skipping final handler`);
+    }
+  }, cleanupDelay);
+  
+  logCacheState('AFTER_FINAL');
+}
     
     function handleCreatedMessage(data: any) {
       const messageId = data.message?.messageId;
