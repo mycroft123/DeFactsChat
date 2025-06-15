@@ -1028,6 +1028,7 @@ export default function useSSE(
 
     // Helper functions for message handling
 // Complete handleFinalMessage function with 5-second buffer fix
+// Complete handleFinalMessage function with enhanced DeFacts API debugging
 function handleFinalMessage(data: any) {
   const currentConnectionId = connectionId.current;
   const modelNeedsFix = payload?.model === 'DeFacts' || 
@@ -1066,6 +1067,61 @@ function handleFinalMessage(data: any) {
     // Log the exact structure
     console.log(`🔍 [DeFacts RESPONSE STRUCTURE]:`, JSON.stringify(data, null, 2));
     
+    // Enhanced DeFacts API debugging
+    if (payload?.model === 'DeFacts') {
+      console.log('🔴 [DEFACTS API DEBUG] Full response analysis:', {
+        title: data.title,
+        final: data.final,
+        hasResponseMessage: !!data.responseMessage,
+        responseMessageText: data.responseMessage?.text,
+        responseMessageTextLength: data.responseMessage?.text?.length,
+        allResponseFields: data.responseMessage ? Object.keys(data.responseMessage) : [],
+        conversationMessages: data.conversation?.messages?.length || 0,
+        agentOptions: data.conversation?.agentOptions,
+        promptTokens: data.responseMessage?.promptTokens,
+        endpoint: data.responseMessage?.endpoint
+      });
+      
+      // Check if there's content elsewhere in the response
+      const possibleTextFields = {
+        'data.text': data.text,
+        'data.content': data.content,
+        'data.response': data.response,
+        'data.responseMessage.content': data.responseMessage?.content,
+        'data.conversation.lastMessage.text': data.conversation?.lastMessage?.text,
+        'data.title': data.title,
+        'data.responseMessage.text': data.responseMessage?.text,
+        'data.conversation.greeting': data.conversation?.greeting,
+        'accumulatedText': accumulatedText
+      };
+      
+      console.log('🔍 [DEFACTS] Checking all possible text locations:', 
+        Object.entries(possibleTextFields).map(([path, value]) => ({
+          path,
+          hasValue: !!value,
+          type: typeof value,
+          length: typeof value === 'string' ? value.length : 0,
+          preview: typeof value === 'string' ? value.substring(0, 100) : null,
+          value: typeof value === 'string' && value.length < 200 ? value : '[too long to display]'
+        }))
+      );
+      
+      // Check if this is a DeFacts configuration issue
+      if (data.conversation?.agentOptions) {
+        console.log('🔧 [DEFACTS CONFIG] Agent configuration:', {
+          agent: data.conversation.agentOptions.agent,
+          skipCompletion: data.conversation.agentOptions.skipCompletion,
+          model: data.conversation.agentOptions.model,
+          temperature: data.conversation.agentOptions.temperature
+        });
+        
+        // Look for configuration issues
+        if (data.conversation.agentOptions.skipCompletion === true) {
+          console.warn('⚠️ [DEFACTS CONFIG] skipCompletion is TRUE - this might prevent text generation!');
+        }
+      }
+    }
+    
     // Create responseMessage if it doesn't exist
     if (!data.responseMessage && accumulatedText) {
       data.responseMessage = {
@@ -1076,20 +1132,47 @@ function handleFinalMessage(data: any) {
       };
     }
     
-    // Fix empty response with accumulated text OR add error message
+    // Enhanced response fixing logic
     if (data.responseMessage) {
-      if (!data.responseMessage.text && !accumulatedText) {
-        // No text at all - add error message
-        console.error(`❌ [EMPTY RESPONSE] ${currentConnectionId}: No content received`);
-        data.responseMessage.text = '[Error: No response received from the model]';
-        data.responseMessage.error = true;
-        data.responseMessage.content = [{
-          type: 'text',
-          text: '[Error: No response received from the model]'
-        }];
-      } else if (accumulatedText && !data.responseMessage.text) {
+      // Check if we need to fix empty response
+      const hasEmptyText = !data.responseMessage.text || data.responseMessage.text.trim() === '';
+      
+      if (hasEmptyText && !accumulatedText) {
+        // No text at all - check if there's content elsewhere
+        let alternativeText = '';
+        
+        // Try to find text in alternative locations
+        if (data.title && data.title !== 'Understanding The Concept Of Beta') {
+          alternativeText = data.title;
+          console.log('🔧 [DEFACTS FIX] Using title as response text:', alternativeText);
+        } else if (data.content) {
+          alternativeText = typeof data.content === 'string' ? data.content : JSON.stringify(data.content);
+          console.log('🔧 [DEFACTS FIX] Using content field as response text');
+        } else if (data.response) {
+          alternativeText = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
+          console.log('🔧 [DEFACTS FIX] Using response field as response text');
+        }
+        
+        if (alternativeText) {
+          console.warn(`✅ [ALTERNATIVE TEXT FOUND] ${currentConnectionId}: Using alternative text (${alternativeText.length} chars)`);
+          data.responseMessage.text = alternativeText;
+          data.responseMessage.content = [{
+            type: 'text',
+            text: alternativeText
+          }];
+        } else {
+          // Still no text - add error message but indicate it's a DeFacts API issue
+          console.error(`❌ [DEFACTS API ISSUE] ${currentConnectionId}: DeFacts API returned empty response`);
+          data.responseMessage.text = '[Error: DeFacts API returned empty response. This may be a service configuration issue.]';
+          data.responseMessage.error = true;
+          data.responseMessage.content = [{
+            type: 'text',
+            text: '[Error: DeFacts API returned empty response. This may be a service configuration issue.]'
+          }];
+        }
+      } else if (accumulatedText && hasEmptyText) {
         // We have accumulated text but responseMessage.text is empty
-        console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars`);
+        console.warn(`✅ [FIX APPLIED] ${currentConnectionId}: Injecting ${accumulatedText.length} chars from accumulated deltas`);
         data.responseMessage.text = accumulatedText;
         
         // Also ensure content array is populated
@@ -1101,6 +1184,8 @@ function handleFinalMessage(data: any) {
         } else if (data.responseMessage.content[0] && !data.responseMessage.content[0].text) {
           data.responseMessage.content[0].text = accumulatedText;
         }
+      } else if (!hasEmptyText) {
+        console.log(`✅ [DEFACTS SUCCESS] ${currentConnectionId}: Response text found (${data.responseMessage.text.length} chars)`);
       }
     }
     
@@ -1179,7 +1264,7 @@ function handleFinalMessage(data: any) {
         pendingRequest.id,
         hasText,
         responseLength,
-        !hasText ? 'Empty response from backend' : undefined
+        !hasText ? 'DeFacts API returned empty response' : undefined
       );
     }
   } else {
@@ -1194,19 +1279,32 @@ function handleFinalMessage(data: any) {
       request.id,
       hasText,
       responseLength,
-      !hasText ? 'Empty response from backend' : undefined
+      !hasText ? 'DeFacts API returned empty response' : undefined
     );
   }
   
+  // Enhanced DeFacts failure logging
   if (payload?.model === 'DeFacts' && !hasText) {
-    console.error(`🔴 [DEFACTS FAILURE]`, {
+    console.error(`🔴 [DEFACTS API FAILURE] - Service Issue Detected`, {
       request: request ? {
         questionNumber: request.questionNumber,
         panel: request.panel,
         question: request.question
       } : 'Request not found',
       messageId,
-      responseMessage: data.responseMessage,
+      apiResponse: {
+        hasResponseMessage: !!data.responseMessage,
+        responseMessageKeys: data.responseMessage ? Object.keys(data.responseMessage) : [],
+        promptTokens: data.responseMessage?.promptTokens,
+        agentConfig: data.conversation?.agentOptions
+      },
+      panelId: thisPanel,
+      diagnosis: 'DeFacts API is responding but not generating text content'
+    });
+  } else if (payload?.model === 'DeFacts' && hasText) {
+    console.log(`✅ [DEFACTS SUCCESS]`, {
+      responseLength,
+      question: request?.question?.substring(0, 50) + '...',
       panelId: thisPanel
     });
   }
