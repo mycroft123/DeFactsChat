@@ -65,7 +65,7 @@ function ChatView({ index = 0 }: { index?: number }) {
     
     // Log current state
     if (activeSubmissions.current.size > 0) {
-   //   console.log('🔍 [FAILSAFE CHECK] Active submissions:', {
+      console.log('🔍 [FAILSAFE CHECK] Active submissions:', {
         count: activeSubmissions.current.size,
         submissions: Array.from(activeSubmissions.current),
         timeSinceLastCheck: now - ((window as any).__lastSubmissionCheck || now)
