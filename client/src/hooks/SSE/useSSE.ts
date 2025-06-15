@@ -30,6 +30,283 @@ import {
   debugComparison 
 } from './useSSEDebug';
 
+// Enhanced debugging interface
+interface AICallDebugInfo {
+  requestId: string;
+  panel: 'LEFT' | 'RIGHT' | 'SINGLE';
+  model: string;
+  endpoint: string;
+  timestamp: number;
+  payload: any;
+  response?: any;
+  error?: any;
+  duration?: number;
+  sseEvents: Array<{
+    type: string;
+    data: any;
+    timestamp: number;
+  }>;
+}
+
+// Global debug storage
+const AI_CALL_DEBUG_HISTORY: AICallDebugInfo[] = [];
+
+// Debug function
+const debugAICall = (info: Partial<AICallDebugInfo>) => {
+  const debugEntry: AICallDebugInfo = {
+    requestId: info.requestId || 'unknown',
+    panel: info.panel || 'SINGLE',
+    model: info.model || 'unknown',
+    endpoint: info.endpoint || 'unknown',
+    timestamp: Date.now(),
+    payload: info.payload,
+    response: info.response,
+    error: info.error,
+    duration: info.duration,
+    sseEvents: info.sseEvents || [],
+  };
+  
+  AI_CALL_DEBUG_HISTORY.push(debugEntry);
+  
+  // Keep only last 50 entries
+  if (AI_CALL_DEBUG_HISTORY.length > 50) {
+    AI_CALL_DEBUG_HISTORY.shift();
+  }
+  
+  console.log('🔍 [AI_CALL_DEBUG]', debugEntry);
+};
+
+// Enhanced pre-flight check function
+const performPreflightCheck = async (
+  server: string,
+  payload: any,
+  token: string,
+  model: string
+): Promise<{ success: boolean; error?: any; details?: any }> => {
+  console.log(`🛫 [PREFLIGHT CHECK] Starting for ${model}...`);
+  
+  try {
+    // First, try OPTIONS request to check CORS
+    try {
+      const optionsResponse = await fetch(server, {
+        method: 'OPTIONS',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      console.log(`🛫 [PREFLIGHT OPTIONS]`, {
+        status: optionsResponse.status,
+        headers: Object.fromEntries(optionsResponse.headers.entries()),
+      });
+    } catch (optionsError) {
+      console.warn(`⚠️ [PREFLIGHT OPTIONS] Failed:`, optionsError);
+    }
+    
+    // Then try actual POST request
+    const response = await fetch(server, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    
+    const responseHeaders = Object.fromEntries(response.headers.entries());
+    let responseData = null;
+    
+    try {
+      const responseText = await response.text();
+      if (responseText) {
+        responseData = JSON.parse(responseText);
+      }
+    } catch (e) {
+      // Response might not be JSON
+    }
+    
+    const result = {
+      success: response.ok,
+      details: {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        data: responseData,
+        hasSSEHeaders: responseHeaders['content-type']?.includes('text/event-stream'),
+      },
+    };
+    
+    console.log(`🛫 [PREFLIGHT RESULT]`, result);
+    
+    return result;
+  } catch (error) {
+    console.error(`❌ [PREFLIGHT ERROR]`, error);
+    return {
+      success: false,
+      error: error,
+      details: {
+        errorType: (error as Error).constructor.name,
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+      },
+    };
+  }
+};
+
+// Diagnostic function
+const diagnoseRightPanelFailure = () => {
+  console.log('🔍 DIAGNOSING RIGHT PANEL FAILURE...');
+  console.log('=====================================');
+  
+  // 1. Check active requests
+  const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.values());
+  const rightPanelRequests = activeRequests.filter(r => r.panel === 'RIGHT');
+  
+  console.log('1️⃣ Active RIGHT Panel Requests:', rightPanelRequests.length);
+  rightPanelRequests.forEach(req => {
+    console.log('  - Request:', {
+      id: req.id,
+      model: req.model,
+      status: req.status,
+      duration: Date.now() - req.startTime,
+      messageId: req.messageId,
+    });
+  });
+  
+  // 2. Check comparison mode detection
+  const panels = document.querySelectorAll('[data-panel]');
+  console.log('2️⃣ Panel Detection:', {
+    panelCount: panels.length,
+    isComparisonMode: panels.length > 1,
+    panelAttributes: Array.from(panels).map(p => p.getAttribute('data-panel')),
+  });
+  
+  // 3. Check for stuck requests
+  const stuckRequests = activeRequests.filter(r => 
+    r.status === 'pending' && 
+    Date.now() - r.startTime > 5000 // More than 5 seconds
+  );
+  
+  if (stuckRequests.length > 0) {
+    console.log('3️⃣ ⚠️  STUCK REQUESTS FOUND:', stuckRequests.length);
+    stuckRequests.forEach(req => {
+      console.log('  - Stuck Request:', {
+        panel: req.panel,
+        model: req.model,
+        duration: `${Math.round((Date.now() - req.startTime) / 1000)}s`,
+        question: req.question.substring(0, 50),
+      });
+    });
+  } else {
+    console.log('3️⃣ ✅ No stuck requests');
+  }
+  
+  // 4. Check AI call history
+  const pendingAICalls = AI_CALL_DEBUG_HISTORY.filter(call => !call.duration);
+  const failedAICalls = AI_CALL_DEBUG_HISTORY.filter(call => call.error);
+  
+  console.log('4️⃣ AI Call Status:', {
+    total: AI_CALL_DEBUG_HISTORY.length,
+    pending: pendingAICalls.length,
+    failed: failedAICalls.length,
+  });
+  
+  if (failedAICalls.length > 0) {
+    console.log('  ❌ Failed AI Calls:');
+    failedAICalls.forEach(call => {
+      console.log('    -', {
+        panel: call.panel,
+        model: call.model,
+        error: call.error,
+      });
+    });
+  }
+  
+  // 5. Provide recommendations
+  console.log('\n📋 DIAGNOSTIC SUMMARY:');
+  
+  if (rightPanelRequests.length === 0) {
+    console.log('❌ No RIGHT panel requests found - The request may not be starting');
+    console.log('   → Check if submission is being passed to the RIGHT panel');
+    console.log('   → Verify isAddedRequest=true for RIGHT panel');
+  } else if (stuckRequests.some(r => r.panel === 'RIGHT')) {
+    console.log('❌ RIGHT panel request is stuck in pending state');
+    console.log('   → Check SSE connection establishment');
+    console.log('   → Verify server endpoint is responding');
+    console.log('   → Check for CORS or authentication issues');
+  } else {
+    console.log('⚠️  Unable to determine specific failure reason');
+    console.log('   → Enable more verbose logging');
+    console.log('   → Check browser DevTools Network tab');
+    console.log('   → Verify model availability');
+  }
+  
+  return {
+    rightPanelRequests,
+    stuckRequests: stuckRequests.filter(r => r.panel === 'RIGHT'),
+    isComparisonMode: panels.length > 1,
+  };
+};
+
+// Add debug functions to window
+if (typeof window !== 'undefined') {
+  (window as any).AI_DEBUG = {
+    showHistory: () => {
+      console.table(AI_CALL_DEBUG_HISTORY.map(entry => ({
+        requestId: entry.requestId.substring(0, 8),
+        panel: entry.panel,
+        model: entry.model,
+        endpoint: entry.endpoint,
+        timestamp: new Date(entry.timestamp).toLocaleTimeString(),
+        hasError: !!entry.error,
+        duration: entry.duration ? `${entry.duration}ms` : 'pending',
+        eventCount: entry.sseEvents.length,
+      })));
+    },
+    showRequest: (requestId: string) => {
+      const entry = AI_CALL_DEBUG_HISTORY.find(e => 
+        e.requestId.includes(requestId) || e.requestId === requestId
+      );
+      if (entry) {
+        console.log('📋 AI Call Details:', entry);
+      } else {
+        console.log('Request not found');
+      }
+    },
+    showFailures: () => {
+      const failures = AI_CALL_DEBUG_HISTORY.filter(e => e.error);
+      console.log(`❌ Failed AI Calls (${failures.length}):`, failures);
+    },
+    showPending: () => {
+      const pending = AI_CALL_DEBUG_HISTORY.filter(e => !e.duration);
+      console.log(`⏳ Pending AI Calls (${pending.length}):`, pending);
+      return pending;
+    },
+    clear: () => {
+      AI_CALL_DEBUG_HISTORY.length = 0;
+      console.log('🧹 AI debug history cleared');
+    },
+  };
+  
+  (window as any).diagnoseRight = diagnoseRightPanelFailure;
+  
+  (window as any).forceCompleteStuck = () => {
+    const activeRequests = Array.from(REQUEST_TRACKER.activeRequests.entries());
+    let completed = 0;
+    
+    activeRequests.forEach(([id, req]) => {
+      if (req.status === 'pending' && Date.now() - req.startTime > 5000) {
+        console.log(`Force completing stuck request: ${req.panel} - ${req.model}`);
+        REQUEST_TRACKER.completeRequest(id, false, 0, 'Force completed - was stuck');
+        completed++;
+      }
+    });
+    
+    console.log(`✅ Force completed ${completed} stuck requests`);
+  };
+}
+
 // Retry Status Component
 const RetryStatusDisplay: React.FC<{
   isRetrying: boolean;
@@ -129,6 +406,16 @@ export default function useSSE(
   isComparisonMode = false,
 ): UseSSEReturn {
   
+  // Initial logging
+  console.log(`[useSSE INITIAL] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
+    hasSubmission: !!submission,
+    submissionKeys: submission ? Object.keys(submission) : [],
+    model: submission?.conversation?.model,
+    endpoint: submission?.conversation?.endpoint,
+    isAddedRequest,
+    timestamp: Date.now()
+  });
+  
   // Auto-detect comparison mode if not explicitly passed
   const detectedComparisonMode = isComparisonMode || 
     (typeof document !== 'undefined' && document.querySelectorAll('[data-panel]').length > 1);
@@ -146,6 +433,16 @@ export default function useSSE(
   const deltaAccumulator = useRef<{[connectionId: string]: string}>({});
   const messageStartTime = useRef<{[connectionId: string]: number}>({});
   const deltaCounter = useRef<{[connectionId: string]: number}>({});
+  
+  // Log submission changes
+  useEffect(() => {
+    console.log(`[useSSE SUBMISSION CHANGE] Panel ${isAddedRequest ? 'RIGHT' : 'LEFT'}`, {
+      hasSubmission: !!submission,
+      model: submission?.conversation?.model,
+      isEmpty: !submission || Object.keys(submission).length === 0,
+      timestamp: Date.now()
+    });
+  }, [submission, isAddedRequest]);
   
   // Log cache state changes
   const logCacheState = (context: string) => {
@@ -342,6 +639,36 @@ export default function useSSE(
       userMessage: userMessage?.text?.substring(0, 50) + '...'
     });
     
+    // Create debug info for this connection
+    const debugInfo: AICallDebugInfo = {
+      requestId: currentRequestId.current || newConnectionId,
+      panel: isAddedRequest ? 'RIGHT' : 'LEFT',
+      model: payload?.model || 'unknown',
+      endpoint: payload?.endpoint || 'unknown',
+      timestamp: Date.now(),
+      payload: payload,
+      sseEvents: [],
+    };
+    
+    const addSSEEvent = (type: string, data: any) => {
+      debugInfo.sseEvents.push({
+        type,
+        data,
+        timestamp: Date.now(),
+      });
+    };
+    
+    // Perform preflight check
+    if (payload?.model && attempt === 0) {
+      performPreflightCheck(payloadData.server, payload, token, payload.model)
+        .then(result => {
+          debugInfo.response = result;
+          if (!result.success) {
+            console.error(`❌ [PREFLIGHT FAILED] ${payload.model}:`, result);
+          }
+        });
+    }
+    
     // DeFacts-specific debugging
     if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
       console.log(`🔍 [DeFacts DEBUG START]`, {
@@ -354,26 +681,6 @@ export default function useSSE(
           'Authorization': 'Bearer [REDACTED]'
         },
         timestamp: new Date().toISOString()
-      });
-      
-      // Test the endpoint with a regular fetch
-      fetch(payloadData.server, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      })
-      .then(response => {
-        console.log(`🔍 [DeFacts TEST RESPONSE]:`, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: Object.fromEntries(response.headers.entries())
-        });
-      })
-      .catch(error => {
-        console.error(`🔍 [DeFacts TEST ERROR]:`, error);
       });
     }
     
@@ -402,6 +709,9 @@ export default function useSSE(
       });
     } catch (error) {
       console.error('❌ [useSSE] Error creating SSE instance:', error);
+      debugInfo.error = error;
+      debugInfo.duration = Date.now() - debugInfo.timestamp;
+      debugAICall(debugInfo);
       handleRetry('SSE creation failed', attempt, payloadData, payload, userMessage);
       throw error;
     }
@@ -423,6 +733,7 @@ export default function useSSE(
       }
       
       console.warn('⏰ [useSSE] Connection timeout reached');
+      addSSEEvent('timeout', { readyState: sse.readyState });
       if (sse.readyState === 0 || sse.readyState === 1) {
         try {
           sse.close();
@@ -435,6 +746,7 @@ export default function useSSE(
 
     // Set up SSE event listeners
     sse.addEventListener('open', () => {
+      addSSEEvent('open', { readyState: sse.readyState });
       debugComparison('SSE_CONNECTION_OPEN', {
         isAddedRequest,
         runIndex,
@@ -455,6 +767,23 @@ export default function useSSE(
         console.log(`[useSSE] Panel ${panelId.current} was cancelled, ignoring error`);
         return;
       }
+      
+      addSSEEvent('error', {
+        responseCode: e.responseCode,
+        statusCode: e.statusCode,
+        data: e.data,
+        readyState: sse.readyState,
+      });
+      
+      // Complete the debug info on error
+      debugInfo.error = {
+        responseCode: e.responseCode || e.statusCode || e.status,
+        data: e.data,
+        readyState: sse.readyState,
+        hasReceivedData: hasReceivedData,
+      };
+      debugInfo.duration = Date.now() - debugInfo.timestamp;
+      debugAICall(debugInfo);
       
       // Enhanced error debug for DeFacts
       if (payload?.model === 'DeFacts') {
@@ -553,6 +882,7 @@ export default function useSSE(
       }
       
       hasReceivedData = true;
+      addSSEEvent('attachment', { dataLength: e.data?.length || 0 });
       debugComparison('SSE_ATTACHMENT', {
         isAddedRequest,
         runIndex,
@@ -575,6 +905,10 @@ export default function useSSE(
       }
       
       hasReceivedData = true;
+      addSSEEvent('message', { 
+        dataLength: e.data?.length,
+        dataPreview: e.data?.substring(0, 100),
+      });
       
       // Enhanced message debug for DeFacts
       if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
@@ -699,6 +1033,7 @@ export default function useSSE(
     });
 
     sse.addEventListener('cancel', async () => {
+      addSSEEvent('cancel', {});
       debugComparison('SSE_CANCEL_EVENT', {
         isAddedRequest,
         runIndex,
@@ -762,6 +1097,20 @@ export default function useSSE(
     
     try {
       sse.stream();
+      console.log(`[SSE DEBUG] Stream started for ${panelId.current}`, {
+        readyState: sse.readyState,
+        url: payloadData.server,
+        model: payload?.model
+      });
+      
+      // Check readyState after 1 second
+      setTimeout(() => {
+        console.log(`[SSE DEBUG] ReadyState after 1s for ${panelId.current}:`, {
+          readyState: currentSSERef.current?.readyState,
+          model: payload?.model,
+          isActive: isPanelActive.current
+        });
+      }, 1000);
     } catch (error) {
       console.error('❌ [useSSE] Error starting stream:', error);
       handleRetry('Stream start failed', attempt, payloadData, payload, userMessage);
@@ -775,6 +1124,15 @@ export default function useSSE(
       const modelNeedsFix = payload?.model === 'DeFacts' || 
                            payload?.model === 'DeNews' || 
                            payload?.model === 'DeResearch';
+      
+      // Complete the debug info
+      debugInfo.duration = Date.now() - debugInfo.timestamp;
+      debugInfo.response = {
+        final: true,
+        hasText: !!(data.responseMessage?.text),
+        responseLength: data.responseMessage?.text?.length || 0,
+      };
+      debugAICall(debugInfo);
       
       if (modelNeedsFix) {
         const accumulatedText = deltaAccumulator.current[currentConnectionId] || '';
@@ -1222,8 +1580,16 @@ export default function useSSE(
   // Effect for handling submissions
   useEffect(() => {
     if (submission == null || Object.keys(submission).length === 0) {
+      console.log(`[useSSE EFFECT] No submission for panel ${panelId.current}`);
       return;
     }
+
+    console.log(`[useSSE EFFECT] Processing submission for panel ${panelId.current}:`, {
+      isAddedRequest,
+      model: submission?.conversation?.model,
+      endpoint: submission?.conversation?.endpoint,
+      hasUserMessage: !!submission?.userMessage
+    });
 
     const { userMessage } = submission;
     if (!userMessage) {
@@ -1343,6 +1709,23 @@ export default function useSSE(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submission]);
 
+  // Log mount/unmount lifecycle
+  useEffect(() => {
+    console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel`, {
+      mounted: true,
+      submission: !!submission,
+      model: submission?.conversation?.model,
+      timestamp: Date.now()
+    });
+    
+    return () => {
+      console.log(`[useSSE LIFECYCLE] ${isAddedRequest ? 'RIGHT' : 'LEFT'} panel`, {
+        unmounted: true,
+        timestamp: Date.now()
+      });
+    };
+  }, []);
+
   return {
     isRetrying,
     retryCount,
@@ -1354,3 +1737,22 @@ export default function useSSE(
     }),
   };
 }
+
+// Log debug commands on load
+console.log(`
+🔍 AI Debugging Commands:
+- AI_DEBUG.showHistory()     // Show all AI calls
+- AI_DEBUG.showRequest('id') // Show specific request details
+- AI_DEBUG.showFailures()    // Show only failed calls
+- AI_DEBUG.showPending()     // Show active/pending calls
+- AI_DEBUG.clear()           // Clear history
+
+🔧 Request Tracker Commands:
+- REQUEST_TRACKER.showCurrentState()
+- REQUEST_TRACKER.showSummary()
+- window.debugDeFacts()
+
+🔍 Diagnostic Commands:
+- diagnoseRight()        // Diagnose RIGHT panel failures
+- forceCompleteStuck()   // Force complete stuck requests
+`);
