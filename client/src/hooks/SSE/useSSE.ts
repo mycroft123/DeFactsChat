@@ -910,6 +910,48 @@ export default function useSSE(
         dataPreview: e.data?.substring(0, 100),
       });
       
+      // CAPTURE RAW CHATGPT RESPONSES
+      if (payload?.model === 'gpt-4o' || payload?.model?.includes('gpt')) {
+        // Store EVERYTHING
+        if (!window.CHATGPT_RAW_STREAM) {
+          window.CHATGPT_RAW_STREAM = [];
+        }
+        
+        const rawEntry = {
+          timestamp: Date.now(),
+          connectionId: connectionId.current,
+          model: payload.model,
+          raw: e.data,
+          length: e.data?.length || 0,
+          type: e.type,
+          origin: e.origin,
+          lastEventId: e.lastEventId,
+        };
+        
+        window.CHATGPT_RAW_STREAM.push(rawEntry);
+        
+        // Log immediately for real-time debugging
+        console.log('🤖 [CHATGPT RAW]:', {
+          ...rawEntry,
+          preview: e.data?.substring(0, 200),
+        });
+        
+        // Keep only last 500 messages to avoid memory issues
+        if (window.CHATGPT_RAW_STREAM.length > 500) {
+          window.CHATGPT_RAW_STREAM = window.CHATGPT_RAW_STREAM.slice(-500);
+        }
+      }
+      
+      // Real-time monitoring
+      if (window.CHATGPT_MONITOR_ENABLED && (payload?.model === 'gpt-4o' || payload?.model?.includes('gpt'))) {
+        console.log(`🤖 [GPT LIVE ${new Date().toLocaleTimeString()}]:`, {
+          dataLength: e.data?.length,
+          preview: e.data?.substring(0, 150),
+          hasData: e.data?.startsWith('data:'),
+          isDone: e.data?.includes('[DONE]'),
+        });
+      }
+      
       // Enhanced message debug for DeFacts
       if (payload?.model === 'DeFacts' || payload?.model?.toLowerCase().includes('defacts')) {
         console.log(`🔍 [DeFacts RAW MESSAGE]:`, {
@@ -1738,6 +1780,179 @@ export default function useSSE(
   };
 }
 
+// ChatGPT Stream Analysis Functions
+if (typeof window !== 'undefined') {
+  // Initialize storage
+  window.CHATGPT_RAW_STREAM = window.CHATGPT_RAW_STREAM || [];
+  
+  // Analysis function for ChatGPT responses
+  window.analyzeChatGPTStream = (connectionId?: string) => {
+    if (!window.CHATGPT_RAW_STREAM || window.CHATGPT_RAW_STREAM.length === 0) {
+      console.log('No ChatGPT stream data captured');
+      return;
+    }
+    
+    let messages = window.CHATGPT_RAW_STREAM;
+    
+    // Filter by connection ID if provided
+    if (connectionId) {
+      messages = messages.filter(m => m.connectionId.includes(connectionId));
+    }
+    
+    console.log(`\n🤖 CHATGPT STREAM ANALYSIS (${messages.length} messages)`);
+    console.log('=====================================');
+    
+    // Group by connection
+    const connections: Record<string, any[]> = {};
+    messages.forEach(msg => {
+      if (!connections[msg.connectionId]) {
+        connections[msg.connectionId] = [];
+      }
+      connections[msg.connectionId].push(msg);
+    });
+    
+    Object.entries(connections).forEach(([connId, msgs]) => {
+      console.log(`\n📡 Connection: ${connId}`);
+      console.log(`Messages: ${msgs.length}`);
+      
+      // Analyze message types
+      const messageTypes = {
+        empty: 0,
+        done: 0,
+        data: 0,
+        error: 0,
+        delta: 0,
+        final: 0,
+        other: 0,
+      };
+      
+      let totalContent = '';
+      let deltaCount = 0;
+      
+      msgs.forEach((msg, index) => {
+        // Categorize message
+        if (!msg.raw || msg.raw.trim() === '') {
+          messageTypes.empty++;
+        } else if (msg.raw.includes('[DONE]')) {
+          messageTypes.done++;
+        } else if (msg.raw.includes('error')) {
+          messageTypes.error++;
+        } else if (msg.raw.startsWith('data:')) {
+          messageTypes.data++;
+          
+          // Try to parse the data
+          try {
+            const jsonStr = msg.raw.substring(5).trim();
+            if (jsonStr && jsonStr !== '[DONE]') {
+              const parsed = JSON.parse(jsonStr);
+              
+              // Look for delta content
+              if (parsed.choices?.[0]?.delta?.content) {
+                deltaCount++;
+                totalContent += parsed.choices[0].delta.content;
+              }
+              
+              // Check for final message
+              if (parsed.choices?.[0]?.finish_reason) {
+                messageTypes.final++;
+              }
+            }
+          } catch (e) {
+            // Not JSON, log it
+            if (index < 5 || index >= msgs.length - 5) {
+              console.log(`Non-JSON message ${index}:`, msg.raw.substring(0, 100));
+            }
+          }
+        } else {
+          messageTypes.other++;
+        }
+      });
+      
+      console.log('\nMessage Types:', messageTypes);
+      console.log(`Delta messages: ${deltaCount}`);
+      console.log(`Total content length: ${totalContent.length} chars`);
+      
+      // Show first and last few messages
+      console.log('\nFirst 3 messages:');
+      msgs.slice(0, 3).forEach((msg, i) => {
+        console.log(`  [${i}]:`, msg.raw?.substring(0, 100) + '...');
+      });
+      
+      console.log('\nLast 3 messages:');
+      msgs.slice(-3).forEach((msg, i) => {
+        console.log(`  [${msgs.length - 3 + i}]:`, msg.raw?.substring(0, 100) + '...');
+      });
+      
+      // Show accumulated content
+      if (totalContent) {
+        console.log('\n📝 Accumulated content:');
+        console.log('Length:', totalContent.length);
+        console.log('Preview:', totalContent.substring(0, 200) + '...');
+        console.log('End:', '...' + totalContent.substring(totalContent.length - 100));
+      }
+      
+      // Look for errors
+      const errorMessages = msgs.filter(m => m.raw?.includes('error'));
+      if (errorMessages.length > 0) {
+        console.log('\n❌ Error messages found:');
+        errorMessages.forEach(msg => {
+          console.log(msg.raw);
+        });
+      }
+    });
+  };
+
+  // Function to see the last ChatGPT failure
+  window.debugLastChatGPTFailure = () => {
+    // Get failed ChatGPT requests
+    const failedRequests = Array.from(REQUEST_TRACKER.completedRequests.values())
+      .filter(r => (r.model === 'gpt-4o' || r.model?.includes('gpt')) && r.status === 'failed')
+      .sort((a, b) => b.startTime - a.startTime);
+      
+    if (failedRequests.length === 0) {
+      console.log('No failed ChatGPT requests found');
+      return;
+    }
+    
+    const lastFailed = failedRequests[0];
+    console.log('❌ Last failed ChatGPT request:', {
+      questionNumber: lastFailed.questionNumber,
+      question: lastFailed.question,
+      duration: lastFailed.duration,
+      error: lastFailed.error,
+      responseLength: lastFailed.responseLength,
+    });
+    
+    // Find the connection for this request
+    const failureTime = lastFailed.startTime;
+    const relevantMessages = window.CHATGPT_RAW_STREAM?.filter(m => 
+      m.timestamp >= failureTime && 
+      m.timestamp <= failureTime + (lastFailed.duration || 30000)
+    ) || [];
+    
+    console.log(`\n📡 Found ${relevantMessages.length} messages during this request`);
+    
+    if (relevantMessages.length > 0) {
+      console.log('Analyzing stream for this failure...');
+      const connectionId = relevantMessages[0]?.connectionId;
+      if (connectionId) {
+        window.analyzeChatGPTStream(connectionId);
+      }
+    }
+  };
+
+  // Real-time monitoring for ChatGPT
+  window.monitorChatGPT = (enable = true) => {
+    if (enable) {
+      window.CHATGPT_MONITOR_ENABLED = true;
+      console.log('🔍 ChatGPT monitoring ENABLED - will log all messages in real-time');
+    } else {
+      window.CHATGPT_MONITOR_ENABLED = false;
+      console.log('🔍 ChatGPT monitoring DISABLED');
+    }
+  };
+}
+
 // Log debug commands on load
 console.log(`
 🔍 AI Debugging Commands:
@@ -1755,4 +1970,10 @@ console.log(`
 🔍 Diagnostic Commands:
 - diagnoseRight()        // Diagnose RIGHT panel failures
 - forceCompleteStuck()   // Force complete stuck requests
+
+🤖 ChatGPT Debugging Commands:
+- monitorChatGPT(true)         // Enable real-time logging
+- analyzeChatGPTStream()       // Analyze all captured messages
+- debugLastChatGPTFailure()    // Debug the last failure
+- window.CHATGPT_RAW_STREAM    // Access raw message array
 `);
