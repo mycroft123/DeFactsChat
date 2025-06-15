@@ -273,7 +273,7 @@ export default function useAddedHelpers({
     regenerate({ parentMessageId });
   };
 
-  const handleContinue = (e: React.MouseEvent<HTMLButtonButton>) => {
+  const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     continueGeneration();
     setSiblingIdx(0);
