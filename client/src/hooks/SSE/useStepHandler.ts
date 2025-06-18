@@ -264,6 +264,7 @@ export default function useStepHandler({
         isAddedRequest: (submission as any)._isAddedRequest,
         panelSuffix: 'REMOVED', // Show that we removed the suffix
       });
+      
 
       const messages = getMessages() || [];
       const { userMessage } = submission;
