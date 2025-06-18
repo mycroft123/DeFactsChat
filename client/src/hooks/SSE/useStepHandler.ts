@@ -236,14 +236,30 @@ export default function useStepHandler({
 
   return useCallback(
     ({ event, data }: TStepEvent, submission: EventSubmission) => {
-      // Determine panel type for logging only - don't use for messageId
+      // Determine panel type
       const isAddedRequest = (submission as any)._isAddedRequest || 
                             (submission as any).isAddedRequest ||
                             (submission.conversation as any)?._isAddedRequest ||
                             false;
       const panelType = isAddedRequest ? 'right' : 'left';
-      // CRITICAL FIX: Remove panel suffix to prevent cross-contamination
-      const panelSuffix = ''; // No more _left/_right suffixes!
+      
+      // CRITICAL FIX: Create truly unique messageIds per panel
+      const conversationId = submission.conversation?.conversationId || 'default';
+      const endpoint = submission.conversation?.endpoint || 'unknown';
+      const model = submission.conversation?.model || 'unknown';
+      
+      // Create a unique identifier for this panel's context
+      const panelContext = `${conversationId}-${endpoint}-${model}-${panelType}`;
+      
+      console.log('[STEP_HANDLER DEBUG - PANEL CONTEXT]', {
+        event,
+        panelType,
+        conversationId,
+        endpoint,
+        model,
+        panelContext,
+        timestamp: new Date().toISOString()
+      });
       
       // Optional debug logging
       if (debug) {
@@ -253,18 +269,6 @@ export default function useStepHandler({
           console.warn('[STEP_HANDLER] Debug logging failed:', e);
         }
       }
-
-      console.log('[STEP_HANDLER DEBUG - EVENT]', {
-        event,
-        dataType: data?.constructor?.name,
-        submissionModel: submission.conversation?.model,
-        submissionEndpoint: submission.conversation?.endpoint,
-        timestamp: new Date().toISOString(),
-        panelType,
-        isAddedRequest: (submission as any)._isAddedRequest,
-        panelSuffix: 'REMOVED', // Show that we removed the suffix
-      });
-      
 
       const messages = getMessages() || [];
       const { userMessage } = submission;
@@ -282,18 +286,19 @@ export default function useStepHandler({
 
       if (event === 'on_run_step') {
         const runStep = data as Agents.RunStep;
-        // CRITICAL FIX: Use base messageId without panel suffix
-        const responseMessageId = runStep.runId ?? '';
+        // CRITICAL FIX: Create unique messageId per panel
+        const baseRunId = runStep.runId ?? '';
+        const responseMessageId = `${baseRunId}-${panelContext}`;
         
         console.log('[STEP_HANDLER DEBUG - RUN STEP]', {
           runStepId: runStep.id,
-          runId: runStep.runId,
+          baseRunId,
           responseMessageId,
           stepType: runStep.stepDetails.type,
           index: runStep.index,
           messageMapSize: messageMap.current.size,
           panelType,
-          suffixRemoved: true,
+          uniqueIdCreated: true,
         });
 
         if (!runStep.runId) {
@@ -318,7 +323,7 @@ export default function useStepHandler({
             ...responseMessage,
             parentMessageId: userMessage.messageId,
             conversationId: userMessage.conversationId,
-            messageId: responseMessageId, // Using base ID without suffix
+            messageId: responseMessageId, // Unique per panel
             content: [],
           };
 
@@ -354,7 +359,7 @@ export default function useStepHandler({
             responseMessageId,
             parentMessageId: userMessage.messageId,
             panelType,
-            baseIdUsed: true,
+            uniqueId: true,
           });
         }
 
@@ -404,15 +409,16 @@ export default function useStepHandler({
         }
       } else if (event === 'on_agent_update') {
         const { agent_update } = data as Agents.AgentUpdate;
-        // CRITICAL FIX: Use base messageId without panel suffix
-        const responseMessageId = agent_update.runId || '';
+        // CRITICAL FIX: Create unique messageId per panel
+        const baseRunId = agent_update.runId || '';
+        const responseMessageId = `${baseRunId}-${panelContext}`;
         
         console.log('[STEP_HANDLER DEBUG - AGENT UPDATE]', {
-          runId: agent_update.runId,
+          baseRunId,
           responseMessageId,
           index: agent_update.index,
           panelType,
-          suffixRemoved: true,
+          uniqueIdCreated: true,
         });
 
         if (!agent_update.runId) {
@@ -475,8 +481,9 @@ export default function useStepHandler({
         });
         
         const runStep = stepMap.current.get(messageDelta.id);
-        // CRITICAL FIX: Use base messageId without panel suffix
-        const responseMessageId = runStep?.runId ?? '';
+        // CRITICAL FIX: Create unique messageId per panel
+        const baseRunId = runStep?.runId ?? '';
+        const responseMessageId = `${baseRunId}-${panelContext}`;
 
         if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for message delta event', {
@@ -516,6 +523,7 @@ export default function useStepHandler({
             textLength: 'text' in (contentPart || {}) ? (contentPart.text as string)?.length : 0,
             textPreview: 'text' in (contentPart || {}) ? (contentPart.text as string)?.substring(0, 50) : '',
             panelType,
+            uniqueId: true,
           });
 
           const beforeUpdateText = response.text || '';
@@ -555,7 +563,7 @@ export default function useStepHandler({
             totalTextAccumulated: totalTextLengthRef.current,
             contentChanged: JSON.stringify(response.content) !== JSON.stringify(updatedResponse.content),
             panelType,
-            baseIdUsed: true,
+            uniqueId: true,
           });
 
           messageMap.current.set(responseMessageId, updatedResponse);
@@ -607,14 +615,15 @@ export default function useStepHandler({
       } else if (event === 'on_reasoning_delta') {
         const reasoningDelta = data as Agents.ReasoningDeltaEvent;
         const runStep = stepMap.current.get(reasoningDelta.id);
-        // CRITICAL FIX: Use base messageId without panel suffix
-        const responseMessageId = runStep?.runId ?? '';
+        // CRITICAL FIX: Create unique messageId per panel
+        const baseRunId = runStep?.runId ?? '';
+        const responseMessageId = `${baseRunId}-${panelContext}`;
 
         console.log('[STEP_HANDLER DEBUG - REASONING DELTA]', {
           reasoningDeltaId: reasoningDelta.id,
           hasContent: !!reasoningDelta.delta.content,
           panelType,
-          suffixRemoved: true,
+          uniqueIdCreated: true,
         });
 
         if (!runStep || !runStep?.runId) {
@@ -670,14 +679,15 @@ export default function useStepHandler({
       } else if (event === 'on_run_step_delta') {
         const runStepDelta = data as Agents.RunStepDeltaEvent;
         const runStep = stepMap.current.get(runStepDelta.id);
-        // CRITICAL FIX: Use base messageId without panel suffix
-        const responseMessageId = runStep?.runId ?? '';
+        // CRITICAL FIX: Create unique messageId per panel
+        const baseRunId = runStep?.runId ?? '';
+        const responseMessageId = `${baseRunId}-${panelContext}`;
 
         console.log('[STEP_HANDLER DEBUG - RUN STEP DELTA]', {
           runStepDeltaId: runStepDelta.id,
           deltaType: runStepDelta.delta.type,
           panelType,
-          suffixRemoved: true,
+          uniqueIdCreated: true,
         });
 
         if (!runStep || !runStep?.runId) {
@@ -756,12 +766,13 @@ export default function useStepHandler({
           stepId,
           toolCallName: result.tool_call?.name,
           panelType,
-          suffixRemoved: true,
+          uniqueIdCreated: true,
         });
 
         const runStep = stepMap.current.get(stepId);
-        // CRITICAL FIX: Use base messageId without panel suffix
-        const responseMessageId = runStep?.runId ?? '';
+        // CRITICAL FIX: Create unique messageId per panel
+        const baseRunId = runStep?.runId ?? '';
+        const responseMessageId = `${baseRunId}-${panelContext}`;
 
         if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for completed tool call event');
@@ -823,7 +834,7 @@ export default function useStepHandler({
           totalDeltas: deltaCountRef.current,
           totalTextLength: totalTextLengthRef.current,
           panelType,
-          panelSuffixRemoved: true,
+          uniqueIdSystemUsed: true,
         });
         
         // Optional debug logging for cleanup
