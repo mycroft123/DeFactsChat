@@ -306,7 +306,7 @@ export default function useSSE(
       try {
         errorHandler({ 
           data: errorData, 
-          submission: { ...submission, userMessage } as EventSubmission 
+          submission: { ...submission, userMessage, _isAddedRequest: isAddedRequest } as EventSubmission 
         });
       } catch (error) {
         console.error('❌ [useSSE] Error in error handler:', error);
@@ -523,7 +523,7 @@ export default function useSSE(
       }
 
       try {
-        errorHandler({ data, submission: { ...submission, userMessage } as EventSubmission });
+        errorHandler({ data, submission: { ...submission, userMessage, _isAddedRequest: isAddedRequest } as EventSubmission });
       } catch (handlerError) {
         console.error('❌ [useSSE] Error in error handler:', handlerError);
         setIsSubmitting(false);
@@ -551,7 +551,7 @@ export default function useSSE(
       
       try {
         const data = JSON.parse(e.data);
-        attachmentHandler({ data, submission: submission as EventSubmission });
+        attachmentHandler({ data, submission: { ...submission, _isAddedRequest: isAddedRequest } as EventSubmission });
       } catch (error) {
         console.error('❌ [useSSE] Error parsing attachment:', error);
       }
@@ -715,7 +715,7 @@ export default function useSSE(
             userMessage.conversationId ??
             submission?.conversation?.conversationId ??
             '',
-          submission as EventSubmission,
+          { ...submission, _isAddedRequest: isAddedRequest } as EventSubmission,
           latestMessages,
         );
       } catch (error) {
@@ -871,7 +871,7 @@ export default function useSSE(
       
       setTimeout(() => {
         if (isPanelActive.current[thisPanel]) {
-          finalHandler(data, { ...submission, plugins } as EventSubmission);
+          finalHandler(data, { ...submission, plugins, _isAddedRequest: isAddedRequest } as EventSubmission);
           (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
         } else {
           console.log(`[useSSE] Panel ${thisPanel} became inactive, skipping final handler`);
@@ -906,7 +906,7 @@ export default function useSSE(
         overrideParentMessageId: userMessage.overrideParentMessageId,
       };
 
-      createdHandler(data, { ...submission, userMessage: updatedUserMessage } as EventSubmission);
+      createdHandler(data, { ...submission, userMessage: updatedUserMessage, _isAddedRequest: isAddedRequest } as EventSubmission);
     }
 
     function handleEventMessage(data: any) {
@@ -937,13 +937,13 @@ export default function useSSE(
         }
       }
       
-      stepHandler(data, { ...submission, userMessage } as EventSubmission);
+      stepHandler(data, { ...submission, userMessage, _isAddedRequest: isAddedRequest } as EventSubmission);
     }
 
     function handleSyncMessage(data: any) {
       const runId = v4();
       setActiveRunId(runId);
-      syncHandler(data, { ...submission, userMessage } as EventSubmission);
+      syncHandler(data, { ...submission, userMessage, _isAddedRequest: isAddedRequest } as EventSubmission);
     }
 
     function handleContentMessage(data: any, textIndex: number | null) {
@@ -952,7 +952,7 @@ export default function useSSE(
         textIndex = index;
       }
 
-      contentHandler({ data, submission: submission as EventSubmission });
+      contentHandler({ data, submission: { ...submission, _isAddedRequest: isAddedRequest } as EventSubmission });
     }
 
     function handleStandardMessage(data: any) {
@@ -966,7 +966,7 @@ export default function useSSE(
       };
 
       if (data.message != null) {
-        messageHandler(text, { ...submission, plugin, plugins, userMessage, initialResponse });
+        messageHandler(text, { ...submission, plugin, plugins, userMessage, initialResponse, _isAddedRequest: isAddedRequest });
       }
     }
 

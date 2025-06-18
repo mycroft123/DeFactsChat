@@ -237,8 +237,13 @@ export default function useStepHandler({
   return useCallback(
     ({ event, data }: TStepEvent, submission: EventSubmission) => {
       // Determine panel type - check for _isAddedRequest in submission
-      const panelType = (submission as any)._isAddedRequest ? 'right' : 'left';
-      const panelSuffix = (submission as any)._isAddedRequest ? '_right' : '_left';
+      // Also check if it might be in the submission's conversation or other properties
+      const isAddedRequest = (submission as any)._isAddedRequest || 
+                            (submission as any).isAddedRequest ||
+                            (submission.conversation as any)?._isAddedRequest ||
+                            false;
+      const panelType = isAddedRequest ? 'right' : 'left';
+      const panelSuffix = isAddedRequest ? '_right' : '_left';
       
       // Optional debug logging
       if (debug) {
@@ -261,7 +266,11 @@ export default function useStepHandler({
 
       const messages = getMessages() || [];
       const { userMessage } = submission;
-      setIsSubmitting(true);
+      
+      // Only set submitting on initial events, not on every delta
+      if (event === 'on_run_step' || event === 'on_agent_update') {
+        setIsSubmitting(true);
+      }
 
       const currentTime = Date.now();
       if (currentTime - lastAnnouncementTimeRef.current > MESSAGE_UPDATE_INTERVAL) {
