@@ -222,66 +222,79 @@ function ChatView({ index = 0 }: { index?: number }) {
   }, [chatHelpers, addedChatHelpers]);
 
   // Create panel-specific chat helpers with submission tracking
-  const createPanelHelpers = useCallback((baseHelpers: any, isAdded: boolean) => {
-    // Track last submission ID to prevent duplicates
-    let lastSubmissionId: string | null = null;
-    
-    return {
-      ...baseHelpers,
-      setIsSubmitting: (value: boolean) => {
-        const currentSubmissionId = isAdded ? 
-          getSubmissionId(addedSubmission, true) : 
-          getSubmissionId(rootSubmission, false);
+// Modified createPanelHelpers function to fix the infinite loop
+const createPanelHelpers = useCallback((baseHelpers: any, isAdded: boolean) => {
+  // Track last submission ID to prevent duplicates
+  let lastSubmissionId: string | null = null;
+  let isCurrentlySubmitting = false;
+  
+  return {
+    ...baseHelpers,
+    setIsSubmitting: (value: boolean) => {
+      const currentSubmissionId = isAdded ? 
+        getSubmissionId(addedSubmission, true) : 
+        getSubmissionId(rootSubmission, false);
 
-        console.log(`🎯 [PANEL ${isAdded ? 'RIGHT' : 'LEFT'}] setIsSubmitting(${value})`, {
-          submissionId: currentSubmissionId,
-          lastSubmissionId,
-          activeCount: activeSubmissions.current.size
-        });
+      console.log(`🎯 [PANEL ${isAdded ? 'RIGHT' : 'LEFT'}] setIsSubmitting(${value})`, {
+        submissionId: currentSubmissionId,
+        lastSubmissionId,
+        isCurrentlySubmitting,
+        activeCount: activeSubmissions.current.size
+      });
 
-        if (value && currentSubmissionId) {
-          // Only track if it's a new submission
-          if (currentSubmissionId !== lastSubmissionId) {
-            lastSubmissionId = currentSubmissionId;
-            trackSubmission(currentSubmissionId, true);
-          }
-          baseHelpers.setIsSubmitting(true);
-        } else if (!value) {
-          // Completing a submission
-          if (lastSubmissionId) {
-            trackSubmission(lastSubmissionId, false);
-            lastSubmissionId = null;
-          }
+      if (value && currentSubmissionId) {
+        // FIX: Prevent repeated calls for the same submission
+        if (currentSubmissionId === lastSubmissionId && isCurrentlySubmitting) {
+          console.log(`⚠️ [PANEL ${isAdded ? 'RIGHT' : 'LEFT'}] Ignoring duplicate setIsSubmitting(true) for same submission`);
+          return; // Don't call baseHelpers.setIsSubmitting again
+        }
+        
+        // Only track if it's a new submission
+        if (currentSubmissionId !== lastSubmissionId) {
+          lastSubmissionId = currentSubmissionId;
+          trackSubmission(currentSubmissionId, true);
+        }
+        
+        isCurrentlySubmitting = true;
+        baseHelpers.setIsSubmitting(true);
+      } else if (!value) {
+        // Completing a submission
+        if (lastSubmissionId) {
+          trackSubmission(lastSubmissionId, false);
+          lastSubmissionId = null;
+        }
+        
+        isCurrentlySubmitting = false;
 
-          // In comparison mode, check if all submissions are done
-          if (isComparisonMode) {
-            // Small delay to ensure both panels have time to update
-            setTimeout(() => {
-              console.log('🔍 [SUBMISSION CHECK] Checking if all panels done', {
-                activeCount: activeSubmissions.current.size,
-                activeSubmissions: Array.from(activeSubmissions.current),
-                isComparisonMode
+        // In comparison mode, check if all submissions are done
+        if (isComparisonMode) {
+          // Small delay to ensure both panels have time to update
+          setTimeout(() => {
+            console.log('🔍 [SUBMISSION CHECK] Checking if all panels done', {
+              activeCount: activeSubmissions.current.size,
+              activeSubmissions: Array.from(activeSubmissions.current),
+              isComparisonMode
+            });
+            
+            if (activeSubmissions.current.size === 0) {
+              console.log('✅ [SUBMISSION COMPLETE] All panels done, enabling submit button');
+              baseHelpers.setIsSubmitting(false);
+            } else {
+              console.log('⏳ [SUBMISSION PARTIAL] Still waiting for other panel(s)', {
+                remaining: activeSubmissions.current.size,
+                active: Array.from(activeSubmissions.current)
               });
-              
-              if (activeSubmissions.current.size === 0) {
-                console.log('✅ [SUBMISSION COMPLETE] All panels done, enabling submit button');
-                baseHelpers.setIsSubmitting(false);
-              } else {
-                console.log('⏳ [SUBMISSION PARTIAL] Still waiting for other panel(s)', {
-                  remaining: activeSubmissions.current.size,
-                  active: Array.from(activeSubmissions.current)
-                });
-              }
-            }, 100);
-          } else {
-            // Single mode - immediately set to false
-            console.log('📝 [SINGLE MODE] Setting isSubmitting to false immediately');
-            baseHelpers.setIsSubmitting(false);
-          }
+            }
+          }, 100);
+        } else {
+          // Single mode - immediately set to false
+          console.log('📝 [SINGLE MODE] Setting isSubmitting to false immediately');
+          baseHelpers.setIsSubmitting(false);
         }
       }
-    };
-  }, [rootSubmission, addedSubmission, isComparisonMode, trackSubmission]);
+    }
+  };
+}, [rootSubmission, addedSubmission, isComparisonMode, trackSubmission]);
 
   // Create the panel-specific helpers
   const leftChatHelpers = useMemo(() => createPanelHelpers(chatHelpers, false), [chatHelpers, createPanelHelpers]);

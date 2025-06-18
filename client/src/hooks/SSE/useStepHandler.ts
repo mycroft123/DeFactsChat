@@ -237,7 +237,8 @@ export default function useStepHandler({
   return useCallback(
     ({ event, data }: TStepEvent, submission: EventSubmission) => {
       // Determine panel type - check for _isAddedRequest in submission
-      const panelType = (submission as any)._isAddedRequest ? 'right' : 'single';
+      const panelType = (submission as any)._isAddedRequest ? 'right' : 'left';
+      const panelSuffix = (submission as any)._isAddedRequest ? '_right' : '_left';
       
       // Optional debug logging
       if (debug) {
@@ -270,22 +271,24 @@ export default function useStepHandler({
 
       if (event === 'on_run_step') {
         const runStep = data as Agents.RunStep;
-        const responseMessageId = runStep.runId ?? '';
+        // FIX: Make message ID panel-specific
+        const responseMessageId = (runStep.runId ?? '') + panelSuffix;
         
         console.log('[STEP_HANDLER DEBUG - RUN STEP]', {
           runStepId: runStep.id,
           runId: runStep.runId,
+          responseMessageId,
           stepType: runStep.stepDetails.type,
           index: runStep.index,
           messageMapSize: messageMap.current.size,
           panelType,
         });
 
-        if (!responseMessageId) {
-          console.warn('[STEP_HANDLER WARNING] No message id found in run step event');
+        if (!runStep.runId) {
+          console.warn('[STEP_HANDLER WARNING] No runId found in run step event');
           if (debug) {
             try {
-              debug.logError(new Error('No message id found in run step event'), 'RUN_STEP_NO_ID', panelType);
+              debug.logError(new Error('No runId found in run step event'), 'RUN_STEP_NO_ID', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug error logging failed:', e);
             }
@@ -351,7 +354,7 @@ export default function useStepHandler({
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const updatedMessages = messages.map((msg) =>
-            msg.messageId === runStep.runId ? updatedResponse : msg,
+            msg.messageId === responseMessageId ? updatedResponse : msg,
           );
 
           // Optional debug logging
@@ -367,19 +370,21 @@ export default function useStepHandler({
         }
       } else if (event === 'on_agent_update') {
         const { agent_update } = data as Agents.AgentUpdate;
-        const responseMessageId = agent_update.runId || '';
+        // FIX: Make message ID panel-specific
+        const responseMessageId = (agent_update.runId || '') + panelSuffix;
         
         console.log('[STEP_HANDLER DEBUG - AGENT UPDATE]', {
           runId: agent_update.runId,
+          responseMessageId,
           index: agent_update.index,
           panelType,
         });
 
-        if (!responseMessageId) {
-          console.warn('[STEP_HANDLER WARNING] No message id found in agent update event');
+        if (!agent_update.runId) {
+          console.warn('[STEP_HANDLER WARNING] No runId found in agent update event');
           if (debug) {
             try {
-              debug.logError(new Error('No message id found in agent update event'), 'AGENT_UPDATE_NO_ID', panelType);
+              debug.logError(new Error('No runId found in agent update event'), 'AGENT_UPDATE_NO_ID', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug error logging failed:', e);
             }
@@ -424,9 +429,10 @@ export default function useStepHandler({
         });
         
         const runStep = stepMap.current.get(messageDelta.id);
-        const responseMessageId = runStep?.runId ?? '';
+        // FIX: Make message ID panel-specific
+        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
 
-        if (!runStep || !responseMessageId) {
+        if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for message delta event', {
             messageDeltaId: messageDelta.id,
             hasRunStep: !!runStep,
@@ -543,7 +549,8 @@ export default function useStepHandler({
       } else if (event === 'on_reasoning_delta') {
         const reasoningDelta = data as Agents.ReasoningDeltaEvent;
         const runStep = stepMap.current.get(reasoningDelta.id);
-        const responseMessageId = runStep?.runId ?? '';
+        // FIX: Make message ID panel-specific
+        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
 
         console.log('[STEP_HANDLER DEBUG - REASONING DELTA]', {
           reasoningDeltaId: reasoningDelta.id,
@@ -551,7 +558,7 @@ export default function useStepHandler({
           panelType,
         });
 
-        if (!runStep || !responseMessageId) {
+        if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for reasoning delta event');
           if (debug) {
             try {
@@ -593,7 +600,8 @@ export default function useStepHandler({
       } else if (event === 'on_run_step_delta') {
         const runStepDelta = data as Agents.RunStepDeltaEvent;
         const runStep = stepMap.current.get(runStepDelta.id);
-        const responseMessageId = runStep?.runId ?? '';
+        // FIX: Make message ID panel-specific
+        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
 
         console.log('[STEP_HANDLER DEBUG - RUN STEP DELTA]', {
           runStepDeltaId: runStepDelta.id,
@@ -601,7 +609,7 @@ export default function useStepHandler({
           panelType,
         });
 
-        if (!runStep || !responseMessageId) {
+        if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for run step delta event');
           if (debug) {
             try {
@@ -647,7 +655,7 @@ export default function useStepHandler({
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const updatedMessages = messages.map((msg) =>
-            msg.messageId === runStep.runId ? updatedResponse : msg,
+            msg.messageId === responseMessageId ? updatedResponse : msg,
           );
 
           // Optional debug logging
@@ -673,9 +681,10 @@ export default function useStepHandler({
         });
 
         const runStep = stepMap.current.get(stepId);
-        const responseMessageId = runStep?.runId ?? '';
+        // FIX: Make message ID panel-specific
+        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
 
-        if (!runStep || !responseMessageId) {
+        if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for completed tool call event');
           if (debug) {
             try {
@@ -704,7 +713,7 @@ export default function useStepHandler({
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const updatedMessages = messages.map((msg) =>
-            msg.messageId === runStep.runId ? updatedResponse : msg,
+            msg.messageId === responseMessageId ? updatedResponse : msg,
           );
 
           // Optional debug logging
