@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, memo } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useMessageProcess } from '~/hooks';
 import type { TMessageProps } from '~/common';
@@ -31,7 +31,7 @@ const MessageContainer = React.memo(
   },
 );
 
-export default function Message(props: TMessageProps) {
+function Message(props: TMessageProps) {
   const {
     showSibling,
     conversation,
@@ -92,3 +92,30 @@ export default function Message(props: TMessageProps) {
     </>
   );
 }
+
+export default memo(Message, (prevProps, nextProps) => {
+  // Custom comparison to prevent re-renders during streaming
+  if (prevProps.message?.messageId !== nextProps.message?.messageId) {
+    console.log('[MESSAGE_MEMO] Different messageId, re-rendering');
+    return false;
+  }
+  
+  if (prevProps.message?.text !== nextProps.message?.text) {
+    console.log('[MESSAGE_MEMO] Text changed, re-rendering');
+    return false;
+  }
+  
+  if (JSON.stringify(prevProps.message?.content) !== JSON.stringify(nextProps.message?.content)) {
+    console.log('[MESSAGE_MEMO] Content changed, re-rendering');
+    return false;
+  }
+  
+  if (prevProps.currentEditId !== nextProps.currentEditId) {
+    console.log('[MESSAGE_MEMO] Edit state changed, re-rendering');
+    return false;
+  }
+  
+  // For all other changes (like other messages in the array), don't re-render
+  console.log('[MESSAGE_MEMO] Preventing unnecessary re-render for', prevProps.message?.messageId);
+  return true;
+});
