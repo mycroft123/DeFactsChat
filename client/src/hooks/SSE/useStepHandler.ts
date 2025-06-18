@@ -236,14 +236,14 @@ export default function useStepHandler({
 
   return useCallback(
     ({ event, data }: TStepEvent, submission: EventSubmission) => {
-      // Determine panel type - check for _isAddedRequest in submission
-      // Also check if it might be in the submission's conversation or other properties
+      // Determine panel type for logging only - don't use for messageId
       const isAddedRequest = (submission as any)._isAddedRequest || 
                             (submission as any).isAddedRequest ||
                             (submission.conversation as any)?._isAddedRequest ||
                             false;
       const panelType = isAddedRequest ? 'right' : 'left';
-      const panelSuffix = isAddedRequest ? '_right' : '_left';
+      // CRITICAL FIX: Remove panel suffix to prevent cross-contamination
+      const panelSuffix = ''; // No more _left/_right suffixes!
       
       // Optional debug logging
       if (debug) {
@@ -262,6 +262,7 @@ export default function useStepHandler({
         timestamp: new Date().toISOString(),
         panelType,
         isAddedRequest: (submission as any)._isAddedRequest,
+        panelSuffix: 'REMOVED', // Show that we removed the suffix
       });
 
       const messages = getMessages() || [];
@@ -280,8 +281,8 @@ export default function useStepHandler({
 
       if (event === 'on_run_step') {
         const runStep = data as Agents.RunStep;
-        // FIX: Make message ID panel-specific
-        const responseMessageId = (runStep.runId ?? '') + panelSuffix;
+        // CRITICAL FIX: Use base messageId without panel suffix
+        const responseMessageId = runStep.runId ?? '';
         
         console.log('[STEP_HANDLER DEBUG - RUN STEP]', {
           runStepId: runStep.id,
@@ -291,6 +292,7 @@ export default function useStepHandler({
           index: runStep.index,
           messageMapSize: messageMap.current.size,
           panelType,
+          suffixRemoved: true,
         });
 
         if (!runStep.runId) {
@@ -315,15 +317,15 @@ export default function useStepHandler({
             ...responseMessage,
             parentMessageId: userMessage.messageId,
             conversationId: userMessage.conversationId,
-            messageId: responseMessageId,
+            messageId: responseMessageId, // Using base ID without suffix
             content: [],
           };
 
           messageMap.current.set(responseMessageId, response);
-          // Instead of replacing the last message, find and update the correct one
+          
+          // Find and update the correct message
           const messageIndex = messages.findIndex(msg => 
-            msg.messageId === responseMessageId || 
-            msg.messageId === responseMessage.messageId
+            msg.messageId === responseMessageId
           );
           
           let finalMessages;
@@ -351,6 +353,7 @@ export default function useStepHandler({
             responseMessageId,
             parentMessageId: userMessage.messageId,
             panelType,
+            baseIdUsed: true,
           });
         }
 
@@ -376,31 +379,39 @@ export default function useStepHandler({
           });
 
           messageMap.current.set(responseMessageId, updatedResponse);
-          const updatedMessages = messages.map((msg) =>
-            msg.messageId === responseMessageId ? updatedResponse : msg,
+          const currentMessages = getMessages() || [];
+          const messageIndex = currentMessages.findIndex(msg => 
+            msg.messageId === responseMessageId
           );
+          
+          if (messageIndex >= 0) {
+            const finalMessages = [...currentMessages];
+            finalMessages[messageIndex] = updatedResponse;
+            setMessages(finalMessages);
+          } else {
+            setMessages([...currentMessages, updatedResponse]);
+          }
 
           // Optional debug logging
           if (debug) {
             try {
-              debug.logMessages(updatedMessages, 'RUN_STEP_TOOL_CALLS', panelType);
+              debug.logMessages(currentMessages, 'RUN_STEP_TOOL_CALLS', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug message logging failed:', e);
             }
           }
-
-          setMessages(updatedMessages);
         }
       } else if (event === 'on_agent_update') {
         const { agent_update } = data as Agents.AgentUpdate;
-        // FIX: Make message ID panel-specific
-        const responseMessageId = (agent_update.runId || '') + panelSuffix;
+        // CRITICAL FIX: Use base messageId without panel suffix
+        const responseMessageId = agent_update.runId || '';
         
         console.log('[STEP_HANDLER DEBUG - AGENT UPDATE]', {
           runId: agent_update.runId,
           responseMessageId,
           index: agent_update.index,
           panelType,
+          suffixRemoved: true,
         });
 
         if (!agent_update.runId) {
@@ -421,32 +432,28 @@ export default function useStepHandler({
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
           
-          // Find and update the correct message instead of replacing the last one
+          // Find and update the correct message
           const messageIndex = currentMessages.findIndex(msg => 
             msg.messageId === responseMessageId
           );
           
-          let finalMessages;
           if (messageIndex >= 0) {
-            // Update existing message
-            finalMessages = [...currentMessages];
+            const finalMessages = [...currentMessages];
             finalMessages[messageIndex] = updatedResponse;
+            setMessages(finalMessages);
           } else {
-            // This shouldn't happen, but handle it gracefully
             console.warn('[STEP_HANDLER] Message not found for update:', responseMessageId);
-            finalMessages = [...currentMessages, updatedResponse];
+            setMessages([...currentMessages, updatedResponse]);
           }
           
           // Optional debug logging
           if (debug) {
             try {
-              debug.logMessages(finalMessages, 'AGENT_UPDATE', panelType);
+              debug.logMessages(currentMessages, 'AGENT_UPDATE', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug message logging failed:', e);
             }
           }
-          
-          setMessages(finalMessages);
         }
       } else if (event === 'on_message_delta') {
         deltaCountRef.current++;
@@ -467,8 +474,8 @@ export default function useStepHandler({
         });
         
         const runStep = stepMap.current.get(messageDelta.id);
-        // FIX: Make message ID panel-specific
-        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
+        // CRITICAL FIX: Use base messageId without panel suffix
+        const responseMessageId = runStep?.runId ?? '';
 
         if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for message delta event', {
@@ -547,37 +554,34 @@ export default function useStepHandler({
             totalTextAccumulated: totalTextLengthRef.current,
             contentChanged: JSON.stringify(response.content) !== JSON.stringify(updatedResponse.content),
             panelType,
+            baseIdUsed: true,
           });
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
           
-          // Find and update the correct message instead of replacing the last one
+          // Find and update the correct message
           const messageIndex = currentMessages.findIndex(msg => 
             msg.messageId === responseMessageId
           );
           
-          let finalMessages;
           if (messageIndex >= 0) {
-            // Update existing message
-            finalMessages = [...currentMessages];
+            const finalMessages = [...currentMessages];
             finalMessages[messageIndex] = updatedResponse;
+            setMessages(finalMessages);
           } else {
-            // This shouldn't happen, but handle it gracefully
             console.warn('[STEP_HANDLER] Message not found for delta update:', responseMessageId);
-            finalMessages = [...currentMessages, updatedResponse];
+            setMessages([...currentMessages, updatedResponse]);
           }
           
           // Optional debug logging
           if (debug) {
             try {
-              debug.logMessages(finalMessages, 'MESSAGE_DELTA_UPDATE', panelType);
+              debug.logMessages(currentMessages, 'MESSAGE_DELTA_UPDATE', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug message logging failed:', e);
             }
           }
-          
-          setMessages(finalMessages);
         } else {
           console.warn('[STEP_HANDLER WARNING - NO RESPONSE OR CONTENT]', {
             hasResponse: !!response,
@@ -602,13 +606,14 @@ export default function useStepHandler({
       } else if (event === 'on_reasoning_delta') {
         const reasoningDelta = data as Agents.ReasoningDeltaEvent;
         const runStep = stepMap.current.get(reasoningDelta.id);
-        // FIX: Make message ID panel-specific
-        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
+        // CRITICAL FIX: Use base messageId without panel suffix
+        const responseMessageId = runStep?.runId ?? '';
 
         console.log('[STEP_HANDLER DEBUG - REASONING DELTA]', {
           reasoningDeltaId: reasoningDelta.id,
           hasContent: !!reasoningDelta.delta.content,
           panelType,
+          suffixRemoved: true,
         });
 
         if (!runStep || !runStep?.runId) {
@@ -638,43 +643,40 @@ export default function useStepHandler({
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
           
-          // Find and update the correct message instead of replacing the last one
+          // Find and update the correct message
           const messageIndex = currentMessages.findIndex(msg => 
             msg.messageId === responseMessageId
           );
           
-          let finalMessages;
           if (messageIndex >= 0) {
-            // Update existing message
-            finalMessages = [...currentMessages];
+            const finalMessages = [...currentMessages];
             finalMessages[messageIndex] = updatedResponse;
+            setMessages(finalMessages);
           } else {
-            // This shouldn't happen, but handle it gracefully
             console.warn('[STEP_HANDLER] Message not found for reasoning delta:', responseMessageId);
-            finalMessages = [...currentMessages, updatedResponse];
+            setMessages([...currentMessages, updatedResponse]);
           }
           
           // Optional debug logging
           if (debug) {
             try {
-              debug.logMessages(finalMessages, 'REASONING_DELTA_UPDATE', panelType);
+              debug.logMessages(currentMessages, 'REASONING_DELTA_UPDATE', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug message logging failed:', e);
             }
           }
-          
-          setMessages(finalMessages);
         }
       } else if (event === 'on_run_step_delta') {
         const runStepDelta = data as Agents.RunStepDeltaEvent;
         const runStep = stepMap.current.get(runStepDelta.id);
-        // FIX: Make message ID panel-specific
-        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
+        // CRITICAL FIX: Use base messageId without panel suffix
+        const responseMessageId = runStep?.runId ?? '';
 
         console.log('[STEP_HANDLER DEBUG - RUN STEP DELTA]', {
           runStepDeltaId: runStepDelta.id,
           deltaType: runStepDelta.delta.type,
           panelType,
+          suffixRemoved: true,
         });
 
         if (!runStep || !runStep?.runId) {
@@ -722,20 +724,27 @@ export default function useStepHandler({
           });
 
           messageMap.current.set(responseMessageId, updatedResponse);
-          const updatedMessages = messages.map((msg) =>
-            msg.messageId === responseMessageId ? updatedResponse : msg,
+          const currentMessages = getMessages() || [];
+          const messageIndex = currentMessages.findIndex(msg => 
+            msg.messageId === responseMessageId
           );
+          
+          if (messageIndex >= 0) {
+            const finalMessages = [...currentMessages];
+            finalMessages[messageIndex] = updatedResponse;
+            setMessages(finalMessages);
+          } else {
+            setMessages([...currentMessages, updatedResponse]);
+          }
 
           // Optional debug logging
           if (debug) {
             try {
-              debug.logMessages(updatedMessages, 'RUN_STEP_DELTA_UPDATE', panelType);
+              debug.logMessages(currentMessages, 'RUN_STEP_DELTA_UPDATE', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug message logging failed:', e);
             }
           }
-
-          setMessages(updatedMessages);
         }
       } else if (event === 'on_run_step_completed') {
         const { result } = data as unknown as { result: Agents.ToolEndEvent };
@@ -746,11 +755,12 @@ export default function useStepHandler({
           stepId,
           toolCallName: result.tool_call?.name,
           panelType,
+          suffixRemoved: true,
         });
 
         const runStep = stepMap.current.get(stepId);
-        // FIX: Make message ID panel-specific
-        const responseMessageId = (runStep?.runId ?? '') + panelSuffix;
+        // CRITICAL FIX: Use base messageId without panel suffix
+        const responseMessageId = runStep?.runId ?? '';
 
         if (!runStep || !runStep?.runId) {
           console.warn('[STEP_HANDLER WARNING] No run step or runId found for completed tool call event');
@@ -780,20 +790,27 @@ export default function useStepHandler({
           updatedResponse = updateContent(updatedResponse, runStep.index, contentPart, true);
 
           messageMap.current.set(responseMessageId, updatedResponse);
-          const updatedMessages = messages.map((msg) =>
-            msg.messageId === responseMessageId ? updatedResponse : msg,
+          const currentMessages = getMessages() || [];
+          const messageIndex = currentMessages.findIndex(msg => 
+            msg.messageId === responseMessageId
           );
+          
+          if (messageIndex >= 0) {
+            const finalMessages = [...currentMessages];
+            finalMessages[messageIndex] = updatedResponse;
+            setMessages(finalMessages);
+          } else {
+            setMessages([...currentMessages, updatedResponse]);
+          }
 
           // Optional debug logging
           if (debug) {
             try {
-              debug.logMessages(updatedMessages, 'RUN_STEP_COMPLETED_UPDATE', panelType);
+              debug.logMessages(currentMessages, 'RUN_STEP_COMPLETED_UPDATE', panelType);
             } catch (e) {
               console.warn('[STEP_HANDLER] Debug message logging failed:', e);
             }
           }
-
-          setMessages(updatedMessages);
         }
       }
 
@@ -805,6 +822,7 @@ export default function useStepHandler({
           totalDeltas: deltaCountRef.current,
           totalTextLength: totalTextLengthRef.current,
           panelType,
+          panelSuffixRemoved: true,
         });
         
         // Optional debug logging for cleanup
