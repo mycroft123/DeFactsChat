@@ -320,7 +320,21 @@ export default function useStepHandler({
           };
 
           messageMap.current.set(responseMessageId, response);
-          const finalMessages = [...messages.slice(0, -1), response];
+          // Instead of replacing the last message, find and update the correct one
+          const messageIndex = messages.findIndex(msg => 
+            msg.messageId === responseMessageId || 
+            msg.messageId === responseMessage.messageId
+          );
+          
+          let finalMessages;
+          if (messageIndex >= 0) {
+            // Update existing message
+            finalMessages = [...messages];
+            finalMessages[messageIndex] = response;
+          } else {
+            // Add new message if not found
+            finalMessages = [...messages, response];
+          }
           
           // Optional debug logging
           if (debug) {
@@ -406,7 +420,22 @@ export default function useStepHandler({
           const updatedResponse = updateContent(response, agent_update.index, data);
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
-          const finalMessages = [...currentMessages.slice(0, -1), updatedResponse];
+          
+          // Find and update the correct message instead of replacing the last one
+          const messageIndex = currentMessages.findIndex(msg => 
+            msg.messageId === responseMessageId
+          );
+          
+          let finalMessages;
+          if (messageIndex >= 0) {
+            // Update existing message
+            finalMessages = [...currentMessages];
+            finalMessages[messageIndex] = updatedResponse;
+          } else {
+            // This shouldn't happen, but handle it gracefully
+            console.warn('[STEP_HANDLER] Message not found for update:', responseMessageId);
+            finalMessages = [...currentMessages, updatedResponse];
+          }
           
           // Optional debug logging
           if (debug) {
@@ -522,7 +551,22 @@ export default function useStepHandler({
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
-          const finalMessages = [...currentMessages.slice(0, -1), updatedResponse];
+          
+          // Find and update the correct message instead of replacing the last one
+          const messageIndex = currentMessages.findIndex(msg => 
+            msg.messageId === responseMessageId
+          );
+          
+          let finalMessages;
+          if (messageIndex >= 0) {
+            // Update existing message
+            finalMessages = [...currentMessages];
+            finalMessages[messageIndex] = updatedResponse;
+          } else {
+            // This shouldn't happen, but handle it gracefully
+            console.warn('[STEP_HANDLER] Message not found for delta update:', responseMessageId);
+            finalMessages = [...currentMessages, updatedResponse];
+          }
           
           // Optional debug logging
           if (debug) {
@@ -593,7 +637,22 @@ export default function useStepHandler({
 
           messageMap.current.set(responseMessageId, updatedResponse);
           const currentMessages = getMessages() || [];
-          const finalMessages = [...currentMessages.slice(0, -1), updatedResponse];
+          
+          // Find and update the correct message instead of replacing the last one
+          const messageIndex = currentMessages.findIndex(msg => 
+            msg.messageId === responseMessageId
+          );
+          
+          let finalMessages;
+          if (messageIndex >= 0) {
+            // Update existing message
+            finalMessages = [...currentMessages];
+            finalMessages[messageIndex] = updatedResponse;
+          } else {
+            // This shouldn't happen, but handle it gracefully
+            console.warn('[STEP_HANDLER] Message not found for reasoning delta:', responseMessageId);
+            finalMessages = [...currentMessages, updatedResponse];
+          }
           
           // Optional debug logging
           if (debug) {
