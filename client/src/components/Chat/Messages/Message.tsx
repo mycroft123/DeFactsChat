@@ -18,15 +18,17 @@ const MessageContainer = React.memo(
   }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const preservedPanelsRef = useRef<{
-      leftPanel: HTMLElement | null;
-      rightPanel: HTMLElement | null;
-      leftPanelData: any;
-      rightPanelData: any;
+      panels: Map<string, {
+        element: HTMLElement;
+        data: {
+          id: string;
+          innerHTML: string;
+          className: string;
+          style: string;
+        }
+      }>;
     }>({
-      leftPanel: null,
-      rightPanel: null,
-      leftPanelData: null,
-      rightPanelData: null,
+      panels: new Map(),
     });
 
     // Preserve panels before re-render
@@ -35,32 +37,25 @@ const MessageContainer = React.memo(
 
       const container = containerRef.current;
       
-      // Find existing panels
-      const leftPanel = container.querySelector('[id$="_left"]') as HTMLElement;
-      const rightPanel = container.querySelector('[id$="_right"]') as HTMLElement;
+      // Find all panels (left and right)
+      const panels = container.querySelectorAll('[id$="_left"], [id$="_right"]') as NodeListOf<HTMLElement>;
       
-      // Store panels if they exist and are different from what we have
-      if (leftPanel && leftPanel !== preservedPanelsRef.current.leftPanel) {
-        console.log('🔄 [PANEL PRESERVE] Storing LEFT panel:', leftPanel.id);
-        preservedPanelsRef.current.leftPanel = leftPanel;
-        preservedPanelsRef.current.leftPanelData = {
-          id: leftPanel.id,
-          innerHTML: leftPanel.innerHTML,
-          className: leftPanel.className,
-          style: leftPanel.style.cssText,
-        };
-      }
-      
-      if (rightPanel && rightPanel !== preservedPanelsRef.current.rightPanel) {
-        console.log('🔄 [PANEL PRESERVE] Storing RIGHT panel:', rightPanel.id);
-        preservedPanelsRef.current.rightPanel = rightPanel;
-        preservedPanelsRef.current.rightPanelData = {
-          id: rightPanel.id,
-          innerHTML: rightPanel.innerHTML,
-          className: rightPanel.className,
-          style: rightPanel.style.cssText,
-        };
-      }
+      panels.forEach(panel => {
+        if (!preservedPanelsRef.current.panels.has(panel.id)) {
+          console.log('🔄 [PANEL PRESERVE] Storing panel:', panel.id);
+          
+          // Store both the element reference and its data
+          preservedPanelsRef.current.panels.set(panel.id, {
+            element: panel,
+            data: {
+              id: panel.id,
+              innerHTML: panel.innerHTML,
+              className: panel.className,
+              style: panel.style.cssText,
+            }
+          });
+        }
+      });
     });
 
     // Restore panels after re-render
@@ -68,64 +63,74 @@ const MessageContainer = React.memo(
       if (!containerRef.current) return;
 
       const container = containerRef.current;
-      const { leftPanel, rightPanel, leftPanelData, rightPanelData } = preservedPanelsRef.current;
-
-      // Restore left panel if it's missing
-      if (leftPanelData && !container.querySelector(`#${leftPanelData.id}`)) {
-        console.log('🔧 [PANEL RESTORE] Restoring LEFT panel:', leftPanelData.id);
+      
+      // Check each preserved panel
+      preservedPanelsRef.current.panels.forEach((panelInfo, panelId) => {
+        // Use a more robust way to check if panel exists
+        const existingPanel = Array.from(container.querySelectorAll('[id$="_left"], [id$="_right"]'))
+          .find(el => el.id === panelId);
         
-        const restoredLeftPanel = document.createElement('div');
-        restoredLeftPanel.id = leftPanelData.id;
-        restoredLeftPanel.className = leftPanelData.className;
-        restoredLeftPanel.innerHTML = leftPanelData.innerHTML;
-        if (leftPanelData.style) {
-          restoredLeftPanel.style.cssText = leftPanelData.style;
+        if (!existingPanel) {
+          console.log('🔧 [PANEL RESTORE] Restoring panel:', panelId);
+          
+          // Create new panel element
+          const restoredPanel = document.createElement('div');
+          restoredPanel.id = panelInfo.data.id;
+          restoredPanel.className = panelInfo.data.className;
+          restoredPanel.innerHTML = panelInfo.data.innerHTML;
+          if (panelInfo.data.style) {
+            restoredPanel.style.cssText = panelInfo.data.style;
+          }
+          
+          // Find appropriate insertion point - try multiple strategies
+          let insertionPoint: Element | null = null;
+          
+          // Strategy 1: Look for prose/markdown content
+          insertionPoint = container.querySelector('.prose, [class*="markdown"], [class*="content"]');
+          
+          // Strategy 2: Look for the first div with substantial content
+          if (!insertionPoint) {
+            const divs = container.querySelectorAll('div');
+            for (const div of divs) {
+              if (div.textContent && div.textContent.length > 50) {
+                insertionPoint = div;
+                break;
+              }
+            }
+          }
+          
+          // Strategy 3: Use the first child element
+          if (!insertionPoint) {
+            insertionPoint = container.firstElementChild;
+          }
+          
+          // Strategy 4: Append directly to container
+          if (!insertionPoint) {
+            insertionPoint = container;
+          }
+          
+          if (insertionPoint) {
+            insertionPoint.appendChild(restoredPanel);
+            
+            // Update our preserved reference
+            preservedPanelsRef.current.panels.set(panelId, {
+              element: restoredPanel,
+              data: panelInfo.data
+            });
+            
+            console.log('✅ [PANEL RESTORE] Successfully restored panel:', panelId);
+          } else {
+            console.warn('⚠️ [PANEL RESTORE] Could not find insertion point for:', panelId);
+          }
         }
-        
-        // Find appropriate insertion point
-        const insertionPoint = container.querySelector('.prose') || 
-                             container.querySelector('[class*="markdown"]') || 
-                             container.firstElementChild;
-        
-        if (insertionPoint) {
-          insertionPoint.appendChild(restoredLeftPanel);
-          preservedPanelsRef.current.leftPanel = restoredLeftPanel;
-        }
-      }
-
-      // Restore right panel if it's missing
-      if (rightPanelData && !container.querySelector(`#${rightPanelData.id}`)) {
-        console.log('🔧 [PANEL RESTORE] Restoring RIGHT panel:', rightPanelData.id);
-        
-        const restoredRightPanel = document.createElement('div');
-        restoredRightPanel.id = rightPanelData.id;
-        restoredRightPanel.className = rightPanelData.className;
-        restoredRightPanel.innerHTML = rightPanelData.innerHTML;
-        if (rightPanelData.style) {
-          restoredRightPanel.style.cssText = rightPanelData.style;
-        }
-        
-        // Find appropriate insertion point
-        const insertionPoint = container.querySelector('.prose') || 
-                             container.querySelector('[class*="markdown"]') || 
-                             container.firstElementChild;
-        
-        if (insertionPoint) {
-          insertionPoint.appendChild(restoredRightPanel);
-          preservedPanelsRef.current.rightPanel = restoredRightPanel;
-        }
-      }
+      });
     });
 
     // Cleanup on unmount
     useEffect(() => {
       return () => {
-        preservedPanelsRef.current = {
-          leftPanel: null,
-          rightPanel: null,
-          leftPanelData: null,
-          rightPanelData: null,
-        };
+        console.log('🧹 [PANEL CLEANUP] Clearing preserved panels');
+        preservedPanelsRef.current.panels.clear();
       };
     }, []);
 
