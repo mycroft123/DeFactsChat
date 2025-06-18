@@ -10,6 +10,11 @@ import store from '~/store';
 export default function useMessageProcess({ message }: { message?: TMessage | null }) {
   const latestText = useRef<string | number>('');
   const [siblingMessage, setSiblingMessage] = useState<TMessage | null>(null);
+  
+  // CRITICAL FIX: Stabilize showSibling during streaming
+  const [stableShowSibling, setStableShowSibling] = useState(false);
+  const showSiblingLockRef = useRef(false);
+  
   const hasNoChildren = useMemo(() => (message?.children?.length ?? 0) === 0, [message]);
 
   const {
@@ -80,12 +85,61 @@ export default function useMessageProcess({ message }: { message?: TMessage | nu
     [isSubmittingFamily, setAbortScroll],
   );
 
-  const showSibling = useMemo(
+  // CRITICAL FIX: Calculate raw showSibling value
+  const rawShowSibling = useMemo(
     () =>
       (hasNoChildren && latestMultiMessage && (latestMultiMessage.children?.length ?? 0) === 0) ||
       !!siblingMessage,
     [hasNoChildren, latestMultiMessage, siblingMessage],
   );
+
+  // CRITICAL FIX: Stabilize showSibling during streaming to prevent re-renders
+  useEffect(() => {
+    console.log('[SHOW_SIBLING_STABILITY]', {
+      rawShowSibling,
+      stableShowSibling,
+      isSubmittingFamily,
+      showSiblingLocked: showSiblingLockRef.current,
+      messageId: message?.messageId,
+    });
+
+    // If not currently streaming, always update
+    if (!isSubmittingFamily) {
+      // Release the lock when streaming stops
+      if (showSiblingLockRef.current) {
+        console.log('[SHOW_SIBLING_STABILITY] Releasing lock - streaming stopped');
+        showSiblingLockRef.current = false;
+      }
+      
+      // Update to raw value when not streaming
+      if (stableShowSibling !== rawShowSibling) {
+        console.log('[SHOW_SIBLING_STABILITY] Updating stable value (not streaming):', rawShowSibling);
+        setStableShowSibling(rawShowSibling);
+      }
+      return;
+    }
+
+    // If streaming is active
+    if (isSubmittingFamily) {
+      // Lock the value on first stream (prevent changes)
+      if (!showSiblingLockRef.current) {
+        console.log('[SHOW_SIBLING_STABILITY] Locking showSibling during streaming:', stableShowSibling);
+        showSiblingLockRef.current = true;
+      }
+      
+      // If we don't have a sibling view yet but should, establish it now
+      if (!stableShowSibling && rawShowSibling) {
+        console.log('[SHOW_SIBLING_STABILITY] Establishing sibling view at start of streaming');
+        setStableShowSibling(true);
+      }
+      
+      // Don't change stableShowSibling while streaming
+      return;
+    }
+  }, [rawShowSibling, stableShowSibling, isSubmittingFamily, message?.messageId]);
+
+  // CRITICAL FIX: Use stable showSibling instead of raw
+  const showSibling = stableShowSibling;
 
   useEffect(() => {
     if (
